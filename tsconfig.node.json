@@ -15,7 +15,9 @@
     "types": ["electron-vite/node", "node"]
   },
   "include": [
+    "drizzle.config.ts",
     "electron.vite.config.ts",
+    "scripts/**/*.ts",
     "vitest.config.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",

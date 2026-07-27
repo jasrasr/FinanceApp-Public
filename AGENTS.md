@@ -410,12 +410,9 @@ Before running a command:
 2. Confirm that the script exists.
 3. Do not claim a command was run if it has not yet been configured.
 
-At the initial repository stage, no application build, lint, test, database,
-package, or completion commands should be assumed to exist.
+### Currently Configured Commands
 
-### Commands to Create During the Application-Foundation Phase
-
-The application-foundation phase must configure and document:
+The application foundation and core database phase provide:
 
     npm run dev
     npm run build
@@ -424,27 +421,25 @@ The application-foundation phase must configure and document:
     npm run lint
     npm run typecheck
     npm run test
+    npm run test:integration
+    npm run db:generate
+    npm run db:migrate
+    npm run db:check
+    npm run check
 
 After a lockfile exists, clean dependency installation should use:
 
     npm ci
 
-Before the lockfile exists, use the approved initial dependency-installation
-workflow and commit the generated lockfile.
-
 ### Commands to Add When Their Supporting Workflows Exist
 
 Add these scripts when their related infrastructure is implemented:
 
-    npm run test:integration
     npm run test:e2e
-    npm run db:generate
-    npm run db:migrate
     npm run package
-    npm run check
 
-`npm run check` must eventually run formatting verification, linting, type
-checking, unit tests, and integration tests.
+`npm run check` runs formatting verification, linting, type checking, unit and
+integration tests, and the isolated database check.
 
 End-to-end tests must be included in the completion gate when a change affects
 a critical workflow, Electron integration, imports, backups, migrations,

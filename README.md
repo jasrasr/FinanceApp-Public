@@ -12,9 +12,12 @@ shell. Debt-management features have not been implemented.
 - Minimal typed preload bridge containing static application metadata only.
 - Strict TypeScript, ESLint, Prettier, Vitest, React Testing Library, and Tailwind
   CSS.
+- Main-process-only SQLite access through better-sqlite3 and Drizzle ORM.
+- Generated Drizzle migrations and isolated file-backed temporary test databases.
+- Zod validation and pure accounting boundary helpers.
 
-No database driver, ORM, workbook importer, financial calculation, reporting,
-end-to-end testing, or installer packaging is configured yet.
+No debt-entry UI, payment-entry UI, workbook importer, projection engine,
+reporting, end-to-end testing, or installer packaging is configured yet.
 
 ## Prerequisites
 
@@ -58,6 +61,26 @@ Run linting, type checking, and tests:
 npm run lint
 npm run typecheck
 npm run test
+npm run test:integration
+```
+
+Generate and verify database migrations:
+
+```powershell
+npm run db:generate
+npm run db:migrate
+npm run db:check
+```
+
+`db:migrate` migrates a new isolated temporary database by default. Application
+code will pass Electron's `app.getPath('userData')` directory to the database-path
+resolver when persistent database startup is introduced. This phase does not
+create a persistent application database.
+
+Run the complete currently configured verification gate:
+
+```powershell
+npm run check
 ```
 
 ## Privacy
