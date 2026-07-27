@@ -228,6 +228,7 @@ describe('posted transaction controls', () => {
 
     const reversalId = reversePostedTransaction(context.database, {
       originalTransactionId,
+      expectedUpdatedAtUtc: FIXED_TIMESTAMP,
       effectiveDate: '2026-06-17',
       postingDate: '2026-06-17',
       description: 'Reverse generated payment entered in error.',

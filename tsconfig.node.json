@@ -20,7 +20,6 @@
     "playwright.config.ts",
     "e2e/**/*.ts",
     "scripts/**/*.ts",
-    "vitest.config.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts"

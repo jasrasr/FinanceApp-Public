@@ -145,6 +145,14 @@ export const debtTransactionInsertSchema = z
         message: 'A transaction cannot reference itself.',
       });
     }
+
+    if (value.postingDate < value.effectiveDate) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Posting date cannot precede the effective date.',
+        path: ['postingDate'],
+      });
+    }
   });
 
 export const balanceSnapshotInsertSchema = z.object({

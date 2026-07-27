@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import type { IpcMainInvokeEvent } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { DebtMaintenanceService } from '../services/debt-maintenance-service';
 import { registerDebtIpcHandlers, type DebtIpcRegistrar } from './debt-ipc-handlers';
@@ -12,6 +13,9 @@ const createService = (): DebtMaintenanceService => ({
   createDebt: vi.fn(),
   updateDebt: vi.fn(),
   addDebtTerm: vi.fn(),
+  createDebtTransaction: vi.fn(),
+  reverseDebtTransaction: vi.fn(),
+  createBalanceSnapshot: vi.fn(),
   archiveDebt: vi.fn(),
   restoreDebt: vi.fn(),
 });
@@ -82,5 +86,40 @@ describe('debt IPC handlers', () => {
 
     expect(result).toEqual({ ok: true, value: [] });
     expect(service.listDebts).toHaveBeenCalledWith({ includeArchived: false });
+  });
+
+  it('rejects invalid posted-transaction payloads on the new channel', () => {
+    const service = createService();
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(registrar, service, () => true);
+
+    const result = handlers.get(DEBT_IPC_CHANNELS.createTransaction)?.(event, {
+      debtId: randomUUID(),
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2026-01-01',
+        postingDate: '2026-01-01',
+        status: 'draft',
+        totalAmount: '-500.00',
+        description: 'Generated payment.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '-400.00',
+          interest: '-100.00',
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(service.createDebtTransaction).not.toHaveBeenCalled();
   });
 });

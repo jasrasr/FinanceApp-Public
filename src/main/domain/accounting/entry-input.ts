@@ -3,6 +3,7 @@ import { percentStringToBasisPoints, percentStringToRateMicros } from './interes
 import { dollarsToCents } from './money';
 
 const CURRENCY_INPUT_PATTERN = /^\$?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/;
+const SIGNED_CURRENCY_INPUT_PATTERN = /^-?\$?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/;
 const PERCENTAGE_INPUT_PATTERN = /^\d+(?:\.\d+)?%?$/;
 
 const normalizeCurrencyInput = (value: string): string => {
@@ -27,6 +28,19 @@ const normalizePercentageInput = (value: string): string => {
 
 export const currencyInputToCents = (value: string): number =>
   dollarsToCents(normalizeCurrencyInput(value));
+
+export const signedCurrencyInputToCents = (value: string): number => {
+  const normalized = value.trim().replace(/\s+/g, '');
+
+  if (!SIGNED_CURRENCY_INPUT_PATTERN.test(normalized)) {
+    throw new TypeError('Enter a signed currency amount such as -1250.00.');
+  }
+
+  const magnitude = normalized.replace('-', '').replace('$', '').replaceAll(',', '');
+  const cents = dollarsToCents(magnitude);
+
+  return normalized.startsWith('-') ? -cents : cents;
+};
 
 export const percentageInputToRateMicros = (value: string): number =>
   percentStringToRateMicros(normalizePercentageInput(value));

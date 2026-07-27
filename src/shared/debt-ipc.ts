@@ -2,8 +2,11 @@ export const DEBT_IPC_CHANNELS = {
   addTerm: 'debt:add-term',
   archive: 'debt:archive',
   create: 'debt:create',
+  createTransaction: 'debt:create-transaction',
+  createSnapshot: 'debt:create-snapshot',
   get: 'debt:get',
   list: 'debt:list',
+  reverseTransaction: 'debt:reverse-transaction',
   restore: 'debt:restore',
   update: 'debt:update',
 } as const;

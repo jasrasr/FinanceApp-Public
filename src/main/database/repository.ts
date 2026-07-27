@@ -37,6 +37,7 @@ export interface PostedTransactionInput {
 
 export interface ReverseTransactionInput {
   readonly originalTransactionId: string;
+  readonly expectedUpdatedAtUtc: string;
   readonly effectiveDate: string;
   readonly postingDate: string;
   readonly description: string;
@@ -164,8 +165,16 @@ export const reversePostedTransaction = (
     .where(eq(debtTransactions.id, input.originalTransactionId))
     .get();
 
-  if (!original || original.status !== 'posted') {
+  if (!original) {
     throw new Error('Only an existing posted transaction can be reversed.');
+  }
+
+  if (original.status !== 'posted') {
+    throw new Error('Only a currently posted transaction can be reversed.');
+  }
+
+  if (original.updatedAtUtc !== input.expectedUpdatedAtUtc) {
+    throw new Error('The transaction changed before the reversal was saved.');
   }
 
   const originalAllocations = database

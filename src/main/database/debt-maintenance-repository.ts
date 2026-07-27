@@ -1,21 +1,48 @@
 import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { AppDatabase } from './connection';
-import { auditEvents, debtTerms, debts } from './schema';
+import {
+  auditEvents,
+  balanceSnapshots,
+  debtTerms,
+  debtTransactions,
+  debts,
+  transactionAllocations,
+} from './schema';
 import {
   auditEventInsertSchema,
+  balanceSnapshotInsertSchema,
   debtInsertSchema,
   debtTermInsertSchema,
+  debtTransactionInsertSchema,
+  transactionAllocationInsertSchema,
   type AuditEventInsert,
+  type BalanceSnapshotInsert,
   type DebtInsert,
   type DebtTermInsert,
+  type DebtTransactionInsert,
+  type TransactionAllocationInsert,
 } from './validation';
+import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
 
 export type DebtRecord = typeof debts.$inferSelect;
 export type DebtTermRecord = typeof debtTerms.$inferSelect;
+export type DebtTransactionRecord = typeof debtTransactions.$inferSelect;
+export type TransactionAllocationRecord = typeof transactionAllocations.$inferSelect;
+export type BalanceSnapshotRecord = typeof balanceSnapshots.$inferSelect;
 
 export interface DebtWithTermsRecord {
   readonly debt: DebtRecord;
   readonly terms: readonly DebtTermRecord[];
+}
+
+export interface DebtTransactionWithAllocationsRecord {
+  readonly transaction: DebtTransactionRecord;
+  readonly allocations: readonly TransactionAllocationRecord[];
+}
+
+export interface DebtWithActivityRecord extends DebtWithTermsRecord {
+  readonly transactions: readonly DebtTransactionWithAllocationsRecord[];
+  readonly balanceSnapshots: readonly BalanceSnapshotRecord[];
 }
 
 export interface DebtUpdateValues {
@@ -45,6 +72,47 @@ const getTerms = (database: AppDatabase, debtId: string): readonly DebtTermRecor
     .orderBy(asc(debtTerms.effectiveStartDate))
     .all();
 
+const getTransactionAllocations = (
+  database: AppDatabase,
+  transactionId: string,
+): readonly TransactionAllocationRecord[] =>
+  database
+    .select()
+    .from(transactionAllocations)
+    .where(eq(transactionAllocations.transactionId, transactionId))
+    .orderBy(asc(transactionAllocations.createdAtUtc))
+    .all();
+
+const getTransactions = (
+  database: AppDatabase,
+  debtId: string,
+): readonly DebtTransactionWithAllocationsRecord[] =>
+  database
+    .select()
+    .from(debtTransactions)
+    .where(eq(debtTransactions.debtId, debtId))
+    .orderBy(
+      asc(debtTransactions.effectiveDate),
+      asc(debtTransactions.postingDate),
+      asc(debtTransactions.createdAtUtc),
+    )
+    .all()
+    .map((transaction) => ({
+      transaction,
+      allocations: getTransactionAllocations(database, transaction.id),
+    }));
+
+const getBalanceSnapshots = (
+  database: AppDatabase,
+  debtId: string,
+): readonly BalanceSnapshotRecord[] =>
+  database
+    .select()
+    .from(balanceSnapshots)
+    .where(eq(balanceSnapshots.debtId, debtId))
+    .orderBy(asc(balanceSnapshots.effectiveDate), asc(balanceSnapshots.createdAtUtc))
+    .all();
+
 export const listDebtRecords = (
   database: AppDatabase,
   includeArchived: boolean,
@@ -69,6 +137,31 @@ export const getDebtRecord = (
   return debt ? { debt, terms: getTerms(database, debt.id) } : undefined;
 };
 
+export const getDebtTransactionRecord = (
+  database: AppDatabase,
+  transactionId: string,
+): DebtTransactionRecord | undefined =>
+  database
+    .select()
+    .from(debtTransactions)
+    .where(eq(debtTransactions.id, transactionId))
+    .get();
+
+export const getDebtActivityRecord = (
+  database: AppDatabase,
+  debtId: string,
+): DebtWithActivityRecord | undefined => {
+  const record = getDebtRecord(database, debtId);
+
+  return record
+    ? {
+        ...record,
+        transactions: getTransactions(database, debtId),
+        balanceSnapshots: getBalanceSnapshots(database, debtId),
+      }
+    : undefined;
+};
+
 export const createDebtAndInitialTerm = (
   database: AppDatabase,
   debtInput: DebtInsert,
@@ -82,6 +175,49 @@ export const createDebtAndInitialTerm = (
   database.transaction((transaction) => {
     transaction.insert(debts).values(debt).run();
     transaction.insert(debtTerms).values(term).run();
+    transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const createPostedTransactionRecord = (
+  database: AppDatabase,
+  transactionInput: DebtTransactionInsert,
+  allocationInputs: readonly TransactionAllocationInsert[],
+  auditInputs: readonly AuditEventInsert[],
+): void => {
+  const transaction = debtTransactionInsertSchema.parse(transactionInput);
+  const allocations = allocationInputs.map((allocation) =>
+    transactionAllocationInsertSchema.parse(allocation),
+  );
+  const audit = auditInputs.map((event) => auditEventInsertSchema.parse(event));
+
+  if (allocations.some((allocation) => allocation.transactionId !== transaction.id)) {
+    throw new Error('Every allocation must reference its transaction.');
+  }
+
+  const errors = validateTransactionSignConvention(transaction, allocations);
+
+  if (errors.length > 0) {
+    throw new Error(errors.join(' '));
+  }
+
+  database.transaction((transactionDb) => {
+    transactionDb.insert(debtTransactions).values(transaction).run();
+    transactionDb.insert(transactionAllocations).values(allocations).run();
+    transactionDb.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const createBalanceSnapshotRecord = (
+  database: AppDatabase,
+  snapshotInput: BalanceSnapshotInsert,
+  auditInput: AuditEventInsert,
+): void => {
+  const snapshot = balanceSnapshotInsertSchema.parse(snapshotInput);
+  const audit = auditEventInsertSchema.parse(auditInput);
+
+  database.transaction((transaction) => {
+    transaction.insert(balanceSnapshots).values(snapshot).run();
     transaction.insert(auditEvents).values(audit).run();
   });
 };

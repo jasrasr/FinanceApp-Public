@@ -111,6 +111,21 @@ contractual changes and are used for list and detail term displays.
   terms, or related records.
 - Debt status and archival state remain separate concepts.
 
+## Manual Posted Activity and Snapshots
+
+- Manual posted activity uses the unified `debt_transactions` ledger and the
+  associated `transaction_allocations` rows.
+- This phase records only posted actual activity in that ledger.
+- Transaction totals and allocation amounts are signed and must reconcile to one
+  another under the documented sign convention.
+- Posted transactions may be reversed only by a new linked reversal transaction;
+  the original row remains stored and is marked reversed.
+- Confirmed balance snapshots are separate evidence records and never overwrite
+  the posted ledger.
+- The application does not calculate or display an authoritative current balance
+  until a later calculation phase is explicitly implemented and tested.
+- Snapshot records and reversal transactions both retain their own audit trail.
+
 ## Confirmed Balances and Reconciliation
 
 A balance snapshot records external evidence and never alters ledger activity.

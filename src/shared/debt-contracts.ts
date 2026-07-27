@@ -1,11 +1,15 @@
 import { z } from 'zod';
 import {
+  ALLOCATION_TYPES,
+  BALANCE_SNAPSHOT_SOURCE_TYPES,
   DAY_COUNT_CONVENTIONS,
   DEBT_STATUSES,
   DEBT_TYPES,
   INTEREST_CALCULATION_CONVENTIONS,
   INTEREST_RATE_TYPES,
+  MANUAL_ENTRY_SOURCE_TYPES,
   PAYMENT_FREQUENCIES,
+  POSTED_ACTIVITY_TRANSACTION_TYPES,
   TAX_CATEGORIES,
 } from './debt-options';
 
@@ -14,6 +18,20 @@ const optionalTextSchema = z.string().trim().max(4_000).nullable();
 const financialDateInputSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const uuidSchema = z.uuid();
 const utcTimestampSchema = z.iso.datetime({ offset: false });
+const moneyInputSchema = z.string().trim().min(1).max(100);
+const optionalMoneyInputSchema = z.string().trim().max(100).nullable().optional();
+
+const transactionAllocationInputSchema = z
+  .object({
+    principal: optionalMoneyInputSchema,
+    interest: optionalMoneyInputSchema,
+    escrow: optionalMoneyInputSchema,
+    fee: optionalMoneyInputSchema,
+    penalty: optionalMoneyInputSchema,
+    extraPrincipal: optionalMoneyInputSchema,
+    other: optionalMoneyInputSchema,
+  })
+  .strict();
 
 export const debtTermInputSchema = z
   .object({
@@ -87,6 +105,57 @@ export const addDebtTermRequestSchema = z
   })
   .strict();
 
+export const createDebtTransactionRequestSchema = z
+  .object({
+    debtId: uuidSchema,
+    transaction: z
+      .object({
+        transactionType: z.enum(POSTED_ACTIVITY_TRANSACTION_TYPES),
+        effectiveDate: financialDateInputSchema,
+        postingDate: financialDateInputSchema,
+        status: z.literal('posted'),
+        totalAmount: moneyInputSchema,
+        description: requiredTextSchema,
+        sourceType: z.enum(MANUAL_ENTRY_SOURCE_TYPES),
+        sourceReference: optionalTextSchema,
+        allocations: transactionAllocationInputSchema,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.transaction.postingDate < value.transaction.effectiveDate) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Posting date cannot precede the effective date.',
+        path: ['transaction', 'postingDate'],
+      });
+    }
+  });
+
+export const reverseDebtTransactionRequestSchema = z
+  .object({
+    id: uuidSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+    confirmed: z.literal(true),
+  })
+  .strict();
+
+export const createBalanceSnapshotRequestSchema = z
+  .object({
+    debtId: uuidSchema,
+    snapshot: z
+      .object({
+        effectiveDate: financialDateInputSchema,
+        confirmedBalance: moneyInputSchema,
+        sourceType: z.enum(BALANCE_SNAPSHOT_SOURCE_TYPES),
+        sourceReference: optionalTextSchema,
+        notes: optionalTextSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
 export const listDebtsRequestSchema = z
   .object({
     includeArchived: z.boolean(),
@@ -122,6 +191,61 @@ export const debtTermDtoSchema = z
   })
   .strict();
 
+export const transactionAllocationDtoSchema = z
+  .object({
+    id: uuidSchema,
+    allocationType: z.enum(ALLOCATION_TYPES),
+    amount: z.string(),
+    notes: z.string().nullable(),
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+  })
+  .strict();
+
+export const debtTransactionDtoSchema = z
+  .object({
+    id: uuidSchema,
+    debtId: uuidSchema,
+    transactionType: z.enum([
+      'payment',
+      'borrowing_draw',
+      'fee',
+      'penalty',
+      'interest_charge',
+      'principal_adjustment',
+      'approved_reconciliation_adjustment',
+      'reversal',
+      'other',
+    ]),
+    effectiveDate: financialDateInputSchema,
+    postingDate: financialDateInputSchema,
+    totalAmount: z.string(),
+    status: z.enum(['posted', 'reversed', 'superseded']),
+    description: z.string(),
+    sourceType: z.enum(['manual', 'import', 'statement', 'system', 'reconciliation']),
+    sourceReference: z.string().nullable(),
+    reversalOfTransactionId: uuidSchema.nullable(),
+    supersedesTransactionId: uuidSchema.nullable(),
+    allocations: z.array(transactionAllocationDtoSchema),
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+  })
+  .strict();
+
+export const balanceSnapshotDtoSchema = z
+  .object({
+    id: uuidSchema,
+    debtId: uuidSchema,
+    effectiveDate: financialDateInputSchema,
+    confirmedBalance: z.string(),
+    sourceType: z.enum(['manual', 'statement', 'import']),
+    sourceReference: z.string().nullable(),
+    notes: z.string().nullable(),
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+  })
+  .strict();
+
 export const debtSummaryDtoSchema = z
   .object({
     id: uuidSchema,
@@ -150,6 +274,8 @@ export const debtDetailDtoSchema = debtSummaryDtoSchema
     deductiblePercentage: z.string(),
     notes: z.string().nullable(),
     terms: z.array(debtTermDtoSchema).min(1),
+    transactions: z.array(debtTransactionDtoSchema),
+    balanceSnapshots: z.array(balanceSnapshotDtoSchema),
     createdAtUtc: utcTimestampSchema,
     updatedAtUtc: utcTimestampSchema,
   })
@@ -185,11 +311,23 @@ export type DebtCoreInput = z.infer<typeof debtCoreInputSchema>;
 export type DebtTermInput = z.infer<typeof debtTermInputSchema>;
 export type UpdateDebtRequest = z.infer<typeof updateDebtRequestSchema>;
 export type AddDebtTermRequest = z.infer<typeof addDebtTermRequestSchema>;
+export type CreateDebtTransactionRequest = z.infer<
+  typeof createDebtTransactionRequestSchema
+>;
+export type ReverseDebtTransactionRequest = z.infer<
+  typeof reverseDebtTransactionRequestSchema
+>;
+export type CreateBalanceSnapshotRequest = z.infer<
+  typeof createBalanceSnapshotRequestSchema
+>;
 export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
 export type GetDebtRequest = z.infer<typeof getDebtRequestSchema>;
 export type ArchiveDebtRequest = z.infer<typeof archiveDebtRequestSchema>;
 export type RestoreDebtRequest = z.infer<typeof restoreDebtRequestSchema>;
 export type DebtTermDto = z.infer<typeof debtTermDtoSchema>;
+export type TransactionAllocationDto = z.infer<typeof transactionAllocationDtoSchema>;
+export type DebtTransactionDto = z.infer<typeof debtTransactionDtoSchema>;
+export type BalanceSnapshotDto = z.infer<typeof balanceSnapshotDtoSchema>;
 export type DebtSummaryDto = z.infer<typeof debtSummaryDtoSchema>;
 export type DebtDetailDto = z.infer<typeof debtDetailDtoSchema>;
 export type ApplicationError = z.infer<typeof applicationErrorSchema>;

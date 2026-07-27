@@ -7,7 +7,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CreateDebtRequest } from '../../shared/debt-contracts';
 import type { DatabaseContext } from '../database/connection';
 import { openMigratedDatabase } from '../database/connection';
-import { auditEvents, debtTerms, debts } from '../database/schema';
+import {
+  auditEvents,
+  balanceSnapshots,
+  debtTerms,
+  debtTransactions,
+  debts,
+  transactionAllocations,
+} from '../database/schema';
 import {
   createTemporaryDatabaseLocation,
   type TemporaryDatabaseLocation,
@@ -53,6 +60,40 @@ const validRequest = (name = 'Fictional Equipment Note'): CreateDebtRequest => (
     requiredPayment: '$2,450.00',
     paymentFrequency: 'monthly',
     notes: 'Generated opening terms.',
+  },
+});
+
+const validTransactionRequest = (debtId: string) => ({
+  debtId,
+  transaction: {
+    transactionType: 'payment' as const,
+    effectiveDate: '2026-01-15',
+    postingDate: '2026-01-16',
+    status: 'posted' as const,
+    totalAmount: '-500.00',
+    description: 'Generated payment.',
+    sourceType: 'manual' as const,
+    sourceReference: 'CHK-1001',
+    allocations: {
+      principal: '-400.00',
+      interest: '-100.00',
+      escrow: null,
+      fee: null,
+      penalty: null,
+      extraPrincipal: null,
+      other: null,
+    },
+  },
+});
+
+const validSnapshotRequest = (debtId: string) => ({
+  debtId,
+  snapshot: {
+    effectiveDate: '2026-01-31',
+    confirmedBalance: '124500.00',
+    sourceType: 'statement' as const,
+    sourceReference: 'STAT-2026-01',
+    notes: 'Generated statement balance.',
   },
 });
 
@@ -119,6 +160,87 @@ describe('debt creation', () => {
     expect(() => service.createDebt(request)).toThrow('Review the highlighted fields.');
     expect(context.database.select().from(debts).all()).toHaveLength(0);
     expect(context.database.select().from(debtTerms).all()).toHaveLength(0);
+  });
+
+  it('records a posted transaction with allocations and audit events', () => {
+    const created = service.createDebt(validRequest());
+    const updated = service.createDebtTransaction(validTransactionRequest(created.id));
+    const transactions = context.database.select().from(debtTransactions).all();
+    const allocations = context.database.select().from(transactionAllocations).all();
+    const eventTypes = context.database
+      .select({ eventType: auditEvents.eventType })
+      .from(auditEvents)
+      .all()
+      .map((event) => event.eventType);
+
+    expect(updated.transactions).toHaveLength(1);
+    expect(updated.transactions[0]).toMatchObject({
+      transactionType: 'payment',
+      totalAmount: '-500.00',
+      status: 'posted',
+    });
+    expect(transactions).toHaveLength(1);
+    expect(allocations).toHaveLength(2);
+    expect(eventTypes).toContain('transaction_recorded');
+  });
+
+  it('records a confirmed balance snapshot without altering posted activity', () => {
+    const created = service.createDebt(validRequest());
+    const updated = service.createBalanceSnapshot(validSnapshotRequest(created.id));
+    const snapshots = context.database.select().from(balanceSnapshots).all();
+    const eventTypes = context.database
+      .select({ eventType: auditEvents.eventType })
+      .from(auditEvents)
+      .all()
+      .map((event) => event.eventType);
+
+    expect(updated.transactions).toHaveLength(0);
+    expect(updated.balanceSnapshots).toHaveLength(1);
+    expect(snapshots).toHaveLength(1);
+    expect(eventTypes).toContain('balance_snapshot_recorded');
+  });
+
+  it('reverses a posted transaction without deleting the original', () => {
+    const created = service.createDebt(validRequest());
+    const recorded = service.createDebtTransaction(validTransactionRequest(created.id));
+    const originalTransaction = recorded.transactions[0];
+
+    expect(originalTransaction).toBeDefined();
+
+    const updated = service.reverseDebtTransaction({
+      id: originalTransaction!.id,
+      expectedUpdatedAtUtc: originalTransaction!.updatedAtUtc,
+      confirmed: true,
+    });
+    const transactions = context.database
+      .select()
+      .from(debtTransactions)
+      .where(eq(debtTransactions.debtId, created.id))
+      .all();
+    const eventTypes = context.database
+      .select({ eventType: auditEvents.eventType })
+      .from(auditEvents)
+      .where(eq(auditEvents.entityId, originalTransaction!.id))
+      .all()
+      .map((event) => event.eventType);
+
+    expect(updated.transactions).toHaveLength(2);
+    expect(transactions).toHaveLength(2);
+    expect(
+      updated.transactions.find(
+        (transaction) => transaction.id === originalTransaction!.id,
+      )?.status,
+    ).toBe('reversed');
+    expect(
+      updated.transactions.find(
+        (transaction) =>
+          transaction.reversalOfTransactionId === originalTransaction!.id,
+      ),
+    ).toMatchObject({
+      transactionType: 'reversal',
+      status: 'posted',
+    });
+    expect(eventTypes).toContain('transaction_reversed');
   });
 
   it('rolls back the debt when the initial-term insert fails', () => {

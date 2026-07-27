@@ -1,6 +1,8 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { ZodError, type ZodType } from 'zod';
 import {
+  createBalanceSnapshotRequestSchema,
+  createDebtTransactionRequestSchema,
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
   createDebtRequestSchema,
@@ -8,6 +10,7 @@ import {
   debtSummaryListSchema,
   getDebtRequestSchema,
   listDebtsRequestSchema,
+  reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
   updateDebtRequestSchema,
   type ApplicationError,
@@ -143,6 +146,30 @@ export const registerDebtIpcHandlers = (
     debtDetailDtoSchema,
     isTrustedSender,
     (request) => service.addDebtTerm(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.createTransaction,
+    createDebtTransactionRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.createDebtTransaction(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.reverseTransaction,
+    reverseDebtTransactionRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.reverseDebtTransaction(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.createSnapshot,
+    createBalanceSnapshotRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.createBalanceSnapshot(request),
   );
   registerHandler(
     ipcMain,

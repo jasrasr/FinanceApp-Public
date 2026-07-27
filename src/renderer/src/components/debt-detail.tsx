@@ -1,4 +1,8 @@
-import type { DebtDetailDto } from '../../../shared/debt-contracts';
+import type {
+  BalanceSnapshotDto,
+  DebtDetailDto,
+  DebtTransactionDto,
+} from '../../../shared/debt-contracts';
 import { formatDollarString, formatTimestamp } from './display-format';
 import { labelFromValue } from './form-utils';
 
@@ -23,6 +27,12 @@ export interface DebtDetailProps {
   readonly onArchiveOrRestore: () => void;
   readonly onBack: () => void;
   readonly onEdit: () => void;
+  readonly onRecordSnapshot: () => void;
+  readonly onRecordTransaction: () => void;
+  readonly onReverseTransaction: (
+    transactionId: string,
+    expectedUpdatedAtUtc: string,
+  ) => void;
 }
 
 export const DebtDetail = ({
@@ -31,6 +41,9 @@ export const DebtDetail = ({
   onArchiveOrRestore,
   onBack,
   onEdit,
+  onRecordSnapshot,
+  onRecordTransaction,
+  onReverseTransaction,
 }: DebtDetailProps): React.JSX.Element => (
   <section aria-labelledby="debt-detail-heading">
     <button
@@ -74,6 +87,20 @@ export const DebtDetail = ({
               type="button"
             >
               Add term period
+            </button>
+            <button
+              className="rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+              onClick={onRecordTransaction}
+              type="button"
+            >
+              Record transaction
+            </button>
+            <button
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              onClick={onRecordSnapshot}
+              type="button"
+            >
+              Record snapshot
             </button>
           </>
         ) : null}
@@ -140,12 +167,12 @@ export const DebtDetail = ({
       <aside className="rounded-xl border border-blue-200 bg-blue-50 p-6">
         <h3 className="font-semibold text-blue-950">Balance information</h3>
         <p className="mt-2 text-sm leading-6 text-blue-900">
-          This phase records original principal and contractual terms only. No current,
-          calculated, confirmed, projected, or scenario balance is displayed.
+          This phase shows posted activity and confirmed snapshots, but it still does
+          not calculate or display a current, confirmed, projected, or scenario balance.
         </p>
         <p className="mt-4 text-sm leading-6 text-blue-900">
-          Transactions and reconciliations will appear here after their controlled entry
-          workflows are implemented.
+          The posted ledger remains separate from future reconciliation and projection
+          workflows.
         </p>
       </aside>
     </div>
@@ -221,6 +248,205 @@ export const DebtDetail = ({
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section
+      className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+      aria-labelledby="transactions-heading"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold" id="transactions-heading">
+            Posted transactions
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            This ledger stores posted activity only. No authoritative current balance is
+            calculated or displayed in this phase.
+          </p>
+        </div>
+      </div>
+
+      {debt.transactions.length === 0 ? (
+        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-8 py-12 text-center">
+          <h4 className="text-base font-semibold text-slate-900">
+            No posted activity yet
+          </h4>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
+            Record a payment, draw, fee, or other posted transaction after reviewing the
+            signed totals and allocation amounts.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-5 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+              <tr>
+                <th className="py-3 pr-4 font-semibold" scope="col">
+                  Effective / posting
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Type
+                </th>
+                <th className="px-4 py-3 text-right font-semibold" scope="col">
+                  Total
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Source
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Description
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Allocations
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Status
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {debt.transactions.map((transaction: DebtTransactionDto) => (
+                <tr key={transaction.id}>
+                  <td className="py-4 pr-4 align-top">
+                    <span className="block font-medium text-slate-900">
+                      {transaction.effectiveDate}
+                    </span>
+                    <span className="mt-1 block text-slate-500">
+                      Posted {transaction.postingDate}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 align-top text-slate-700">
+                    {labelFromValue(transaction.transactionType)}
+                  </td>
+                  <td className="px-4 py-4 align-top text-right tabular-nums">
+                    {formatDollarString(transaction.totalAmount)}
+                  </td>
+                  <td className="px-4 py-4 align-top text-slate-700">
+                    {labelFromValue(transaction.sourceType)}
+                    <span className="mt-1 block text-xs text-slate-500">
+                      {transaction.sourceReference ?? 'No source reference'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 align-top text-slate-700">
+                    {transaction.description}
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <ul className="space-y-1 text-xs text-slate-700">
+                      {transaction.allocations.map((allocation) => (
+                        <li
+                          className="flex items-center justify-between gap-3"
+                          key={allocation.id}
+                        >
+                          <span>{labelFromValue(allocation.allocationType)}</span>
+                          <span className="tabular-nums">
+                            {formatDollarString(allocation.amount)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className="px-4 py-4 align-top text-slate-700">
+                    <span className="inline-flex rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold">
+                      {labelFromValue(transaction.status)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 align-top text-right">
+                    {!debt.archivedAtUtc &&
+                    transaction.status === 'posted' &&
+                    transaction.transactionType !== 'reversal' ? (
+                      <button
+                        className="font-semibold text-blue-700 hover:text-blue-900 focus:underline focus:outline-none"
+                        onClick={() =>
+                          onReverseTransaction(transaction.id, transaction.updatedAtUtc)
+                        }
+                        type="button"
+                      >
+                        Reverse
+                      </button>
+                    ) : (
+                      <span className="text-xs text-slate-400">Not available</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    <section
+      className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+      aria-labelledby="snapshots-heading"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold" id="snapshots-heading">
+            Confirmed balance snapshots
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Confirmed balances remain evidence as of an effective date and never
+            overwrite the posted ledger.
+          </p>
+        </div>
+      </div>
+
+      {debt.balanceSnapshots.length === 0 ? (
+        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-8 py-12 text-center">
+          <h4 className="text-base font-semibold text-slate-900">
+            No confirmed balance snapshots yet
+          </h4>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
+            Record a statement or manually confirmed balance once you have external
+            evidence for a specific date.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-5 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+              <tr>
+                <th className="py-3 pr-4 font-semibold" scope="col">
+                  Effective date
+                </th>
+                <th className="px-4 py-3 text-right font-semibold" scope="col">
+                  Confirmed balance
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Source
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Notes
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {debt.balanceSnapshots.map((snapshot: BalanceSnapshotDto) => (
+                <tr key={snapshot.id}>
+                  <td className="py-4 pr-4 align-top font-medium text-slate-900">
+                    {snapshot.effectiveDate}
+                  </td>
+                  <td className="px-4 py-4 align-top text-right tabular-nums">
+                    {formatDollarString(snapshot.confirmedBalance)}
+                  </td>
+                  <td className="px-4 py-4 align-top text-slate-700">
+                    {labelFromValue(snapshot.sourceType)}
+                    <span className="mt-1 block text-xs text-slate-500">
+                      {snapshot.sourceReference ?? 'No source reference'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 align-top text-slate-700">
+                    {snapshot.notes ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   </section>
 );

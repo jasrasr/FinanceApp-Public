@@ -1,5 +1,7 @@
 import type { AppBridge } from '../shared/app-bridge';
 import {
+  createBalanceSnapshotRequestSchema,
+  createDebtTransactionRequestSchema,
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
   createDebtRequestSchema,
@@ -7,13 +9,17 @@ import {
   debtListResultSchema,
   getDebtRequestSchema,
   listDebtsRequestSchema,
+  reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
   updateDebtRequestSchema,
   type AddDebtTermRequest,
+  type CreateBalanceSnapshotRequest,
+  type CreateDebtTransactionRequest,
   type ArchiveDebtRequest,
   type CreateDebtRequest,
   type GetDebtRequest,
   type ListDebtsRequest,
+  type ReverseDebtTransactionRequest,
   type RestoreDebtRequest,
   type UpdateDebtRequest,
 } from '../shared/debt-contracts';
@@ -24,7 +30,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 2,
+    bridgeVersion: 3,
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
         await invoke(DEBT_IPC_CHANNELS.list, listDebtsRequestSchema.parse(request)),
@@ -46,6 +52,27 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.addTerm,
           addDebtTermRequestSchema.parse(request),
+        ),
+      ),
+    createDebtTransaction: async (request: CreateDebtTransactionRequest) =>
+      debtDetailResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.createTransaction,
+          createDebtTransactionRequestSchema.parse(request),
+        ),
+      ),
+    reverseDebtTransaction: async (request: ReverseDebtTransactionRequest) =>
+      debtDetailResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.reverseTransaction,
+          reverseDebtTransactionRequestSchema.parse(request),
+        ),
+      ),
+    createBalanceSnapshot: async (request: CreateBalanceSnapshotRequest) =>
+      debtDetailResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.createSnapshot,
+          createBalanceSnapshotRequestSchema.parse(request),
         ),
       ),
     archiveDebt: async (request: ArchiveDebtRequest) =>

@@ -2,48 +2,63 @@ import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
 import type {
   AddDebtTermRequest,
+  CreateBalanceSnapshotRequest,
+  CreateDebtTransactionRequest,
   ArchiveDebtRequest,
   CreateDebtRequest,
   DebtDetailDto,
   DebtSummaryDto,
   GetDebtRequest,
   ListDebtsRequest,
+  ReverseDebtTransactionRequest,
   RestoreDebtRequest,
   UpdateDebtRequest,
 } from '../../shared/debt-contracts';
 import {
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
+  createBalanceSnapshotRequestSchema,
+  createDebtTransactionRequestSchema,
   createDebtRequestSchema,
   getDebtRequestSchema,
   listDebtsRequestSchema,
+  reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
   updateDebtRequestSchema,
 } from '../../shared/debt-contracts';
 import type { AppDatabase } from '../database/connection';
 import {
+  createBalanceSnapshotRecord,
+  createPostedTransactionRecord,
   appendDebtTermRecord,
+  getDebtActivityRecord,
+  getDebtTransactionRecord,
   createDebtAndInitialTerm,
-  getDebtRecord,
   listDebtRecords,
   RepositoryConflictError,
   RepositoryNotFoundError,
   setDebtArchivedState,
   updateDebtDescriptiveRecord,
   type DebtRecord,
+  type DebtTransactionWithAllocationsRecord,
   type DebtTermRecord,
   type DebtWithTermsRecord,
+  type DebtWithActivityRecord,
 } from '../database/debt-maintenance-repository';
+import { reversePostedTransaction } from '../database/repository';
 import type {
   AuditEventInsert,
   DebtInsert,
   DebtTermInsert,
+  DebtTransactionInsert,
+  TransactionAllocationInsert,
 } from '../database/validation';
 import {
   currencyInputToCents,
   percentageInputToBasisPoints,
   percentageInputToRateMicros,
   previousFinancialDate,
+  signedCurrencyInputToCents,
 } from '../domain/accounting/entry-input';
 import {
   assertFinancialDate,
@@ -54,6 +69,7 @@ import {
   rateMicrosToPercentString,
 } from '../domain/accounting/interest-rate';
 import { centsToDollars } from '../domain/accounting/money';
+import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
 import { ApplicationServiceError } from './application-error';
 
 export interface DebtMaintenanceService {
@@ -62,6 +78,9 @@ export interface DebtMaintenanceService {
   createDebt(request: CreateDebtRequest): DebtDetailDto;
   updateDebt(request: UpdateDebtRequest): DebtDetailDto;
   addDebtTerm(request: AddDebtTermRequest): DebtDetailDto;
+  createDebtTransaction(request: CreateDebtTransactionRequest): DebtDetailDto;
+  reverseDebtTransaction(request: ReverseDebtTransactionRequest): DebtDetailDto;
+  createBalanceSnapshot(request: CreateBalanceSnapshotRequest): DebtDetailDto;
   archiveDebt(request: ArchiveDebtRequest): DebtDetailDto;
   restoreDebt(request: RestoreDebtRequest): DebtDetailDto;
 }
@@ -87,6 +106,14 @@ const toFieldError = (field: string, error: unknown): never => {
 const convertMoney = (field: string, value: string): number => {
   try {
     return currencyInputToCents(value);
+  } catch (error) {
+    return toFieldError(field, error);
+  }
+};
+
+const convertSignedMoney = (field: string, value: string): number => {
+  try {
+    return signedCurrencyInputToCents(value);
   } catch (error) {
     return toFieldError(field, error);
   }
@@ -120,6 +147,17 @@ const ensureCalendarDate = (field: string, value: string): string => {
   } catch (error) {
     return toFieldError(field, error);
   }
+};
+
+const ensureNotBefore = (field: string, value: string, minimum: string): string => {
+  if (value < minimum) {
+    return toFieldError(
+      field,
+      new RangeError('Date cannot precede the debt origination date.'),
+    );
+  }
+
+  return value;
 };
 
 const nextTimestamp = (now: () => string, previous?: string): string => {
@@ -162,7 +200,8 @@ const validateCreditLimit = (
 
 const createAudit = (
   id: string,
-  debtId: string,
+  entityType: string,
+  entityId: string,
   eventType: string,
   action: string,
   timestamp: string,
@@ -171,8 +210,8 @@ const createAudit = (
 ): AuditEventInsert => ({
   id,
   eventType,
-  entityType: 'debt',
-  entityId: debtId,
+  entityType,
+  entityId,
   action,
   occurredAtUtc: timestamp,
   source: 'user',
@@ -180,6 +219,138 @@ const createAudit = (
   beforeMetadataJson: null,
   afterMetadataJson: changedFields ? JSON.stringify({ changedFields }) : null,
 });
+
+const createDebtAudit = (
+  id: string,
+  debtId: string,
+  eventType: string,
+  action: string,
+  timestamp: string,
+  summary: string,
+  changedFields?: readonly string[],
+): AuditEventInsert =>
+  createAudit(id, 'debt', debtId, eventType, action, timestamp, summary, changedFields);
+
+const createTransactionAudit = (
+  id: string,
+  transactionId: string,
+  eventType: string,
+  action: string,
+  timestamp: string,
+  summary: string,
+  afterMetadata?: Record<string, unknown>,
+): AuditEventInsert => ({
+  id,
+  eventType,
+  entityType: 'debt_transaction',
+  entityId: transactionId,
+  action,
+  occurredAtUtc: timestamp,
+  source: 'user',
+  summary,
+  beforeMetadataJson: null,
+  afterMetadataJson: afterMetadata ? JSON.stringify(afterMetadata) : null,
+});
+
+const createSnapshotAudit = (
+  id: string,
+  snapshotId: string,
+  eventType: string,
+  action: string,
+  timestamp: string,
+  summary: string,
+  afterMetadata?: Record<string, unknown>,
+): AuditEventInsert => ({
+  id,
+  eventType,
+  entityType: 'balance_snapshot',
+  entityId: snapshotId,
+  action,
+  occurredAtUtc: timestamp,
+  source: 'user',
+  summary,
+  beforeMetadataJson: null,
+  afterMetadataJson: afterMetadata ? JSON.stringify(afterMetadata) : null,
+});
+
+const mapTransactionAllocation = (
+  allocation: DebtTransactionWithAllocationsRecord['allocations'][number],
+): DebtDetailDto['transactions'][number]['allocations'][number] => ({
+  id: allocation.id,
+  allocationType: allocation.allocationType,
+  amount: centsToDollars(allocation.amountCents),
+  notes: allocation.notes,
+  createdAtUtc: allocation.createdAtUtc,
+  updatedAtUtc: allocation.updatedAtUtc,
+});
+
+const mapTransaction = (
+  record: DebtTransactionWithAllocationsRecord,
+): DebtDetailDto['transactions'][number] => ({
+  id: record.transaction.id,
+  debtId: record.transaction.debtId,
+  transactionType: record.transaction.transactionType,
+  effectiveDate: record.transaction.effectiveDate,
+  postingDate: record.transaction.postingDate,
+  totalAmount: centsToDollars(record.transaction.totalAmountCents),
+  status: record.transaction.status,
+  description: record.transaction.description,
+  sourceType: record.transaction.sourceType,
+  sourceReference: record.transaction.sourceReference,
+  reversalOfTransactionId: record.transaction.reversalOfTransactionId,
+  supersedesTransactionId: record.transaction.supersedesTransactionId,
+  allocations: record.allocations.map(mapTransactionAllocation),
+  createdAtUtc: record.transaction.createdAtUtc,
+  updatedAtUtc: record.transaction.updatedAtUtc,
+});
+
+const mapBalanceSnapshot = (
+  snapshot: DebtWithActivityRecord['balanceSnapshots'][number],
+): DebtDetailDto['balanceSnapshots'][number] => ({
+  id: snapshot.id,
+  debtId: snapshot.debtId,
+  effectiveDate: snapshot.effectiveDate,
+  confirmedBalance: centsToDollars(snapshot.confirmedBalanceCents),
+  sourceType: snapshot.sourceType,
+  sourceReference: snapshot.sourceReference,
+  notes: snapshot.notes,
+  createdAtUtc: snapshot.createdAtUtc,
+  updatedAtUtc: snapshot.updatedAtUtc,
+});
+
+const postedTransactionFieldErrors = (
+  errors: readonly string[],
+): Readonly<Record<string, readonly string[]>> => {
+  const fieldErrors: Record<string, string[]> = {};
+
+  for (const error of errors) {
+    if (
+      error === 'Transaction total must be nonzero safe-integer cents.' ||
+      error === 'Payments must have a negative transaction total.' ||
+      error.endsWith('transactions must have a positive total.')
+    ) {
+      (fieldErrors['transaction.totalAmount'] ??= []).push(error);
+      continue;
+    }
+
+    if (
+      error === 'Allocation signs must match the transaction total sign.' ||
+      error === 'Transaction allocations must equal the transaction total.'
+    ) {
+      (fieldErrors['transaction.allocations'] ??= []).push(error);
+      continue;
+    }
+
+    if (error.includes('reversalOfTransactionId')) {
+      (fieldErrors['transaction.transactionType'] ??= []).push(error);
+      continue;
+    }
+
+    (fieldErrors.request ??= []).push(error);
+  }
+
+  return fieldErrors;
+};
 
 const mapTerm = (term: DebtTermRecord): DebtDetailDto['terms'][number] => ({
   id: term.id,
@@ -227,7 +398,7 @@ const mapSummary = (record: DebtWithTermsRecord): DebtSummaryDto => {
   };
 };
 
-const mapDetail = (record: DebtWithTermsRecord): DebtDetailDto => {
+const mapDetail = (record: DebtWithActivityRecord): DebtDetailDto => {
   const debt = record.debt;
 
   requireInitialTerm(record);
@@ -252,6 +423,8 @@ const mapDetail = (record: DebtWithTermsRecord): DebtDetailDto => {
     deductiblePercentage: basisPointsToPercentString(debt.deductiblePercentageBps),
     notes: debt.notes,
     terms: record.terms.map(mapTerm),
+    transactions: record.transactions.map(mapTransaction),
+    balanceSnapshots: record.balanceSnapshots.map(mapBalanceSnapshot),
     archivedAtUtc: debt.archivedAtUtc,
     createdAtUtc: debt.createdAtUtc,
     updatedAtUtc: debt.updatedAtUtc,
@@ -294,8 +467,8 @@ export const createDebtMaintenanceService = ({
   createId = randomUUID,
   now = currentUtcTimestamp,
 }: DebtMaintenanceServiceDependencies): DebtMaintenanceService => {
-  const getRecordOrThrow = (id: string): DebtWithTermsRecord => {
-    const record = getDebtRecord(database, id);
+  const getRecordOrThrow = (id: string): DebtWithActivityRecord => {
+    const record = getDebtActivityRecord(database, id);
 
     if (!record) {
       throw new ApplicationServiceError('not_found', 'Debt was not found.');
@@ -439,7 +612,7 @@ export const createDebtMaintenanceService = ({
         };
 
         createDebtAndInitialTerm(database, debt, term, [
-          createAudit(
+          createDebtAudit(
             createId(),
             debtId,
             'debt_created',
@@ -447,7 +620,7 @@ export const createDebtMaintenanceService = ({
             timestamp,
             'Debt record was created.',
           ),
-          createAudit(
+          createDebtAudit(
             createId(),
             debtId,
             'debt_term_created',
@@ -531,7 +704,7 @@ export const createDebtMaintenanceService = ({
           parsed.id,
           parsed.expectedUpdatedAtUtc,
           changes,
-          createAudit(
+          createDebtAudit(
             createId(),
             parsed.id,
             'debt_updated',
@@ -646,7 +819,7 @@ export const createDebtMaintenanceService = ({
               : latestTerm.effectiveEndDate,
           debtUpdatedAtUtc: timestamp,
           term,
-          audit: createAudit(
+          audit: createDebtAudit(
             createId(),
             parsed.debtId,
             'debt_term_created',
@@ -656,6 +829,262 @@ export const createDebtMaintenanceService = ({
             ['effectiveStartDate'],
           ),
         });
+
+        return mapDetail(getRecordOrThrow(parsed.debtId));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    createDebtTransaction: (request) => {
+      try {
+        const parsed = createDebtTransactionRequestSchema.parse(request);
+        const existing = getRecordOrThrow(parsed.debtId);
+
+        if (existing.debt.archivedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Restore this debt before recording activity.',
+          );
+        }
+
+        const effectiveDate = ensureNotBefore(
+          'transaction.effectiveDate',
+          ensureCalendarDate(
+            'transaction.effectiveDate',
+            parsed.transaction.effectiveDate,
+          ),
+          existing.debt.originationDate,
+        );
+        const postingDate = ensureNotBefore(
+          'transaction.postingDate',
+          ensureCalendarDate('transaction.postingDate', parsed.transaction.postingDate),
+          existing.debt.originationDate,
+        );
+
+        if (postingDate < effectiveDate) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              'transaction.postingDate': [
+                'Posting date cannot precede the effective date.',
+              ],
+            },
+          );
+        }
+
+        const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
+        const transactionId = createId();
+        const transaction: DebtTransactionInsert = {
+          id: transactionId,
+          debtId: parsed.debtId,
+          transactionType: parsed.transaction.transactionType,
+          effectiveDate,
+          postingDate,
+          totalAmountCents: convertSignedMoney(
+            'transaction.totalAmount',
+            parsed.transaction.totalAmount,
+          ),
+          status: 'posted',
+          description: parsed.transaction.description,
+          sourceType: parsed.transaction.sourceType,
+          sourceReference: nullableText(parsed.transaction.sourceReference),
+          reversalOfTransactionId: null,
+          supersedesTransactionId: null,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+        };
+        const allocationInputs = [
+          [
+            'transaction.allocations.principal',
+            'principal',
+            parsed.transaction.allocations.principal,
+          ],
+          [
+            'transaction.allocations.interest',
+            'interest',
+            parsed.transaction.allocations.interest,
+          ],
+          [
+            'transaction.allocations.escrow',
+            'escrow',
+            parsed.transaction.allocations.escrow,
+          ],
+          ['transaction.allocations.fee', 'fee', parsed.transaction.allocations.fee],
+          [
+            'transaction.allocations.penalty',
+            'penalty',
+            parsed.transaction.allocations.penalty,
+          ],
+          [
+            'transaction.allocations.extraPrincipal',
+            'extra_principal',
+            parsed.transaction.allocations.extraPrincipal,
+          ],
+          [
+            'transaction.allocations.other',
+            'other',
+            parsed.transaction.allocations.other,
+          ],
+        ] as const;
+        const allocations: TransactionAllocationInsert[] = [];
+
+        for (const [field, allocationType, amount] of allocationInputs) {
+          if (amount == null || amount.trim() === '') {
+            continue;
+          }
+
+          const amountCents = convertSignedMoney(field, amount);
+
+          if (amountCents === 0) {
+            throw new ApplicationServiceError(
+              'validation',
+              'Review the highlighted fields.',
+              {
+                [field]: ['Allocation amount must be nonzero.'],
+              },
+            );
+          }
+
+          allocations.push({
+            id: createId(),
+            transactionId,
+            allocationType,
+            amountCents,
+            notes: null,
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          });
+        }
+
+        if (allocations.length === 0) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              'transaction.allocations': ['Enter at least one allocation amount.'],
+            },
+          );
+        }
+
+        const signErrors = validateTransactionSignConvention(transaction, allocations);
+
+        if (signErrors.length > 0) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            postedTransactionFieldErrors(signErrors),
+          );
+        }
+
+        createPostedTransactionRecord(database, transaction, allocations, [
+          createTransactionAudit(
+            createId(),
+            transactionId,
+            'transaction_recorded',
+            'create',
+            timestamp,
+            'Posted transaction was recorded.',
+            {
+              transactionType: transaction.transactionType,
+              sourceType: transaction.sourceType,
+              allocationTypes: allocations.map(
+                (allocation) => allocation.allocationType,
+              ),
+            },
+          ),
+        ]);
+
+        return mapDetail(getRecordOrThrow(parsed.debtId));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    reverseDebtTransaction: (request) => {
+      try {
+        const parsed = reverseDebtTransactionRequestSchema.parse(request);
+        const original = getDebtTransactionRecord(database, parsed.id);
+
+        if (!original) {
+          throw new ApplicationServiceError('not_found', 'Transaction was not found.');
+        }
+
+        const debt = getRecordOrThrow(original.debtId);
+
+        if (debt.debt.archivedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Restore this debt before reversing activity.',
+          );
+        }
+
+        const timestamp = nextTimestamp(now, original.updatedAtUtc);
+        const transactionDate = timestamp.slice(0, 10);
+        reversePostedTransaction(database, {
+          originalTransactionId: original.id,
+          expectedUpdatedAtUtc: parsed.expectedUpdatedAtUtc,
+          effectiveDate: transactionDate,
+          postingDate: transactionDate,
+          description: `Reversal of transaction ${original.id}.`,
+          occurredAtUtc: timestamp,
+        });
+
+        return mapDetail(getRecordOrThrow(original.debtId));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    createBalanceSnapshot: (request) => {
+      try {
+        const parsed = createBalanceSnapshotRequestSchema.parse(request);
+        const existing = getRecordOrThrow(parsed.debtId);
+
+        if (existing.debt.archivedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Restore this debt before recording a balance snapshot.',
+          );
+        }
+
+        const effectiveDate = ensureNotBefore(
+          'snapshot.effectiveDate',
+          ensureCalendarDate('snapshot.effectiveDate', parsed.snapshot.effectiveDate),
+          existing.debt.originationDate,
+        );
+        const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
+        const snapshotId = createId();
+
+        createBalanceSnapshotRecord(
+          database,
+          {
+            id: snapshotId,
+            debtId: parsed.debtId,
+            effectiveDate,
+            confirmedBalanceCents: convertMoney(
+              'snapshot.confirmedBalance',
+              parsed.snapshot.confirmedBalance,
+            ),
+            sourceType: parsed.snapshot.sourceType,
+            sourceReference: nullableText(parsed.snapshot.sourceReference),
+            notes: nullableText(parsed.snapshot.notes),
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          },
+          createSnapshotAudit(
+            createId(),
+            snapshotId,
+            'balance_snapshot_recorded',
+            'create',
+            timestamp,
+            'Confirmed balance snapshot was recorded.',
+            {
+              sourceType: parsed.snapshot.sourceType,
+            },
+          ),
+        );
 
         return mapDetail(getRecordOrThrow(parsed.debtId));
       } catch (error) {
@@ -674,7 +1103,7 @@ export const createDebtMaintenanceService = ({
           parsed.id,
           parsed.expectedUpdatedAtUtc,
           timestamp,
-          createAudit(
+          createDebtAudit(
             createId(),
             parsed.id,
             'debt_archived',
@@ -701,7 +1130,7 @@ export const createDebtMaintenanceService = ({
           parsed.id,
           parsed.expectedUpdatedAtUtc,
           null,
-          createAudit(
+          createDebtAudit(
             createId(),
             parsed.id,
             'debt_restored',

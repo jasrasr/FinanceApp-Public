@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { DebtBridge } from '../../shared/app-bridge';
 import type {
+  CreateBalanceSnapshotRequest,
+  CreateDebtTransactionRequest,
   AddDebtTermRequest,
   ApplicationError,
   ApplicationResult,
@@ -9,16 +11,24 @@ import type {
   DebtDetailDto,
   DebtSummaryDto,
   UpdateDebtRequest,
+  ReverseDebtTransactionRequest,
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
+import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-form';
 import { ConfirmationDialog } from './components/confirmation-dialog';
 import { CreateDebtForm } from './components/create-debt-form';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { EditDebtForm } from './components/edit-debt-form';
+import { RecordTransactionForm } from './components/record-transaction-form';
 
 type View = 'list' | 'create' | 'detail' | 'edit' | 'add-term';
-type Confirmation = 'archive' | 'restore' | null;
+type DetailPanel = 'overview' | 'transaction' | 'snapshot';
+type Confirmation = 'archive' | 'restore' | 'reverse' | null;
+type ReverseTarget = {
+  readonly id: string;
+  readonly expectedUpdatedAtUtc: string;
+} | null;
 
 const invokeBridge = async <T,>(
   operation: () => Promise<ApplicationResult<T>>,
@@ -66,6 +76,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [debts, setDebts] = useState<readonly DebtSummaryDto[]>([]);
   const [selectedDebt, setSelectedDebt] = useState<DebtDetailDto | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [detailPanel, setDetailPanel] = useState<DetailPanel>('overview');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<ApplicationError | null>(null);
@@ -74,6 +85,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   >();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
+  const [reverseTarget, setReverseTarget] = useState<ReverseTarget>(null);
 
   const loadDebts = async (): Promise<void> => {
     setLoading(true);
@@ -113,6 +125,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const showList = (): void => {
     setView('list');
     setSelectedDebt(null);
+    setDetailPanel('overview');
+    setConfirmation(null);
+    setReverseTarget(null);
     setError(null);
     setFieldErrors(undefined);
     void loadDebts();
@@ -127,6 +142,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     if (result.ok) {
       setSelectedDebt(result.value);
       setView('detail');
+      setDetailPanel('overview');
+      setReverseTarget(null);
     } else {
       setError(result.error);
     }
@@ -149,6 +166,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setSelectedDebt(result.value);
       setSuccessMessage('Debt and initial effective-dated terms were created.');
       setView('detail');
+      setDetailPanel('overview');
+      setReverseTarget(null);
       await loadDebts();
     } else {
       handleFailure(result.error);
@@ -167,6 +186,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setSelectedDebt(result.value);
       setSuccessMessage('Debt details were updated.');
       setView('detail');
+      setDetailPanel('overview');
       await loadDebts();
     } else {
       handleFailure(result.error);
@@ -185,6 +205,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setSelectedDebt(result.value);
       setSuccessMessage('A new effective-dated term period was added.');
       setView('detail');
+      setDetailPanel('overview');
       await loadDebts();
     } else {
       handleFailure(result.error);
@@ -193,8 +214,92 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
+  const recordTransaction = async (
+    request: CreateDebtTransactionRequest,
+  ): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() => bridge.createDebtTransaction(request));
+
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Posted transaction was recorded.');
+      setDetailPanel('overview');
+      await loadDebts();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const recordSnapshot = async (
+    request: CreateBalanceSnapshotRequest,
+  ): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() => bridge.createBalanceSnapshot(request));
+
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Confirmed balance snapshot was recorded.');
+      setDetailPanel('overview');
+      await loadDebts();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const requestReverseTransaction = (
+    transactionId: string,
+    expectedUpdatedAtUtc: string,
+  ): void => {
+    setReverseTarget({ id: transactionId, expectedUpdatedAtUtc });
+    setConfirmation('reverse');
+    setError(null);
+    setFieldErrors(undefined);
+  };
+
+  const reverseTransaction = async (): Promise<void> => {
+    if (!reverseTarget) return;
+
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const request: ReverseDebtTransactionRequest = {
+      id: reverseTarget.id,
+      expectedUpdatedAtUtc: reverseTarget.expectedUpdatedAtUtc,
+      confirmed: true,
+    };
+    const result = await invokeBridge(() => bridge.reverseDebtTransaction(request));
+
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Transaction was reversed.');
+      setDetailPanel('overview');
+      setReverseTarget(null);
+      await loadDebts();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setConfirmation(null);
+    setSaving(false);
+  };
+
   const changeArchiveState = async (): Promise<void> => {
-    if (!selectedDebt || !confirmation) return;
+    if (!confirmation) return;
+
+    if (confirmation === 'reverse') {
+      await reverseTransaction();
+      return;
+    }
+
+    if (!selectedDebt) return;
 
     setSaving(true);
     setError(null);
@@ -213,6 +318,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setSuccessMessage(wasArchived ? 'Debt was archived.' : 'Debt was restored.');
       setSelectedDebt(wasArchived ? null : result.value);
       setView(wasArchived ? 'list' : 'detail');
+      setDetailPanel('overview');
+      setReverseTarget(null);
       await loadDebts();
     } else {
       handleFailure(result.error);
@@ -341,23 +448,100 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           ) : null}
 
           {view === 'detail' && selectedDebt ? (
-            <DebtDetail
-              debt={selectedDebt}
-              onAddTerm={() => {
-                setError(null);
-                setFieldErrors(undefined);
-                setView('add-term');
-              }}
-              onArchiveOrRestore={() =>
-                setConfirmation(selectedDebt.archivedAtUtc ? 'restore' : 'archive')
-              }
-              onBack={showList}
-              onEdit={() => {
-                setError(null);
-                setFieldErrors(undefined);
-                setView('edit');
-              }}
-            />
+            <div className="space-y-6">
+              {detailPanel === 'transaction' ? (
+                <section
+                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
+                  aria-labelledby="transaction-workflow-heading"
+                >
+                  <p className="text-sm font-medium text-slate-500">
+                    {selectedDebt.name}
+                  </p>
+                  <h2
+                    className="mt-1 text-3xl font-semibold tracking-tight"
+                    id="transaction-workflow-heading"
+                  >
+                    Record transaction
+                  </h2>
+                  <div className="mt-8">
+                    <RecordTransactionForm
+                      busy={saving}
+                      debt={selectedDebt}
+                      fieldErrors={fieldErrors}
+                      onCancel={() => {
+                        setDetailPanel('overview');
+                        setError(null);
+                        setFieldErrors(undefined);
+                      }}
+                      onSubmit={(request) => void recordTransaction(request)}
+                    />
+                  </div>
+                </section>
+              ) : null}
+
+              {detailPanel === 'snapshot' ? (
+                <section
+                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
+                  aria-labelledby="snapshot-workflow-heading"
+                >
+                  <p className="text-sm font-medium text-slate-500">
+                    {selectedDebt.name}
+                  </p>
+                  <h2
+                    className="mt-1 text-3xl font-semibold tracking-tight"
+                    id="snapshot-workflow-heading"
+                  >
+                    Record balance snapshot
+                  </h2>
+                  <div className="mt-8">
+                    <RecordBalanceSnapshotForm
+                      busy={saving}
+                      debt={selectedDebt}
+                      fieldErrors={fieldErrors}
+                      onCancel={() => {
+                        setDetailPanel('overview');
+                        setError(null);
+                        setFieldErrors(undefined);
+                      }}
+                      onSubmit={(request) => void recordSnapshot(request)}
+                    />
+                  </div>
+                </section>
+              ) : null}
+
+              <DebtDetail
+                debt={selectedDebt}
+                onAddTerm={() => {
+                  setError(null);
+                  setFieldErrors(undefined);
+                  setDetailPanel('overview');
+                  setView('add-term');
+                }}
+                onArchiveOrRestore={() =>
+                  setConfirmation(selectedDebt.archivedAtUtc ? 'restore' : 'archive')
+                }
+                onBack={showList}
+                onEdit={() => {
+                  setError(null);
+                  setFieldErrors(undefined);
+                  setDetailPanel('overview');
+                  setView('edit');
+                }}
+                onRecordSnapshot={() => {
+                  setError(null);
+                  setFieldErrors(undefined);
+                  setSuccessMessage(null);
+                  setDetailPanel('snapshot');
+                }}
+                onRecordTransaction={() => {
+                  setError(null);
+                  setFieldErrors(undefined);
+                  setSuccessMessage(null);
+                  setDetailPanel('transaction');
+                }}
+                onReverseTransaction={requestReverseTransaction}
+              />
+            </div>
           ) : null}
 
           {view === 'edit' && selectedDebt ? (
@@ -410,19 +594,36 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
         </main>
       </div>
 
-      {confirmation && selectedDebt ? (
+      {confirmation &&
+      ((confirmation === 'reverse' && reverseTarget) ||
+        (confirmation !== 'reverse' && selectedDebt)) ? (
         <ConfirmationDialog
           busy={saving}
-          confirmLabel={confirmation === 'archive' ? 'Archive debt' : 'Restore debt'}
+          confirmLabel={
+            confirmation === 'archive'
+              ? 'Archive debt'
+              : confirmation === 'restore'
+                ? 'Restore debt'
+                : 'Reverse transaction'
+          }
           description={
             confirmation === 'archive'
               ? 'This removes the debt from the default list while preserving its terms, audit history, and all related records.'
-              : 'This returns the debt to the default list while preserving all historical records.'
+              : confirmation === 'restore'
+                ? 'This returns the debt to the default list while preserving all historical records.'
+                : 'This posts a reversal transaction and preserves the original posted activity.'
           }
-          onCancel={() => setConfirmation(null)}
+          onCancel={() => {
+            setConfirmation(null);
+            setReverseTarget(null);
+          }}
           onConfirm={() => void changeArchiveState()}
           title={
-            confirmation === 'archive' ? 'Archive this debt?' : 'Restore this debt?'
+            confirmation === 'archive'
+              ? 'Archive this debt?'
+              : confirmation === 'restore'
+                ? 'Restore this debt?'
+                : 'Reverse this transaction?'
           }
         />
       ) : null}

@@ -14,14 +14,17 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Manual debt maintenance: list, create, detail, descriptive update, archive, and
   restore.
 - Initial and subsequent effective-dated debt-term periods with preserved history.
+- Manual posted activity entry for payments, draws, fees, penalties, interest,
+  principal adjustments, other transactions, reversals, and confirmed balance
+  snapshots.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
 - Automatic development-database initialization and migration under Electron's
   user-data directory.
 - Playwright-controlled Electron testing against disposable user-data directories.
 
-Payment, borrowing, transaction allocation, balance calculation, reconciliation,
-dashboard, workbook import, payoff scenario, reporting, backup, export, and
-packaging workflows have not been implemented.
+Balance calculation, reconciliation, dashboard, workbook import, payoff
+scenario, reporting, backup, export, and packaging workflows have not been
+implemented.
 
 ## Prerequisites
 
@@ -123,6 +126,9 @@ Electron user-data directory that it removes after the workflow.
 - Archive and restore preserve every term and create audit events.
 - No current balance is displayed because posted-activity and balance-calculation
   workflows do not yet exist.
+- Posted transactions and confirmed snapshots are recorded separately from future
+  projected or scenario activity.
+- Reversal transactions preserve the original posted row and its allocations.
 
 ## Privacy
 

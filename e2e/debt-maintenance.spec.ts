@@ -70,6 +70,44 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(window.getByText('through 2025-12-31')).toBeVisible();
     await expect(window.getByText('5.75%')).toBeVisible();
 
+    await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
+    await window.getByLabel('Transaction type').selectOption('payment');
+    await window.getByLabel('Source type').selectOption('manual');
+    await window.getByLabel('Effective date').fill('2026-01-15');
+    await window.getByLabel('Posting date').fill('2026-01-16');
+    await window.getByLabel('Total amount').fill('-500.00');
+    await window.getByLabel('Source reference').fill('CHK-1001');
+    await window.getByLabel('Description').fill('Generated payment.');
+    await window.locator('[name="transaction.allocations.principal"]').fill('-400.00');
+    await window.locator('[name="transaction.allocations.interest"]').fill('-100.00');
+    await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
+    await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
+    await expect(window.getByText('-500.00')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Record snapshot' }).nth(0).click();
+    await window.locator('[name="snapshot.effectiveDate"]').fill('2026-01-31');
+    await window.locator('[name="snapshot.confirmedBalance"]').fill('124500.00');
+    await window.locator('[name="snapshot.sourceType"]').selectOption('statement');
+    await window.locator('[name="snapshot.sourceReference"]').fill('STAT-2026-01');
+    await window
+      .locator('[name="snapshot.notes"]')
+      .fill('Generated statement balance.');
+    await window.getByRole('button', { name: 'Record snapshot' }).nth(0).click();
+    await expect(
+      window.getByText('Confirmed balance snapshot was recorded.'),
+    ).toBeVisible();
+    await expect(window.getByText('$124,500.00')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Reverse' }).click();
+    await expect(
+      window.getByRole('heading', { name: 'Reverse this transaction?' }),
+    ).toBeVisible();
+    await window
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Reverse transaction', exact: true })
+      .click();
+    await expect(window.getByText('Transaction was reversed.')).toBeVisible();
+
     await window.getByRole('button', { name: 'Archive debt' }).click();
     await expect(
       window.getByRole('heading', { name: 'Archive this debt?' }),

@@ -98,7 +98,8 @@ reversals, and other explicitly classified actual activity.
 | `updated_at_utc`             |    text |   Yes    | UTC timestamp                                        |
 
 Indexes cover debt/effective date, debt/posting date, and status. A reversal must
-reference exactly one prior transaction and originals cannot be deleted.
+reference exactly one prior transaction and originals cannot be deleted. The
+manual phase records only posted actual activity in this table.
 
 ## `transaction_allocations`
 
@@ -136,6 +137,7 @@ activity.
 | `updated_at_utc`          |    text |   Yes    | UTC timestamp                  |
 
 Debt, date, and source type are unique.
+These records preserve external evidence without overwriting the posted ledger.
 
 ## `balance_reconciliations`
 

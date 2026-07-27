@@ -56,6 +56,30 @@ export const INTEREST_CALCULATION_CONVENTIONS = [
   'other',
 ] as const;
 
+export const ALLOCATION_TYPES = [
+  'principal',
+  'interest',
+  'escrow',
+  'fee',
+  'penalty',
+  'extra_principal',
+  'other',
+] as const;
+
+export const POSTED_ACTIVITY_TRANSACTION_TYPES = [
+  'payment',
+  'borrowing_draw',
+  'fee',
+  'penalty',
+  'interest_charge',
+  'principal_adjustment',
+  'other',
+] as const;
+
+export const MANUAL_ENTRY_SOURCE_TYPES = ['manual', 'statement'] as const;
+
+export const BALANCE_SNAPSHOT_SOURCE_TYPES = ['manual', 'statement'] as const;
+
 export type DebtType = (typeof DEBT_TYPES)[number];
 export type DebtStatus = (typeof DEBT_STATUSES)[number];
 export type PaymentFrequency = (typeof PAYMENT_FREQUENCIES)[number];
@@ -64,3 +88,8 @@ export type InterestRateType = (typeof INTEREST_RATE_TYPES)[number];
 export type DayCountConvention = (typeof DAY_COUNT_CONVENTIONS)[number];
 export type InterestCalculationConvention =
   (typeof INTEREST_CALCULATION_CONVENTIONS)[number];
+export type AllocationType = (typeof ALLOCATION_TYPES)[number];
+export type PostedActivityTransactionType =
+  (typeof POSTED_ACTIVITY_TRANSACTION_TYPES)[number];
+export type TransactionSourceType = (typeof MANUAL_ENTRY_SOURCE_TYPES)[number];
+export type BalanceSnapshotSourceType = (typeof BALANCE_SNAPSHOT_SOURCE_TYPES)[number];
