@@ -8,6 +8,8 @@ build/
 release/
 artifacts/
 coverage/
+test-results/
+playwright-report/
 
 # Packaged applications and installers
 *.exe

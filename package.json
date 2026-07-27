@@ -6,22 +6,25 @@
   "main": "./out/main/index.js",
   "scripts": {
     "postinstall": "install-electron --no",
-    "dev": "electron-vite dev",
+    "native:node": "npm rebuild better-sqlite3",
+    "native:electron": "tsx scripts/install-electron-native.ts",
+    "dev": "npm run native:electron && electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "test": "vitest run",
-    "test:integration": "vitest run src/main/database/database.integration.test.ts",
+    "test": "npm run native:node && vitest run",
+    "test:integration": "npm run native:node && vitest run src/main/database/database.integration.test.ts src/main/services/debt-maintenance-service.integration.test.ts",
+    "test:e2e": "npm run build && npm run native:electron && playwright test",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx scripts/migrate-database.ts --temporary",
-    "db:check": "tsx scripts/check-database.ts",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run db:check"
+    "db:migrate": "npm run native:node && tsx scripts/migrate-database.ts --temporary",
+    "db:check": "npm run native:node && tsx scripts/check-database.ts",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run db:check && npm run test:e2e"
   },
   "license": "UNLICENSED",
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.10.0",
     "drizzle-orm": "^0.45.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -29,6 +32,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
@@ -38,7 +42,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "drizzle-kit": "^0.31.10",
-    "electron": "^43.2.0",
+    "electron": "^41.10.3",
     "electron-vite": "^5.0.0",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -54,10 +58,10 @@
     "vitest": "^4.1.10"
   },
   "allowScripts": {
-    "electron@43.2.0": true,
+    "electron@41.10.3": true,
     "esbuild@0.25.12": true,
     "esbuild@0.28.1": true,
     "esbuild@0.18.20": true,
-    "better-sqlite3@12.6.2": true
+    "better-sqlite3@12.10.0": true
   }
 }

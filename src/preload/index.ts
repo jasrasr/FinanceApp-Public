@@ -1,9 +1,8 @@
-import { contextBridge } from 'electron';
-import type { AppBridge } from '../shared/app-bridge';
+import { contextBridge, ipcRenderer } from 'electron';
+import { createAppBridge } from './debt-bridge';
 
-const appBridge = Object.freeze({
-  appName: 'Debt Tracker',
-  bridgeVersion: 1,
-} satisfies AppBridge);
+const appBridge = createAppBridge((channel, request) =>
+  ipcRenderer.invoke(channel, request),
+);
 
 contextBridge.exposeInMainWorld('debtTracker', appBridge);

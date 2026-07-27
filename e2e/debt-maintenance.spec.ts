@@ -1,0 +1,106 @@
+import { expect, test, _electron as electron } from '@playwright/test';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+test('completes the manual debt-maintenance workflow', async () => {
+  const userDataDirectory = mkdtempSync(join(tmpdir(), 'debt-tracker-e2e-user-data-'));
+  const application = await electron.launch({
+    args: ['.'],
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      DEBT_TRACKER_TEST_MODE: '1',
+      DEBT_TRACKER_TEST_USER_DATA_DIR: userDataDirectory,
+    },
+  });
+  application.process().stderr?.on('data', (data: Buffer) => {
+    process.stderr.write(data);
+  });
+
+  try {
+    const window = await application.firstWindow();
+    await expect(
+      window.getByRole('heading', { name: 'No debts to display' }),
+    ).toBeVisible();
+
+    await window.getByRole('button', { name: 'Create first debt' }).click();
+    await window.getByLabel('Debt name').fill('Fictional Harbor Equipment Note');
+    await window.getByLabel('Creditor').fill('Harbor Ridge Cooperative');
+    await window.getByLabel('Owner or entity').fill('Generated Example Entity');
+    await window.getByLabel('Debt type').selectOption('business');
+    await window.getByLabel('Original principal').fill('125000.00');
+    await window.getByLabel('Origination date').fill('2025-01-15');
+    await window.getByLabel(/Maturity date/).fill('2030-01-15');
+    await window.getByLabel('Minimum payment').fill('2450.00');
+    await window.getByLabel('Tax category').selectOption('business');
+    await window.getByLabel('Deductible percentage').fill('37.25');
+    await window.getByLabel('Purpose').fill('Generated equipment acquisition');
+    await window.getByLabel('Annual interest rate (%)').fill('5.49');
+    await window.getByLabel('Required payment').fill('2450.00');
+    await window.getByRole('button', { name: 'Create debt' }).click();
+
+    await expect(
+      window.getByRole('heading', { name: 'Fictional Harbor Equipment Note' }),
+    ).toBeVisible();
+    await expect(
+      window.getByText('Debt and initial effective-dated terms were created.'),
+    ).toBeVisible();
+    await expect(window.getByText('$125,000.00')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Edit details' }).click();
+    await window
+      .getByLabel('Debt name')
+      .fill('Updated Fictional Harbor Equipment Note');
+    await window.getByRole('button', { name: 'Save changes' }).click();
+    await expect(
+      window.getByRole('heading', {
+        name: 'Updated Fictional Harbor Equipment Note',
+      }),
+    ).toBeVisible();
+
+    await window.getByRole('button', { name: 'Add term period' }).click();
+    await window.getByLabel('New effective start date').fill('2026-01-01');
+    await window.getByLabel('Annual interest rate (%)').fill('5.75');
+    await window.getByLabel('Required payment').fill('2500.00');
+    await window.getByRole('button', { name: 'Add term period' }).click();
+    await expect(
+      window.getByText('A new effective-dated term period was added.'),
+    ).toBeVisible();
+    await expect(window.getByText('through 2025-12-31')).toBeVisible();
+    await expect(window.getByText('5.75%')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Archive debt' }).click();
+    await expect(
+      window.getByRole('heading', { name: 'Archive this debt?' }),
+    ).toBeVisible();
+    await window
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Archive debt', exact: true })
+      .click();
+    await expect(
+      window.getByRole('heading', { name: 'No debts to display' }),
+    ).toBeVisible();
+
+    await window.getByRole('checkbox', { name: 'Include archived debts' }).check();
+    await expect(
+      window.getByText('Updated Fictional Harbor Equipment Note'),
+    ).toBeVisible();
+    await expect(window.getByText('Archived', { exact: true })).toBeVisible();
+    await window.getByRole('button', { name: 'View' }).click();
+    await window.getByRole('button', { name: 'Restore debt' }).click();
+    await expect(
+      window.getByRole('heading', { name: 'Restore this debt?' }),
+    ).toBeVisible();
+    await window
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Restore debt', exact: true })
+      .click();
+    await expect(window.getByText('Debt was restored.')).toBeVisible();
+
+    expect(existsSync(join(userDataDirectory, 'debt-tracker.sqlite3'))).toBe(true);
+  } finally {
+    await application.close();
+    rmSync(userDataDirectory, { force: true, recursive: true });
+  }
+});

@@ -85,6 +85,31 @@ Material terms are stored as historical periods:
 - A debt cannot have overlapping term periods.
 - A new rate period is inserted rather than overwriting the old rate.
 - The pair of debt and effective start date is unique.
+- The manual workflow appends new terms after the latest recorded start date.
+- When the latest term is open, adding a new term closes it on the calendar day
+  immediately preceding the new effective start date.
+- Original principal and origination date are not changed through descriptive
+  editing.
+- Rate, required payment, payment frequency, day-count, and calculation changes
+  require a new term rather than a debt-row edit.
+
+The debt table's minimum payment and frequency capture opening debt-level
+information. Effective-dated `debt_terms` records are the historical source for
+contractual changes and are used for list and detail term displays.
+
+## Manual Debt Maintenance
+
+- A debt and its initial term are created atomically.
+- Initial terms cannot begin before origination.
+- HELOC and credit-card records require a stated credit limit.
+- Maturity cannot precede origination.
+- Deductible percentage is entered as a decimal percentage and persisted as basis
+  points from 0 through 10,000.
+- Currency and percentage strings are converted through accounting boundary
+  helpers; persisted values never use binary floating-point representations.
+- Archive and restore affect only `archived_at_utc`; they do not delete the debt,
+  terms, or related records.
+- Debt status and archival state remain separate concepts.
 
 ## Confirmed Balances and Reconciliation
 

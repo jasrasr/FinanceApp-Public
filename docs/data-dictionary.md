@@ -28,8 +28,8 @@ mutable current-balance field.
 | `original_principal_cents`  | integer |   Yes    | Nonnegative safe-integer cents                                                          |
 | `origination_date`          |    text |   Yes    | Financial date                                                                          |
 | `maturity_date`             |    text |    No    | Financial date not before origination                                                   |
-| `minimum_payment_cents`     | integer |   Yes    | Nonnegative safe-integer cents                                                          |
-| `payment_frequency`         |    text |   Yes    | Controlled frequency                                                                    |
+| `minimum_payment_cents`     | integer |   Yes    | Opening debt-level minimum; later contractual changes use `debt_terms`                  |
+| `payment_frequency`         |    text |   Yes    | Opening debt-level frequency; later contractual changes use `debt_terms`                |
 | `credit_limit_cents`        | integer |    No    | Nonnegative safe-integer cents                                                          |
 | `collateral_description`    |    text |    No    | Non-sensitive collateral description                                                    |
 | `tax_category`              |    text |   Yes    | Controlled tax classification                                                           |
@@ -39,7 +39,13 @@ mutable current-balance field.
 | `updated_at_utc`            |    text |   Yes    | UTC timestamp                                                                           |
 | `archived_at_utc`           |    text |    No    | UTC timestamp                                                                           |
 
-Indexes cover creditor, owner/entity, and status.
+Indexes cover creditor, owner/entity, and status. `archived_at_utc` is independent
+of obligation status: a null value includes the debt in the default list, while a
+timestamp preserves the record but hides it unless archived records are requested.
+
+The manual-maintenance service treats original principal and origination date as
+opening facts. Descriptive and administrative fields use optimistic concurrency
+based on `updated_at_utc`.
 
 ## `debt_terms`
 
@@ -63,6 +69,11 @@ Stores non-overlapping effective-dated material terms.
 
 The pair `debt_id, effective_start_date` is unique. A repository validation
 prevents overlapping periods; an index supports effective-period searches.
+
+Debt creation inserts the debt and initial term in one transaction. Subsequent
+manual terms are chronological appends. If the latest period is open, it receives
+an inclusive end date one day before the new start date. Historical rows are not
+overwritten.
 
 ## `debt_transactions`
 
@@ -168,6 +179,10 @@ Records material actions without unnecessarily duplicating financial amounts.
 | `after_metadata_json`  | text |    No    | Minimal non-sensitive JSON         |
 
 Indexes cover entity lookup and event time.
+
+Manual debt maintenance records `debt_created`, `debt_updated`,
+`debt_term_created`, `debt_archived`, and `debt_restored` events. Summaries avoid
+financial amounts; update metadata identifies changed field names only.
 
 ## Settings
 

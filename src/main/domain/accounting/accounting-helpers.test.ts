@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { assertFinancialDate, isFinancialDate } from './financial-date';
 import {
+  currencyInputToCents,
+  percentageInputToBasisPoints,
+  percentageInputToRateMicros,
+  previousFinancialDate,
+} from './entry-input';
+import {
   percentStringToRateMicros,
   rateMicrosToDecimalString,
   rateMicrosToPercentString,
@@ -25,6 +31,11 @@ describe('money boundaries', () => {
     expect(() => dollarsToCents('12 dollars')).toThrow();
     expect(() => centsToDollars(Number.MAX_VALUE)).toThrow();
   });
+
+  it('converts user-friendly currency input without floating-point storage', () => {
+    expect(currencyInputToCents('$1,234.565')).toBe(123_457);
+    expect(() => currencyInputToCents('1,2')).toThrow();
+  });
 });
 
 describe('interest-rate boundaries', () => {
@@ -38,6 +49,11 @@ describe('interest-rate boundaries', () => {
     expect(percentStringToRateMicros('5.49005')).toBe(54_901);
     expect(() => percentStringToRateMicros('-1')).toThrow();
   });
+
+  it('converts percentage entry boundaries to scaled integers', () => {
+    expect(percentageInputToRateMicros('5.49%')).toBe(54_900);
+    expect(percentageInputToBasisPoints('37.25%')).toBe(3_725);
+  });
 });
 
 describe('financial dates', () => {
@@ -50,6 +66,11 @@ describe('financial dates', () => {
     expect(isFinancialDate('2027-02-29')).toBe(false);
     expect(isFinancialDate('2026-06-15T00:00:00Z')).toBe(false);
     expect(() => assertFinancialDate('2026-13-01')).toThrow();
+  });
+
+  it('calculates the preceding financial date without a local-time shift', () => {
+    expect(previousFinancialDate('2028-03-01')).toBe('2028-02-29');
+    expect(previousFinancialDate('2026-01-01')).toBe('2025-12-31');
   });
 });
 

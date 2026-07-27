@@ -412,7 +412,7 @@ Before running a command:
 
 ### Currently Configured Commands
 
-The application foundation and core database phase provide:
+The application foundation, core database, and manual debt-entry phases provide:
 
     npm run dev
     npm run build
@@ -422,10 +422,13 @@ The application foundation and core database phase provide:
     npm run typecheck
     npm run test
     npm run test:integration
+    npm run test:e2e
     npm run db:generate
     npm run db:migrate
     npm run db:check
     npm run check
+    npm run native:node
+    npm run native:electron
 
 After a lockfile exists, clean dependency installation should use:
 
@@ -435,11 +438,16 @@ After a lockfile exists, clean dependency installation should use:
 
 Add these scripts when their related infrastructure is implemented:
 
-    npm run test:e2e
     npm run package
 
 `npm run check` runs formatting verification, linting, type checking, unit and
-integration tests, and the isolated database check.
+integration tests, the isolated database check, a production build, and the
+isolated Electron end-to-end workflow.
+
+`native:node` restores the Node-compatible better-sqlite3 prebuild for Vitest and
+database scripts. `native:electron` installs the official prebuild for the
+configured Electron runtime. Commands that need either ABI invoke the appropriate
+preparation automatically.
 
 End-to-end tests must be included in the completion gate when a change affects
 a critical workflow, Electron integration, imports, backups, migrations,

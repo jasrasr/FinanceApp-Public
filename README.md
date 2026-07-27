@@ -1,23 +1,27 @@
 # Debt Tracker
 
-Debt Tracker is a Windows-first, local, single-user Electron desktop application.
-The current repository contains only the application foundation and a blank React
-shell. Debt-management features have not been implemented.
+Debt Tracker is a Windows-first, local, single-user Electron desktop application
+for maintaining debts and supporting future debt-paydown analysis.
 
-## Foundation
+## Current Functionality
 
 - Electron main process written in TypeScript.
 - React and TypeScript renderer built by Vite through electron-vite.
 - Sandboxed renderer with context isolation enabled and Node integration disabled.
-- Minimal typed preload bridge containing static application metadata only.
-- Strict TypeScript, ESLint, Prettier, Vitest, React Testing Library, and Tailwind
-  CSS.
 - Main-process-only SQLite access through better-sqlite3 and Drizzle ORM.
 - Generated Drizzle migrations and isolated file-backed temporary test databases.
 - Zod validation and pure accounting boundary helpers.
+- Manual debt maintenance: list, create, detail, descriptive update, archive, and
+  restore.
+- Initial and subsequent effective-dated debt-term periods with preserved history.
+- Narrow typed IPC methods with request, response, and trusted-sender validation.
+- Automatic development-database initialization and migration under Electron's
+  user-data directory.
+- Playwright-controlled Electron testing against disposable user-data directories.
 
-No debt-entry UI, payment-entry UI, workbook importer, projection engine,
-reporting, end-to-end testing, or installer packaging is configured yet.
+Payment, borrowing, transaction allocation, balance calculation, reconciliation,
+dashboard, workbook import, payoff scenario, reporting, backup, export, and
+packaging workflows have not been implemented.
 
 ## Prerequisites
 
@@ -33,14 +37,15 @@ Install exact locked dependencies:
 npm ci
 ```
 
-The install step downloads Electron's official prebuilt Windows binary for local
-development.
-
 Run the local development application:
 
 ```powershell
 npm run dev
 ```
+
+`dev` installs the official better-sqlite3 prebuilt binary for the configured
+Electron runtime before launch. Node-based database and Vitest commands restore
+the Node-compatible prebuild automatically.
 
 Build the application:
 
@@ -62,6 +67,7 @@ npm run lint
 npm run typecheck
 npm run test
 npm run test:integration
+npm run test:e2e
 ```
 
 Generate and verify database migrations:
@@ -72,16 +78,51 @@ npm run db:migrate
 npm run db:check
 ```
 
-`db:migrate` migrates a new isolated temporary database by default. Application
-code will pass Electron's `app.getPath('userData')` directory to the database-path
-resolver when persistent database startup is introduced. This phase does not
-create a persistent application database.
+`db:migrate` migrates a new isolated temporary database by default.
 
 Run the complete currently configured verification gate:
 
 ```powershell
 npm run check
 ```
+
+The verification gate includes formatting, linting, type checking, Vitest,
+database integrity checks, a production build, and the isolated Electron
+end-to-end workflow.
+
+## Development Database
+
+The running application creates `debt-tracker.sqlite3` beneath Electron's Windows
+user-data directory and applies committed migrations before opening the renderer.
+The database remains outside this repository and OneDrive project directory.
+
+To locate the containing directory without opening or editing the database:
+
+1. Open the application.
+2. In Windows, navigate to `%APPDATA%`.
+3. Locate the Debt Tracker application-data directory.
+
+To reset development data, close Debt Tracker completely and move the entire Debt
+Tracker application-data directory to a separate temporary location. Start the
+application to create a new migrated database. Retain the moved directory until
+the reset has been verified. Do not edit the SQLite file manually.
+
+Automated tests never use this location. Vitest creates databases under the
+operating-system temporary directory, and Playwright supplies a unique temporary
+Electron user-data directory that it removes after the workflow.
+
+## Debt Maintenance Rules
+
+- Original principal and origination date are opening facts.
+- Debt-level opening minimum payment and payment frequency are captured at
+  creation.
+- Later rate, required-payment, frequency, day-count, or calculation changes
+  require a new effective-dated term.
+- A new term is appended after the latest term; an open prior term is closed on
+  the day before the new effective date.
+- Archive and restore preserve every term and create audit events.
+- No current balance is displayed because posted-activity and balance-calculation
+  workflows do not yet exist.
 
 ## Privacy
 
