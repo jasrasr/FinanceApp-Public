@@ -112,6 +112,9 @@ For every implementation, modification, review, or fix, automatically:
 - Never commit, push, rewrite history, or use destructive Git commands unless
   explicitly instructed.
 
+These requirements apply to every task unless the user explicitly overrides a
+specific item.
+
 ## Coding and Naming Conventions
 
 - Use strict TypeScript.
@@ -497,6 +500,8 @@ standing project requirements. Interpret future prompts as providing only:
 - Task-specific accounting, validation, UI, or acceptance requirements.
 
 Do not require standing instructions to be repeated in each task prompt.
+Treat the current `AGENTS.md` as the standing baseline unless the user states
+otherwise in the active prompt.
 
 ## Testing and Completion
 
