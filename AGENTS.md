@@ -83,6 +83,35 @@ Do not replace, rewrite, or remove a working feature merely because another
 implementation is preferred. Make the smallest coherent change that satisfies
 the requirement.
 
+## Standard Task Execution Protocol
+
+For every implementation, modification, review, or fix, automatically:
+
+- Inspect the relevant code, tests, schema, documentation, and existing
+  patterns.
+- Check `git status` and preserve unrelated changes.
+- Stay within the requested scope and avoid later-phase features.
+- Identify material architecture, accounting, database, IPC, security,
+  privacy, migration, and UI decisions.
+- Follow existing architecture and conventions unless a documented change is
+  justified.
+- Make the smallest coherent change that fully satisfies the request.
+- Use only generated or irreversibly sanitized test data.
+- Preserve all Electron, IPC, database, financial-data, and repository
+  privacy controls.
+- Add or update tests proportionate to the risk and behavior changed.
+- Update affected documentation and create ADRs for material decisions.
+- Inspect `package.json` before running commands.
+- Run every currently configured check relevant to the change.
+- Perform a controlled smoke test for user-facing or critical workflows.
+- Never claim a test, command, or manual verification was completed unless it
+  actually was.
+- Report implementation details, files changed, material decisions, database or
+  IPC changes, tests, smoke-test results, warnings, limitations, final Git
+  status, and one recommended commit message.
+- Never commit, push, rewrite history, or use destructive Git commands unless
+  explicitly instructed.
+
 ## Coding and Naming Conventions
 
 - Use strict TypeScript.
@@ -456,6 +485,18 @@ restore behavior, or packaging.
 Update this section and the README when command availability changes. Do not
 leave placeholder scripts that report success without performing the stated
 check.
+
+## Task Prompt Interpretation
+
+Future prompts may intentionally be brief because `AGENTS.md` contains the
+standing project requirements. Interpret future prompts as providing only:
+
+- The phase or objective.
+- Included scope.
+- Explicitly excluded scope.
+- Task-specific accounting, validation, UI, or acceptance requirements.
+
+Do not require standing instructions to be repeated in each task prompt.
 
 ## Testing and Completion
 
