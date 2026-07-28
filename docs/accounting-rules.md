@@ -11,6 +11,8 @@ are distinct concepts.
 - Posted transactions contain actual activity only.
 - Confirmed balance snapshots are evidence as of an effective date.
 - A calculated balance is not confirmed until reconciled.
+- A reconciliation calculated balance is computed for a statement date only and
+  is not displayed as a rolling current balance.
 - Projected and scenario activity must use future separate models and cannot be
   inserted into the posted ledger.
 
@@ -76,6 +78,12 @@ The ledger permits only posted, reversed, and superseded statuses. Draft,
 projected, and scenario statuses are prohibited by validation and database
 constraints.
 
+For statement reconciliation, the application-calculated balance equals original
+principal plus non-superseded ledger transaction totals with effective dates on
+or before the statement date. Reversed originals remain in the historical
+calculation; their linked reversal rows offset them when the reversal effective
+date is also on or before the statement date.
+
 ## Effective-Dated Terms
 
 Material terms are stored as historical periods:
@@ -129,6 +137,9 @@ contractual changes and are used for list and detail term displays.
 ## Confirmed Balances and Reconciliation
 
 A balance snapshot records external evidence and never alters ledger activity.
+A balance reconciliation records the comparison between a statement balance and
+the ledger balance calculated through the same statement date. It does not alter
+confirmed snapshots.
 
 Reconciliation difference is:
 
@@ -139,9 +150,22 @@ statement ending balance - application-calculated balance
 The application computes this value. A SQLite check constraint independently
 requires the stored difference to equal that formula.
 
+Reconciliation statuses mean:
+
+- `unreconciled`: recorded but not yet reviewed to completion.
+- `in_progress`: active review is underway.
+- `reconciled`: calculated difference is zero.
+- `reconciled_with_adjustment`: a nonzero difference is resolved by an explicit
+  approved adjustment transaction.
+- `exception`: a nonzero difference or other issue requires follow-up.
+
 An approved adjustment must be a posted
 `approved_reconciliation_adjustment` transaction for the same debt. The
 reconciliation links to it rather than silently changing the balance.
+
+The approved adjustment total must equal the calculated difference. Its effective
+and posting dates are the statement date, its source type is `reconciliation`,
+and its source reference is the reconciliation identifier.
 
 ## Corrections and Reversals
 

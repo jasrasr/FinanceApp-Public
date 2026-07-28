@@ -1,7 +1,8 @@
-import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, lte, ne } from 'drizzle-orm';
 import type { AppDatabase } from './connection';
 import {
   auditEvents,
+  balanceReconciliations,
   balanceSnapshots,
   debtTerms,
   debtTransactions,
@@ -10,12 +11,15 @@ import {
 } from './schema';
 import {
   auditEventInsertSchema,
+  balanceReconciliationInputSchema,
+  balanceReconciliationRecordSchema,
   balanceSnapshotInsertSchema,
   debtInsertSchema,
   debtTermInsertSchema,
   debtTransactionInsertSchema,
   transactionAllocationInsertSchema,
   type AuditEventInsert,
+  type BalanceReconciliationInput,
   type BalanceSnapshotInsert,
   type DebtInsert,
   type DebtTermInsert,
@@ -29,6 +33,7 @@ export type DebtTermRecord = typeof debtTerms.$inferSelect;
 export type DebtTransactionRecord = typeof debtTransactions.$inferSelect;
 export type TransactionAllocationRecord = typeof transactionAllocations.$inferSelect;
 export type BalanceSnapshotRecord = typeof balanceSnapshots.$inferSelect;
+export type BalanceReconciliationRecord = typeof balanceReconciliations.$inferSelect;
 
 export interface DebtWithTermsRecord {
   readonly debt: DebtRecord;
@@ -43,6 +48,18 @@ export interface DebtTransactionWithAllocationsRecord {
 export interface DebtWithActivityRecord extends DebtWithTermsRecord {
   readonly transactions: readonly DebtTransactionWithAllocationsRecord[];
   readonly balanceSnapshots: readonly BalanceSnapshotRecord[];
+  readonly balanceReconciliations: readonly BalanceReconciliationRecord[];
+}
+
+export interface PostedTransactionInput {
+  readonly transaction: DebtTransactionInsert;
+  readonly allocations: readonly TransactionAllocationInsert[];
+}
+
+export interface CreateBalanceReconciliationRecordInput {
+  readonly reconciliation: BalanceReconciliationInput;
+  readonly adjustment?: PostedTransactionInput;
+  readonly auditInputs: readonly AuditEventInsert[];
 }
 
 export interface DebtUpdateValues {
@@ -113,6 +130,20 @@ const getBalanceSnapshots = (
     .orderBy(asc(balanceSnapshots.effectiveDate), asc(balanceSnapshots.createdAtUtc))
     .all();
 
+const getBalanceReconciliations = (
+  database: AppDatabase,
+  debtId: string,
+): readonly BalanceReconciliationRecord[] =>
+  database
+    .select()
+    .from(balanceReconciliations)
+    .where(eq(balanceReconciliations.debtId, debtId))
+    .orderBy(
+      asc(balanceReconciliations.statementDate),
+      asc(balanceReconciliations.createdAtUtc),
+    )
+    .all();
+
 export const listDebtRecords = (
   database: AppDatabase,
   includeArchived: boolean,
@@ -158,8 +189,60 @@ export const getDebtActivityRecord = (
         ...record,
         transactions: getTransactions(database, debtId),
         balanceSnapshots: getBalanceSnapshots(database, debtId),
+        balanceReconciliations: getBalanceReconciliations(database, debtId),
       }
     : undefined;
+};
+
+export const calculateLedgerBalanceThroughDate = (
+  database: AppDatabase,
+  debtId: string,
+  statementDate: string,
+): number => {
+  const debt = database
+    .select({
+      originalPrincipalCents: debts.originalPrincipalCents,
+    })
+    .from(debts)
+    .where(eq(debts.id, debtId))
+    .get();
+
+  if (!debt) {
+    throw new RepositoryNotFoundError('Debt was not found.');
+  }
+
+  const transactions = database
+    .select({
+      totalAmountCents: debtTransactions.totalAmountCents,
+    })
+    .from(debtTransactions)
+    .where(
+      and(
+        eq(debtTransactions.debtId, debtId),
+        lte(debtTransactions.effectiveDate, statementDate),
+        ne(debtTransactions.status, 'superseded'),
+      ),
+    )
+    .all();
+
+  const transactionTotal = transactions.reduce(
+    (total, transaction) => total + transaction.totalAmountCents,
+    0,
+  );
+
+  if (!Number.isSafeInteger(transactionTotal)) {
+    throw new RangeError('Ledger transaction total exceeds the safe-integer range.');
+  }
+
+  const balance = debt.originalPrincipalCents + transactionTotal;
+
+  if (!Number.isSafeInteger(balance) || balance < 0) {
+    throw new RangeError(
+      'Application-calculated debt balance must be nonnegative safe-integer cents.',
+    );
+  }
+
+  return balance;
 };
 
 export const createDebtAndInitialTerm = (
@@ -219,6 +302,90 @@ export const createBalanceSnapshotRecord = (
   database.transaction((transaction) => {
     transaction.insert(balanceSnapshots).values(snapshot).run();
     transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const createBalanceReconciliationRecord = (
+  database: AppDatabase,
+  input: CreateBalanceReconciliationRecordInput,
+): void => {
+  const reconciliationInput = balanceReconciliationInputSchema.parse(
+    input.reconciliation,
+  );
+  const reconciliation = balanceReconciliationRecordSchema.parse({
+    ...reconciliationInput,
+    calculatedDifferenceCents:
+      reconciliationInput.statementEndingBalanceCents -
+      reconciliationInput.applicationCalculatedBalanceCents,
+  });
+  const adjustment = input.adjustment
+    ? {
+        transaction: debtTransactionInsertSchema.parse(input.adjustment.transaction),
+        allocations: input.adjustment.allocations.map((allocation) =>
+          transactionAllocationInsertSchema.parse(allocation),
+        ),
+      }
+    : null;
+  const audit = input.auditInputs.map((event) => auditEventInsertSchema.parse(event));
+
+  if (
+    reconciliation.reconciliationStatus === 'reconciled_with_adjustment' &&
+    !adjustment
+  ) {
+    throw new Error('An approved adjustment transaction is required.');
+  }
+
+  if (
+    reconciliation.reconciliationStatus !== 'reconciled_with_adjustment' &&
+    adjustment
+  ) {
+    throw new Error('Only reconciled-with-adjustment records may create adjustments.');
+  }
+
+  if (adjustment) {
+    if (reconciliation.approvedAdjustmentTransactionId !== adjustment.transaction.id) {
+      throw new Error(
+        'Reconciliation must link to the approved adjustment transaction.',
+      );
+    }
+
+    if (
+      adjustment.transaction.debtId !== reconciliation.debtId ||
+      adjustment.transaction.transactionType !== 'approved_reconciliation_adjustment' ||
+      adjustment.transaction.status !== 'posted' ||
+      adjustment.transaction.sourceType !== 'reconciliation'
+    ) {
+      throw new Error(
+        'Approved adjustment must be a posted reconciliation adjustment for the same debt.',
+      );
+    }
+
+    if (
+      adjustment.allocations.some(
+        (allocation) => allocation.transactionId !== adjustment.transaction.id,
+      )
+    ) {
+      throw new Error('Every allocation must reference its transaction.');
+    }
+
+    const errors = validateTransactionSignConvention(
+      adjustment.transaction,
+      adjustment.allocations,
+    );
+
+    if (errors.length > 0) {
+      throw new Error(errors.join(' '));
+    }
+  }
+
+  database.transaction((transactionDb) => {
+    if (adjustment) {
+      transactionDb.insert(debtTransactions).values(adjustment.transaction).run();
+      transactionDb.insert(transactionAllocations).values(adjustment.allocations).run();
+    }
+
+    transactionDb.insert(balanceReconciliations).values(reconciliation).run();
+    transactionDb.insert(auditEvents).values(audit).run();
   });
 };
 

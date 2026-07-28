@@ -1,5 +1,6 @@
 import type {
   AddDebtTermRequest,
+  CreateBalanceReconciliationRequest,
   CreateBalanceSnapshotRequest,
   CreateDebtTransactionRequest,
   ApplicationResult,
@@ -31,11 +32,14 @@ export interface DebtBridge {
   createBalanceSnapshot(
     request: CreateBalanceSnapshotRequest,
   ): Promise<ApplicationResult<DebtDetailDto>>;
+  createBalanceReconciliation(
+    request: CreateBalanceReconciliationRequest,
+  ): Promise<ApplicationResult<DebtDetailDto>>;
   archiveDebt(request: ArchiveDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   restoreDebt(request: RestoreDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
 }
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 3;
+  readonly bridgeVersion: 4;
 }

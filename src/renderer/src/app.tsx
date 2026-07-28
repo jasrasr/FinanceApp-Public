@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DebtBridge } from '../../shared/app-bridge';
 import type {
+  CreateBalanceReconciliationRequest,
   CreateBalanceSnapshotRequest,
   CreateDebtTransactionRequest,
   AddDebtTermRequest,
@@ -15,6 +16,7 @@ import type {
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
 import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-form';
+import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { ConfirmationDialog } from './components/confirmation-dialog';
 import { CreateDebtForm } from './components/create-debt-form';
 import { DebtDetail } from './components/debt-detail';
@@ -23,7 +25,7 @@ import { EditDebtForm } from './components/edit-debt-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
 
 type View = 'list' | 'create' | 'detail' | 'edit' | 'add-term';
-type DetailPanel = 'overview' | 'transaction' | 'snapshot';
+type DetailPanel = 'overview' | 'transaction' | 'snapshot' | 'reconciliation';
 type Confirmation = 'archive' | 'restore' | 'reverse' | null;
 type ReverseTarget = {
   readonly id: string;
@@ -245,6 +247,28 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     if (result.ok) {
       setSelectedDebt(result.value);
       setSuccessMessage('Confirmed balance snapshot was recorded.');
+      setDetailPanel('overview');
+      await loadDebts();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const recordReconciliation = async (
+    request: CreateBalanceReconciliationRequest,
+  ): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() =>
+      bridge.createBalanceReconciliation(request),
+    );
+
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Balance reconciliation was recorded.');
       setDetailPanel('overview');
       await loadDebts();
     } else {
@@ -509,6 +533,36 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 </section>
               ) : null}
 
+              {detailPanel === 'reconciliation' ? (
+                <section
+                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
+                  aria-labelledby="reconciliation-workflow-heading"
+                >
+                  <p className="text-sm font-medium text-slate-500">
+                    {selectedDebt.name}
+                  </p>
+                  <h2
+                    className="mt-1 text-3xl font-semibold tracking-tight"
+                    id="reconciliation-workflow-heading"
+                  >
+                    Record balance reconciliation
+                  </h2>
+                  <div className="mt-8">
+                    <RecordBalanceReconciliationForm
+                      busy={saving}
+                      debt={selectedDebt}
+                      fieldErrors={fieldErrors}
+                      onCancel={() => {
+                        setDetailPanel('overview');
+                        setError(null);
+                        setFieldErrors(undefined);
+                      }}
+                      onSubmit={(request) => void recordReconciliation(request)}
+                    />
+                  </div>
+                </section>
+              ) : null}
+
               <DebtDetail
                 debt={selectedDebt}
                 onAddTerm={() => {
@@ -532,6 +586,12 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   setFieldErrors(undefined);
                   setSuccessMessage(null);
                   setDetailPanel('snapshot');
+                }}
+                onRecordReconciliation={() => {
+                  setError(null);
+                  setFieldErrors(undefined);
+                  setSuccessMessage(null);
+                  setDetailPanel('reconciliation');
                 }}
                 onRecordTransaction={() => {
                   setError(null);

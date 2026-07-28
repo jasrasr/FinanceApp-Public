@@ -9,6 +9,7 @@ import type { DatabaseContext } from '../database/connection';
 import { openMigratedDatabase } from '../database/connection';
 import {
   auditEvents,
+  balanceReconciliations,
   balanceSnapshots,
   debtTerms,
   debtTransactions,
@@ -94,6 +95,19 @@ const validSnapshotRequest = (debtId: string) => ({
     sourceType: 'statement' as const,
     sourceReference: 'STAT-2026-01',
     notes: 'Generated statement balance.',
+  },
+});
+
+const validReconciliationRequest = (debtId: string) => ({
+  debtId,
+  reconciliation: {
+    statementDate: '2026-01-31',
+    statementEndingBalance: '124500.13',
+    reconciliationStatus: 'reconciled' as const,
+    explanation: 'Generated statement matches the calculated ledger balance.',
+    approvedAdjustment: null,
+    sourceReference: 'STAT-2026-01',
+    supportingNotes: 'Fictional reconciliation support.',
   },
 });
 
@@ -198,6 +212,148 @@ describe('debt creation', () => {
     expect(updated.balanceSnapshots).toHaveLength(1);
     expect(snapshots).toHaveLength(1);
     expect(eventTypes).toContain('balance_snapshot_recorded');
+  });
+
+  it('records a reconciliation using the calculated ledger balance through the statement date', () => {
+    const created = service.createDebt(validRequest());
+    service.createDebtTransaction(validTransactionRequest(created.id));
+
+    const updated = service.createBalanceReconciliation(
+      validReconciliationRequest(created.id),
+    );
+    const reconciliations = context.database
+      .select()
+      .from(balanceReconciliations)
+      .all();
+    const eventTypes = context.database
+      .select({ eventType: auditEvents.eventType })
+      .from(auditEvents)
+      .all()
+      .map((event) => event.eventType);
+
+    expect(updated.balanceReconciliations).toHaveLength(1);
+    expect(updated.balanceReconciliations[0]).toMatchObject({
+      statementEndingBalance: '124500.13',
+      applicationCalculatedBalance: '124500.13',
+      calculatedDifference: '0.00',
+      reconciliationStatus: 'reconciled',
+    });
+    expect(reconciliations).toHaveLength(1);
+    expect(eventTypes).toContain('balance_reconciliation_recorded');
+  });
+
+  it('rejects reconciled status when the calculated difference is nonzero', () => {
+    const created = service.createDebt(validRequest());
+    service.createDebtTransaction(validTransactionRequest(created.id));
+
+    expect(() =>
+      service.createBalanceReconciliation({
+        ...validReconciliationRequest(created.id),
+        reconciliation: {
+          ...validReconciliationRequest(created.id).reconciliation,
+          statementEndingBalance: '124600.13',
+        },
+      }),
+    ).toThrow('Review the highlighted fields.');
+    expect(context.database.select().from(balanceReconciliations).all()).toHaveLength(
+      0,
+    );
+  });
+
+  it('posts and links an approved reconciliation adjustment explicitly', () => {
+    const created = service.createDebt(validRequest());
+    service.createDebtTransaction(validTransactionRequest(created.id));
+
+    const updated = service.createBalanceReconciliation({
+      debtId: created.id,
+      reconciliation: {
+        statementDate: '2026-01-31',
+        statementEndingBalance: '124600.13',
+        reconciliationStatus: 'reconciled_with_adjustment',
+        explanation: 'Generated approved adjustment for statement difference.',
+        approvedAdjustment: {
+          totalAmount: '100.00',
+          description: 'Generated approved reconciliation adjustment.',
+          allocations: {
+            principal: '100.00',
+            interest: null,
+            escrow: null,
+            fee: null,
+            penalty: null,
+            extraPrincipal: null,
+            other: null,
+          },
+        },
+        sourceReference: 'STAT-2026-01',
+        supportingNotes: 'Fictional approval note.',
+      },
+    });
+    const reconciliation = updated.balanceReconciliations[0];
+    const adjustment = updated.transactions.find(
+      (transaction) =>
+        transaction.id === reconciliation?.approvedAdjustmentTransactionId,
+    );
+    const eventTypes = context.database
+      .select({ eventType: auditEvents.eventType })
+      .from(auditEvents)
+      .all()
+      .map((event) => event.eventType);
+
+    expect(reconciliation).toMatchObject({
+      calculatedDifference: '100.00',
+      reconciliationStatus: 'reconciled_with_adjustment',
+    });
+    expect(adjustment).toMatchObject({
+      transactionType: 'approved_reconciliation_adjustment',
+      sourceType: 'reconciliation',
+      totalAmount: '100.00',
+    });
+    expect(eventTypes).toContain('approved_reconciliation_adjustment_recorded');
+    expect(eventTypes).toContain('balance_reconciliation_recorded');
+  });
+
+  it('rejects an approved adjustment that does not equal the calculated difference', () => {
+    const created = service.createDebt(validRequest());
+    service.createDebtTransaction(validTransactionRequest(created.id));
+
+    expect(() =>
+      service.createBalanceReconciliation({
+        debtId: created.id,
+        reconciliation: {
+          statementDate: '2026-01-31',
+          statementEndingBalance: '124600.13',
+          reconciliationStatus: 'reconciled_with_adjustment',
+          explanation: 'Generated mismatch.',
+          approvedAdjustment: {
+            totalAmount: '99.99',
+            description: 'Generated invalid adjustment.',
+            allocations: {
+              principal: '99.99',
+              interest: null,
+              escrow: null,
+              fee: null,
+              penalty: null,
+              extraPrincipal: null,
+              other: null,
+            },
+          },
+          sourceReference: 'STAT-2026-01',
+          supportingNotes: null,
+        },
+      }),
+    ).toThrow('Review the highlighted fields.');
+    expect(context.database.select().from(balanceReconciliations).all()).toHaveLength(
+      0,
+    );
+    expect(
+      context.database
+        .select()
+        .from(debtTransactions)
+        .where(
+          eq(debtTransactions.transactionType, 'approved_reconciliation_adjustment'),
+        )
+        .all(),
+    ).toHaveLength(0);
   });
 
   it('reverses a posted transaction without deleting the original', () => {

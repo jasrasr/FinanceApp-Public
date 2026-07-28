@@ -7,6 +7,7 @@ export {
   INTEREST_RATE_TYPES,
   PAYMENT_FREQUENCIES,
   POSTED_ACTIVITY_TRANSACTION_TYPES,
+  RECONCILIATION_STATUSES,
   TAX_CATEGORIES,
   MANUAL_ENTRY_SOURCE_TYPES,
 } from '../../../shared/debt-options';
@@ -45,14 +46,6 @@ export const ALLOCATION_TYPES = [
   'penalty',
   'extra_principal',
   'other',
-] as const;
-
-export const RECONCILIATION_STATUSES = [
-  'unreconciled',
-  'in_progress',
-  'reconciled',
-  'reconciled_with_adjustment',
-  'exception',
 ] as const;
 
 export const SNAPSHOT_SOURCE_TYPES = ['manual', 'statement', 'import'] as const;

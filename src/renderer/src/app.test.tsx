@@ -6,6 +6,7 @@ import type { DebtBridge } from '../../shared/app-bridge';
 import type { DebtDetailDto, DebtSummaryDto } from '../../shared/debt-contracts';
 import { App } from './app';
 import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-form';
+import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): DebtBridge => ({
@@ -17,6 +18,7 @@ const createBridge = (): DebtBridge => ({
   createDebtTransaction: vi.fn(),
   reverseDebtTransaction: vi.fn(),
   createBalanceSnapshot: vi.fn(),
+  createBalanceReconciliation: vi.fn(),
   archiveDebt: vi.fn(),
   restoreDebt: vi.fn(),
 });
@@ -104,6 +106,23 @@ const sampleDebtDetail: DebtDetailDto = {
       updatedAtUtc: '2026-07-27T13:00:00.000Z',
     },
   ],
+  balanceReconciliations: [
+    {
+      id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c051',
+      debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+      statementDate: '2026-01-31',
+      statementEndingBalance: '124500.00',
+      applicationCalculatedBalance: '124500.00',
+      calculatedDifference: '0.00',
+      reconciliationStatus: 'reconciled',
+      explanation: 'Generated reconciliation.',
+      approvedAdjustmentTransactionId: null,
+      sourceReference: 'STAT-2026-01',
+      supportingNotes: null,
+      createdAtUtc: '2026-07-27T13:00:00.000Z',
+      updatedAtUtc: '2026-07-27T13:00:00.000Z',
+    },
+  ],
   archivedAtUtc: null,
   createdAtUtc: '2026-07-27T13:00:00.000Z',
   updatedAtUtc: '2026-07-27T13:00:00.000Z',
@@ -178,8 +197,12 @@ describe('debt maintenance application', () => {
     expect(
       screen.getByRole('heading', { name: 'Confirmed balance snapshots' }),
     ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: 'Balance reconciliations' }),
+    ).toBeVisible();
     expect(screen.getByRole('button', { name: 'Record transaction' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Record snapshot' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Record reconciliation' })).toBeVisible();
   });
 
   it('renders the record-transaction form controls', () => {
@@ -213,6 +236,22 @@ describe('debt maintenance application', () => {
     expect(screen.getByLabelText(/Effective date/)).toBeVisible();
     expect(screen.getByLabelText(/Confirmed balance/)).toBeVisible();
     expect(screen.getByLabelText(/Source type/)).toBeVisible();
+  });
+
+  it('renders the record-balance-reconciliation form controls', () => {
+    render(
+      <RecordBalanceReconciliationForm
+        busy={false}
+        debt={sampleDebtDetail}
+        fieldErrors={undefined}
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Statement date/)).toBeVisible();
+    expect(screen.getByLabelText(/Statement ending balance/)).toBeVisible();
+    expect(screen.getByLabelText(/Reconciliation status/)).toBeVisible();
   });
 
   it('renders a recoverable failure state when the secure bridge fails', async () => {

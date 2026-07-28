@@ -13,6 +13,7 @@ describe('typed preload bridge', () => {
       'appName',
       'archiveDebt',
       'bridgeVersion',
+      'createBalanceReconciliation',
       'createBalanceSnapshot',
       'createDebt',
       'createDebtTransaction',
@@ -22,7 +23,7 @@ describe('typed preload bridge', () => {
       'reverseDebtTransaction',
       'updateDebt',
     ]);
-    expect(bridge.bridgeVersion).toBe(3);
+    expect(bridge.bridgeVersion).toBe(4);
     expect('invoke' in bridge).toBe(false);
     expect('query' in bridge).toBe(false);
     expect('database' in bridge).toBe(false);

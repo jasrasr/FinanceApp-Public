@@ -17,14 +17,15 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Manual posted activity entry for payments, draws, fees, penalties, interest,
   principal adjustments, other transactions, reversals, and confirmed balance
   snapshots.
+- Statement-based balance reconciliation against the ledger balance calculated
+  through the statement date, including explicit approved adjustment postings.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
 - Automatic development-database initialization and migration under Electron's
   user-data directory.
 - Playwright-controlled Electron testing against disposable user-data directories.
 
-Balance calculation, reconciliation, dashboard, workbook import, payoff
-scenario, reporting, backup, export, and packaging workflows have not been
-implemented.
+Dashboard, workbook import, payoff scenario, reporting, backup, export, and
+packaging workflows have not been implemented.
 
 ## Prerequisites
 
@@ -124,11 +125,15 @@ Electron user-data directory that it removes after the workflow.
 - A new term is appended after the latest term; an open prior term is closed on
   the day before the new effective date.
 - Archive and restore preserve every term and create audit events.
-- No current balance is displayed because posted-activity and balance-calculation
-  workflows do not yet exist.
+- Reconciliations calculate a ledger balance only as of the statement date. The
+  app still does not display a rolling authoritative current balance.
 - Posted transactions and confirmed snapshots are recorded separately from future
   projected or scenario activity.
 - Reversal transactions preserve the original posted row and its allocations.
+- Statement balances, confirmed snapshots, ledger-calculated balances, and
+  posted transactions are separate records.
+- Approved reconciliation adjustments are explicit posted transactions linked to
+  the reconciliation that approved them.
 
 ## Privacy
 

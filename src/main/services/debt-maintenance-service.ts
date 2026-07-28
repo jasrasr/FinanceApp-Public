@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
 import type {
   AddDebtTermRequest,
+  CreateBalanceReconciliationRequest,
   CreateBalanceSnapshotRequest,
   CreateDebtTransactionRequest,
   ArchiveDebtRequest,
@@ -17,6 +18,7 @@ import type {
 import {
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
+  createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
   createDebtRequestSchema,
@@ -28,6 +30,8 @@ import {
 } from '../../shared/debt-contracts';
 import type { AppDatabase } from '../database/connection';
 import {
+  calculateLedgerBalanceThroughDate,
+  createBalanceReconciliationRecord,
   createBalanceSnapshotRecord,
   createPostedTransactionRecord,
   appendDebtTermRecord,
@@ -40,6 +44,7 @@ import {
   setDebtArchivedState,
   updateDebtDescriptiveRecord,
   type DebtRecord,
+  type BalanceReconciliationRecord,
   type DebtTransactionWithAllocationsRecord,
   type DebtTermRecord,
   type DebtWithTermsRecord,
@@ -48,6 +53,7 @@ import {
 import { reversePostedTransaction } from '../database/repository';
 import type {
   AuditEventInsert,
+  BalanceReconciliationInput,
   DebtInsert,
   DebtTermInsert,
   DebtTransactionInsert,
@@ -81,6 +87,9 @@ export interface DebtMaintenanceService {
   createDebtTransaction(request: CreateDebtTransactionRequest): DebtDetailDto;
   reverseDebtTransaction(request: ReverseDebtTransactionRequest): DebtDetailDto;
   createBalanceSnapshot(request: CreateBalanceSnapshotRequest): DebtDetailDto;
+  createBalanceReconciliation(
+    request: CreateBalanceReconciliationRequest,
+  ): DebtDetailDto;
   archiveDebt(request: ArchiveDebtRequest): DebtDetailDto;
   restoreDebt(request: RestoreDebtRequest): DebtDetailDto;
 }
@@ -273,6 +282,87 @@ const createSnapshotAudit = (
   afterMetadataJson: afterMetadata ? JSON.stringify(afterMetadata) : null,
 });
 
+const createReconciliationAudit = (
+  id: string,
+  reconciliationId: string,
+  eventType: string,
+  action: string,
+  timestamp: string,
+  summary: string,
+  afterMetadata?: Record<string, unknown>,
+): AuditEventInsert => ({
+  id,
+  eventType,
+  entityType: 'balance_reconciliation',
+  entityId: reconciliationId,
+  action,
+  occurredAtUtc: timestamp,
+  source: 'user',
+  summary,
+  beforeMetadataJson: null,
+  afterMetadataJson: afterMetadata ? JSON.stringify(afterMetadata) : null,
+});
+
+const allocationInputs = (
+  allocations: CreateDebtTransactionRequest['transaction']['allocations'],
+) =>
+  [
+    ['principal', allocations.principal],
+    ['interest', allocations.interest],
+    ['escrow', allocations.escrow],
+    ['fee', allocations.fee],
+    ['penalty', allocations.penalty],
+    ['extra_principal', allocations.extraPrincipal],
+    ['other', allocations.other],
+  ] as const;
+
+const buildAllocations = (
+  createId: () => string,
+  transactionId: string,
+  timestamp: string,
+  fieldPrefix: string,
+  allocationsInput: CreateDebtTransactionRequest['transaction']['allocations'],
+): TransactionAllocationInsert[] => {
+  const allocations: TransactionAllocationInsert[] = [];
+
+  for (const [allocationType, amount] of allocationInputs(allocationsInput)) {
+    if (amount == null || amount.trim() === '') {
+      continue;
+    }
+
+    const formField = `${fieldPrefix}.${allocationType === 'extra_principal' ? 'extraPrincipal' : allocationType}`;
+    const amountCents = convertSignedMoney(formField, amount);
+
+    if (amountCents === 0) {
+      throw new ApplicationServiceError(
+        'validation',
+        'Review the highlighted fields.',
+        {
+          [formField]: ['Allocation amount must be nonzero.'],
+        },
+      );
+    }
+
+    allocations.push({
+      id: createId(),
+      transactionId,
+      allocationType,
+      amountCents,
+      notes: null,
+      createdAtUtc: timestamp,
+      updatedAtUtc: timestamp,
+    });
+  }
+
+  if (allocations.length === 0) {
+    throw new ApplicationServiceError('validation', 'Review the highlighted fields.', {
+      [fieldPrefix]: ['Enter at least one allocation amount.'],
+    });
+  }
+
+  return allocations;
+};
+
 const mapTransactionAllocation = (
   allocation: DebtTransactionWithAllocationsRecord['allocations'][number],
 ): DebtDetailDto['transactions'][number]['allocations'][number] => ({
@@ -318,6 +408,26 @@ const mapBalanceSnapshot = (
   updatedAtUtc: snapshot.updatedAtUtc,
 });
 
+const mapBalanceReconciliation = (
+  reconciliation: BalanceReconciliationRecord,
+): DebtDetailDto['balanceReconciliations'][number] => ({
+  id: reconciliation.id,
+  debtId: reconciliation.debtId,
+  statementDate: reconciliation.statementDate,
+  statementEndingBalance: centsToDollars(reconciliation.statementEndingBalanceCents),
+  applicationCalculatedBalance: centsToDollars(
+    reconciliation.applicationCalculatedBalanceCents,
+  ),
+  calculatedDifference: centsToDollars(reconciliation.calculatedDifferenceCents),
+  reconciliationStatus: reconciliation.reconciliationStatus,
+  explanation: reconciliation.explanation,
+  approvedAdjustmentTransactionId: reconciliation.approvedAdjustmentTransactionId,
+  sourceReference: reconciliation.sourceReference,
+  supportingNotes: reconciliation.supportingNotes,
+  createdAtUtc: reconciliation.createdAtUtc,
+  updatedAtUtc: reconciliation.updatedAtUtc,
+});
+
 const postedTransactionFieldErrors = (
   errors: readonly string[],
 ): Readonly<Record<string, readonly string[]>> => {
@@ -347,6 +457,25 @@ const postedTransactionFieldErrors = (
     }
 
     (fieldErrors.request ??= []).push(error);
+  }
+
+  return fieldErrors;
+};
+
+const reconciliationAdjustmentFieldErrors = (
+  errors: readonly string[],
+): Readonly<Record<string, readonly string[]>> => {
+  const transactionErrors = postedTransactionFieldErrors(errors);
+  const fieldErrors: Record<string, string[]> = {};
+
+  for (const [field, messages] of Object.entries(transactionErrors)) {
+    const reconciliationField =
+      field === 'transaction.totalAmount'
+        ? 'reconciliation.approvedAdjustment.totalAmount'
+        : field === 'transaction.allocations'
+          ? 'reconciliation.approvedAdjustment.allocations'
+          : field;
+    fieldErrors[reconciliationField] = [...messages];
   }
 
   return fieldErrors;
@@ -425,6 +554,7 @@ const mapDetail = (record: DebtWithActivityRecord): DebtDetailDto => {
     terms: record.terms.map(mapTerm),
     transactions: record.transactions.map(mapTransaction),
     balanceSnapshots: record.balanceSnapshots.map(mapBalanceSnapshot),
+    balanceReconciliations: record.balanceReconciliations.map(mapBalanceReconciliation),
     archivedAtUtc: debt.archivedAtUtc,
     createdAtUtc: debt.createdAtUtc,
     updatedAtUtc: debt.updatedAtUtc,
@@ -895,78 +1025,13 @@ export const createDebtMaintenanceService = ({
           createdAtUtc: timestamp,
           updatedAtUtc: timestamp,
         };
-        const allocationInputs = [
-          [
-            'transaction.allocations.principal',
-            'principal',
-            parsed.transaction.allocations.principal,
-          ],
-          [
-            'transaction.allocations.interest',
-            'interest',
-            parsed.transaction.allocations.interest,
-          ],
-          [
-            'transaction.allocations.escrow',
-            'escrow',
-            parsed.transaction.allocations.escrow,
-          ],
-          ['transaction.allocations.fee', 'fee', parsed.transaction.allocations.fee],
-          [
-            'transaction.allocations.penalty',
-            'penalty',
-            parsed.transaction.allocations.penalty,
-          ],
-          [
-            'transaction.allocations.extraPrincipal',
-            'extra_principal',
-            parsed.transaction.allocations.extraPrincipal,
-          ],
-          [
-            'transaction.allocations.other',
-            'other',
-            parsed.transaction.allocations.other,
-          ],
-        ] as const;
-        const allocations: TransactionAllocationInsert[] = [];
-
-        for (const [field, allocationType, amount] of allocationInputs) {
-          if (amount == null || amount.trim() === '') {
-            continue;
-          }
-
-          const amountCents = convertSignedMoney(field, amount);
-
-          if (amountCents === 0) {
-            throw new ApplicationServiceError(
-              'validation',
-              'Review the highlighted fields.',
-              {
-                [field]: ['Allocation amount must be nonzero.'],
-              },
-            );
-          }
-
-          allocations.push({
-            id: createId(),
-            transactionId,
-            allocationType,
-            amountCents,
-            notes: null,
-            createdAtUtc: timestamp,
-            updatedAtUtc: timestamp,
-          });
-        }
-
-        if (allocations.length === 0) {
-          throw new ApplicationServiceError(
-            'validation',
-            'Review the highlighted fields.',
-            {
-              'transaction.allocations': ['Enter at least one allocation amount.'],
-            },
-          );
-        }
+        const allocations = buildAllocations(
+          createId,
+          transactionId,
+          timestamp,
+          'transaction.allocations',
+          parsed.transaction.allocations,
+        );
 
         const signErrors = validateTransactionSignConvention(transaction, allocations);
 
@@ -1085,6 +1150,193 @@ export const createDebtMaintenanceService = ({
             },
           ),
         );
+
+        return mapDetail(getRecordOrThrow(parsed.debtId));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    createBalanceReconciliation: (request) => {
+      try {
+        const parsed = createBalanceReconciliationRequestSchema.parse(request);
+        const existing = getRecordOrThrow(parsed.debtId);
+
+        if (existing.debt.archivedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Restore this debt before recording a reconciliation.',
+          );
+        }
+
+        const statementDate = ensureNotBefore(
+          'reconciliation.statementDate',
+          ensureCalendarDate(
+            'reconciliation.statementDate',
+            parsed.reconciliation.statementDate,
+          ),
+          existing.debt.originationDate,
+        );
+        const statementEndingBalanceCents = convertMoney(
+          'reconciliation.statementEndingBalance',
+          parsed.reconciliation.statementEndingBalance,
+        );
+        const applicationCalculatedBalanceCents = calculateLedgerBalanceThroughDate(
+          database,
+          parsed.debtId,
+          statementDate,
+        );
+        const calculatedDifferenceCents =
+          statementEndingBalanceCents - applicationCalculatedBalanceCents;
+        const status = parsed.reconciliation.reconciliationStatus;
+
+        if (status === 'reconciled' && calculatedDifferenceCents !== 0) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              'reconciliation.reconciliationStatus': [
+                'A reconciliation can be marked reconciled only when the calculated difference is zero.',
+              ],
+            },
+          );
+        }
+
+        if (
+          status === 'reconciled_with_adjustment' &&
+          calculatedDifferenceCents === 0
+        ) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              'reconciliation.reconciliationStatus': [
+                'Use reconciled status when no approved adjustment is needed.',
+              ],
+            },
+          );
+        }
+
+        const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
+        const reconciliationId = createId();
+        const approvedAdjustment = parsed.reconciliation.approvedAdjustment ?? null;
+        let adjustment: {
+          readonly transaction: DebtTransactionInsert;
+          readonly allocations: readonly TransactionAllocationInsert[];
+        } | null = null;
+        let approvedAdjustmentTransactionId: string | null = null;
+
+        if (approvedAdjustment) {
+          const adjustmentTransactionId = createId();
+          const adjustmentTotalCents = convertSignedMoney(
+            'reconciliation.approvedAdjustment.totalAmount',
+            approvedAdjustment.totalAmount,
+          );
+
+          if (adjustmentTotalCents !== calculatedDifferenceCents) {
+            throw new ApplicationServiceError(
+              'validation',
+              'Review the highlighted fields.',
+              {
+                'reconciliation.approvedAdjustment.totalAmount': [
+                  'Approved adjustment must equal the calculated reconciliation difference.',
+                ],
+              },
+            );
+          }
+
+          adjustment = {
+            transaction: {
+              id: adjustmentTransactionId,
+              debtId: parsed.debtId,
+              transactionType: 'approved_reconciliation_adjustment',
+              effectiveDate: statementDate,
+              postingDate: statementDate,
+              totalAmountCents: adjustmentTotalCents,
+              status: 'posted',
+              description: approvedAdjustment.description,
+              sourceType: 'reconciliation',
+              sourceReference: reconciliationId,
+              reversalOfTransactionId: null,
+              supersedesTransactionId: null,
+              createdAtUtc: timestamp,
+              updatedAtUtc: timestamp,
+            },
+            allocations: buildAllocations(
+              createId,
+              adjustmentTransactionId,
+              timestamp,
+              'reconciliation.approvedAdjustment.allocations',
+              approvedAdjustment.allocations,
+            ),
+          };
+          approvedAdjustmentTransactionId = adjustmentTransactionId;
+
+          const signErrors = validateTransactionSignConvention(
+            adjustment.transaction,
+            adjustment.allocations,
+          );
+
+          if (signErrors.length > 0) {
+            throw new ApplicationServiceError(
+              'validation',
+              'Review the highlighted fields.',
+              reconciliationAdjustmentFieldErrors(signErrors),
+            );
+          }
+        }
+
+        const reconciliation: BalanceReconciliationInput = {
+          id: reconciliationId,
+          debtId: parsed.debtId,
+          statementDate,
+          statementEndingBalanceCents,
+          applicationCalculatedBalanceCents,
+          reconciliationStatus: status,
+          explanation: nullableText(parsed.reconciliation.explanation),
+          approvedAdjustmentTransactionId,
+          sourceReference: nullableText(parsed.reconciliation.sourceReference),
+          supportingNotes: nullableText(parsed.reconciliation.supportingNotes),
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+        };
+
+        createBalanceReconciliationRecord(database, {
+          reconciliation,
+          adjustment: adjustment ?? undefined,
+          auditInputs: [
+            ...(adjustment
+              ? [
+                  createTransactionAudit(
+                    createId(),
+                    adjustment.transaction.id,
+                    'approved_reconciliation_adjustment_recorded',
+                    'create',
+                    timestamp,
+                    'Approved reconciliation adjustment was posted.',
+                    {
+                      reconciliationId,
+                      allocationTypes: adjustment.allocations.map(
+                        (allocation) => allocation.allocationType,
+                      ),
+                    },
+                  ),
+                ]
+              : []),
+            createReconciliationAudit(
+              createId(),
+              reconciliationId,
+              'balance_reconciliation_recorded',
+              'create',
+              timestamp,
+              'Balance reconciliation was recorded.',
+              {
+                reconciliationStatus: status,
+                hasApprovedAdjustment: Boolean(adjustment),
+              },
+            ),
+          ],
+        });
 
         return mapDetail(getRecordOrThrow(parsed.debtId));
       } catch (error) {

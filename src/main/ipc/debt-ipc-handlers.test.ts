@@ -16,6 +16,7 @@ const createService = (): DebtMaintenanceService => ({
   createDebtTransaction: vi.fn(),
   reverseDebtTransaction: vi.fn(),
   createBalanceSnapshot: vi.fn(),
+  createBalanceReconciliation: vi.fn(),
   archiveDebt: vi.fn(),
   restoreDebt: vi.fn(),
 });
@@ -121,5 +122,30 @@ describe('debt IPC handlers', () => {
       error: { code: 'validation' },
     });
     expect(service.createDebtTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid reconciliation payloads on the reconciliation channel', () => {
+    const service = createService();
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(registrar, service, () => true);
+
+    const result = handlers.get(DEBT_IPC_CHANNELS.createReconciliation)?.(event, {
+      debtId: randomUUID(),
+      reconciliation: {
+        statementDate: '2026-01-31',
+        statementEndingBalance: '124500.00',
+        reconciliationStatus: 'reconciled_with_adjustment',
+        explanation: null,
+        approvedAdjustment: null,
+        sourceReference: 'STAT-2026-01',
+        supportingNotes: null,
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(service.createBalanceReconciliation).not.toHaveBeenCalled();
   });
 });

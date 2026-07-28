@@ -1,6 +1,7 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { ZodError, type ZodType } from 'zod';
 import {
+  createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
   addDebtTermRequestSchema,
@@ -170,6 +171,14 @@ export const registerDebtIpcHandlers = (
     debtDetailDtoSchema,
     isTrustedSender,
     (request) => service.createBalanceSnapshot(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.createReconciliation,
+    createBalanceReconciliationRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.createBalanceReconciliation(request),
   );
   registerHandler(
     ipcMain,

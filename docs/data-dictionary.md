@@ -98,8 +98,10 @@ reversals, and other explicitly classified actual activity.
 | `updated_at_utc`             |    text |   Yes    | UTC timestamp                                        |
 
 Indexes cover debt/effective date, debt/posting date, and status. A reversal must
-reference exactly one prior transaction and originals cannot be deleted. The
-manual phase records only posted actual activity in this table.
+reference exactly one prior transaction and originals cannot be deleted. Approved
+reconciliation adjustments are explicit posted transactions with source type
+`reconciliation` and source reference pointing to the reconciliation record that
+approved them.
 
 ## `transaction_allocations`
 
@@ -161,7 +163,10 @@ date.
 | `updated_at_utc`                       |    text |   Yes    | UTC timestamp                                                                   |
 
 Debt and statement date are unique. Adjustment-reference presence must agree with
-the reconciliation status.
+the reconciliation status. The application-calculated balance is computed from
+original principal plus non-superseded posted-ledger activity through the
+statement date. The stored difference is calculated by the application and also
+checked by the database constraint.
 
 ## `audit_events`
 
@@ -183,8 +188,10 @@ Records material actions without unnecessarily duplicating financial amounts.
 Indexes cover entity lookup and event time.
 
 Manual debt maintenance records `debt_created`, `debt_updated`,
-`debt_term_created`, `debt_archived`, and `debt_restored` events. Summaries avoid
-financial amounts; update metadata identifies changed field names only.
+`debt_term_created`, `debt_archived`, and `debt_restored` events. Posted activity,
+snapshots, reconciliations, and approved reconciliation adjustments also create
+audit events. Summaries avoid financial amounts; update metadata identifies
+classifications and related record identifiers rather than financial values.
 
 ## Settings
 

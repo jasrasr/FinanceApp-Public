@@ -98,6 +98,26 @@ test('completes the manual debt-maintenance workflow', async () => {
     ).toBeVisible();
     await expect(window.getByText('$124,500.00')).toBeVisible();
 
+    await window.getByRole('button', { name: 'Record reconciliation' }).nth(0).click();
+    await window.locator('[name="reconciliation.statementDate"]').fill('2026-01-31');
+    await window
+      .locator('[name="reconciliation.statementEndingBalance"]')
+      .fill('124500.00');
+    await window
+      .locator('[name="reconciliation.reconciliationStatus"]')
+      .selectOption('reconciled');
+    await window
+      .locator('[name="reconciliation.sourceReference"]')
+      .fill('STAT-2026-01');
+    await window
+      .locator('[name="reconciliation.explanation"]')
+      .fill('Generated statement agrees to the ledger.');
+    await window.getByRole('button', { name: 'Record reconciliation' }).nth(0).click();
+    await expect(
+      window.getByText('Balance reconciliation was recorded.'),
+    ).toBeVisible();
+    await expect(window.getByText('Reconciled')).toBeVisible();
+
     await window.getByRole('button', { name: 'Reverse' }).click();
     await expect(
       window.getByRole('heading', { name: 'Reverse this transaction?' }),

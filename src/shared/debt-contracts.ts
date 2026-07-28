@@ -10,6 +10,7 @@ import {
   MANUAL_ENTRY_SOURCE_TYPES,
   PAYMENT_FREQUENCIES,
   POSTED_ACTIVITY_TRANSACTION_TYPES,
+  RECONCILIATION_STATUSES,
   TAX_CATEGORIES,
 } from './debt-options';
 
@@ -32,6 +33,8 @@ const transactionAllocationInputSchema = z
     other: optionalMoneyInputSchema,
   })
   .strict();
+
+const reconciliationStatusSchema = z.enum(RECONCILIATION_STATUSES);
 
 export const debtTermInputSchema = z
   .object({
@@ -156,6 +159,57 @@ export const createBalanceSnapshotRequestSchema = z
   })
   .strict();
 
+export const createBalanceReconciliationRequestSchema = z
+  .object({
+    debtId: uuidSchema,
+    reconciliation: z
+      .object({
+        statementDate: financialDateInputSchema,
+        statementEndingBalance: moneyInputSchema,
+        reconciliationStatus: reconciliationStatusSchema,
+        explanation: optionalTextSchema,
+        approvedAdjustment: z
+          .object({
+            totalAmount: moneyInputSchema,
+            description: requiredTextSchema,
+            allocations: transactionAllocationInputSchema,
+          })
+          .strict()
+          .nullable()
+          .optional(),
+        sourceReference: optionalTextSchema,
+        supportingNotes: optionalTextSchema,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const hasAdjustment = Boolean(value.reconciliation.approvedAdjustment);
+
+    if (
+      value.reconciliation.reconciliationStatus === 'reconciled_with_adjustment' &&
+      !hasAdjustment
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'An approved adjustment is required for this status.',
+        path: ['reconciliation', 'approvedAdjustment'],
+      });
+    }
+
+    if (
+      value.reconciliation.reconciliationStatus !== 'reconciled_with_adjustment' &&
+      hasAdjustment
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Approved adjustments are allowed only for reconciled-with-adjustment status.',
+        path: ['reconciliation', 'approvedAdjustment'],
+      });
+    }
+  });
+
 export const listDebtsRequestSchema = z
   .object({
     includeArchived: z.boolean(),
@@ -246,6 +300,24 @@ export const balanceSnapshotDtoSchema = z
   })
   .strict();
 
+export const balanceReconciliationDtoSchema = z
+  .object({
+    id: uuidSchema,
+    debtId: uuidSchema,
+    statementDate: financialDateInputSchema,
+    statementEndingBalance: z.string(),
+    applicationCalculatedBalance: z.string(),
+    calculatedDifference: z.string(),
+    reconciliationStatus: reconciliationStatusSchema,
+    explanation: z.string().nullable(),
+    approvedAdjustmentTransactionId: uuidSchema.nullable(),
+    sourceReference: z.string().nullable(),
+    supportingNotes: z.string().nullable(),
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+  })
+  .strict();
+
 export const debtSummaryDtoSchema = z
   .object({
     id: uuidSchema,
@@ -276,6 +348,7 @@ export const debtDetailDtoSchema = debtSummaryDtoSchema
     terms: z.array(debtTermDtoSchema).min(1),
     transactions: z.array(debtTransactionDtoSchema),
     balanceSnapshots: z.array(balanceSnapshotDtoSchema),
+    balanceReconciliations: z.array(balanceReconciliationDtoSchema),
     createdAtUtc: utcTimestampSchema,
     updatedAtUtc: utcTimestampSchema,
   })
@@ -320,6 +393,9 @@ export type ReverseDebtTransactionRequest = z.infer<
 export type CreateBalanceSnapshotRequest = z.infer<
   typeof createBalanceSnapshotRequestSchema
 >;
+export type CreateBalanceReconciliationRequest = z.infer<
+  typeof createBalanceReconciliationRequestSchema
+>;
 export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
 export type GetDebtRequest = z.infer<typeof getDebtRequestSchema>;
 export type ArchiveDebtRequest = z.infer<typeof archiveDebtRequestSchema>;
@@ -328,6 +404,7 @@ export type DebtTermDto = z.infer<typeof debtTermDtoSchema>;
 export type TransactionAllocationDto = z.infer<typeof transactionAllocationDtoSchema>;
 export type DebtTransactionDto = z.infer<typeof debtTransactionDtoSchema>;
 export type BalanceSnapshotDto = z.infer<typeof balanceSnapshotDtoSchema>;
+export type BalanceReconciliationDto = z.infer<typeof balanceReconciliationDtoSchema>;
 export type DebtSummaryDto = z.infer<typeof debtSummaryDtoSchema>;
 export type DebtDetailDto = z.infer<typeof debtDetailDtoSchema>;
 export type ApplicationError = z.infer<typeof applicationErrorSchema>;
