@@ -15,6 +15,11 @@ const createService = (): DebtMaintenanceService => ({
   getImportBatch: vi.fn(),
   previewImportBatchPosting: vi.fn(),
   postImportBatch: vi.fn(),
+  listPayoffScenarios: vi.fn(() => []),
+  getPayoffScenario: vi.fn(),
+  createPayoffScenario: vi.fn(),
+  rerunPayoffScenario: vi.fn(),
+  archivePayoffScenario: vi.fn(),
   updateImportSheetMapping: vi.fn(),
   updateStagedImportRowReview: vi.fn(),
   getDebt: vi.fn(),
@@ -197,5 +202,27 @@ describe('debt IPC handlers', () => {
       error: { code: 'validation' },
     });
     expect(service.postImportBatch).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid payoff scenario payloads on the projection channel', () => {
+    const service = createService();
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(registrar, service, () => true);
+
+    const result = handlers.get(DEBT_IPC_CHANNELS.createPayoffScenario)?.(event, {
+      name: 'Generated invalid scenario',
+      scenarioStartDate: '2026-07-28',
+      strategy: 'automatic',
+      extraMonthlyPayment: '250.00',
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 360,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(service.createPayoffScenario).not.toHaveBeenCalled();
   });
 });

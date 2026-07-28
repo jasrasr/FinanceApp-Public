@@ -8,7 +8,9 @@ import type {
   ApplicationError,
   ApplicationResult,
   ArchiveDebtRequest,
+  ArchivePayoffScenarioRequest,
   CreateDebtRequest,
+  CreatePayoffScenarioRequest,
   DashboardDto,
   DebtDetailDto,
   DebtSummaryDto,
@@ -16,6 +18,7 @@ import type {
   ImportBatchSummaryDto,
   ImportPostingPreviewDto,
   ImportPostingResultDto,
+  PayoffScenarioDto,
   UpdateDebtRequest,
   ReverseDebtTransactionRequest,
 } from '../../shared/debt-contracts';
@@ -29,10 +32,19 @@ import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { EditDebtForm } from './components/edit-debt-form';
 import { formatLastChanged } from './components/display-format';
+import { PayoffScenarios } from './components/payoff-scenarios';
 import { RecordTransactionForm } from './components/record-transaction-form';
 import { WorkbookImport } from './components/workbook-import';
 
-type View = 'dashboard' | 'list' | 'create' | 'detail' | 'edit' | 'add-term' | 'import';
+type View =
+  | 'dashboard'
+  | 'list'
+  | 'create'
+  | 'detail'
+  | 'edit'
+  | 'add-term'
+  | 'import'
+  | 'payoff';
 type DetailPanel = 'overview' | 'transaction' | 'snapshot' | 'reconciliation';
 type Confirmation = 'archive' | 'restore' | 'reverse' | null;
 type ReverseTarget = {
@@ -94,6 +106,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     useState<ImportPostingPreviewDto | null>(null);
   const [importPostingResult, setImportPostingResult] =
     useState<ImportPostingResultDto | null>(null);
+  const [payoffScenarios, setPayoffScenarios] = useState<readonly PayoffScenarioDto[]>(
+    [],
+  );
   const [debts, setDebts] = useState<readonly DebtSummaryDto[]>([]);
   const [selectedDebt, setSelectedDebt] = useState<DebtDetailDto | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -145,6 +160,22 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setImportBatches(result.value);
+    } else {
+      setError(result.error);
+    }
+
+    setLoading(false);
+  };
+
+  const loadPayoffScenarios = async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.listPayoffScenarios({ includeArchived: false }),
+    );
+
+    if (result.ok) {
+      setPayoffScenarios(result.value);
     } else {
       setError(result.error);
     }
@@ -227,6 +258,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setFieldErrors(undefined);
     setImportPostingResult(null);
     void loadImportBatches();
+  };
+
+  const showPayoffScenarios = (): void => {
+    setView('payoff');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setConfirmation(null);
+    setReverseTarget(null);
+    setError(null);
+    setFieldErrors(undefined);
+    void loadPayoffScenarios();
   };
 
   const selectWorkbookForImport = async (): Promise<void> => {
@@ -341,6 +383,62 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       await loadDebts();
       await loadDashboard();
       setSuccessMessage('Approved workbook rows were posted transactionally.');
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const createPayoffScenario = async (
+    request: CreatePayoffScenarioRequest,
+  ): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() => bridge.createPayoffScenario(request));
+
+    if (result.ok) {
+      setSuccessMessage('Payoff scenario was saved.');
+      await loadPayoffScenarios();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const rerunPayoffScenario = async (scenario: PayoffScenarioDto): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.rerunPayoffScenario({ id: scenario.id }),
+    );
+
+    if (result.ok) {
+      setSuccessMessage('Payoff scenario was rerun.');
+      await loadPayoffScenarios();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const archivePayoffScenario = async (scenario: PayoffScenarioDto): Promise<void> => {
+    const request: ArchivePayoffScenarioRequest = {
+      id: scenario.id,
+      expectedUpdatedAtUtc: scenario.updatedAtUtc,
+      confirmed: true,
+    };
+
+    setSaving(true);
+    setError(null);
+    const result = await invokeBridge(() => bridge.archivePayoffScenario(request));
+
+    if (result.ok) {
+      setSuccessMessage('Payoff scenario was archived.');
+      await loadPayoffScenarios();
     } else {
       handleFailure(result.error);
     }
@@ -631,6 +729,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 Workbook import
               </button>
             </li>
+            <li className="mt-1">
+              <button
+                aria-current={view === 'payoff' ? 'page' : undefined}
+                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                onClick={showPayoffScenarios}
+                type="button"
+              >
+                Payoff scenarios
+              </button>
+            </li>
           </ul>
           <div className="mt-8 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
             <p>Version {bridge.appMetadata.version}</p>
@@ -669,7 +777,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                       ? () => void loadDashboard()
                       : view === 'import'
                         ? () => void loadImportBatches()
-                        : undefined
+                        : view === 'payoff'
+                          ? () => void loadPayoffScenarios()
+                          : undefined
                 }
               />
             </div>
@@ -737,6 +847,19 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               postingResult={importPostingResult}
               saving={saving}
               selectedBatch={selectedImportBatch}
+            />
+          ) : null}
+
+          {view === 'payoff' ? (
+            <PayoffScenarios
+              error={error}
+              fieldErrors={fieldErrors}
+              loading={loading}
+              onArchive={(scenario) => void archivePayoffScenario(scenario)}
+              onCreate={(request) => void createPayoffScenario(request)}
+              onRerun={(scenario) => void rerunPayoffScenario(scenario)}
+              saving={saving}
+              scenarios={payoffScenarios}
             />
           ) : null}
 

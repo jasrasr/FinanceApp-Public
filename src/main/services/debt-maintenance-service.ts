@@ -2,24 +2,30 @@ import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
 import type {
   AddDebtTermRequest,
+  ArchivePayoffScenarioRequest,
   CreateBalanceReconciliationRequest,
   CreateBalanceSnapshotRequest,
   CreateDebtTransactionRequest,
   ArchiveDebtRequest,
   CreateDebtRequest,
+  CreatePayoffScenarioRequest,
   DashboardDto,
   DebtDetailDto,
   DebtSummaryDto,
   GetDashboardRequest,
   GetDebtRequest,
   GetImportBatchRequest,
+  GetPayoffScenarioRequest,
   ImportBatchDto,
   ImportBatchSummaryDto,
   ImportPostingPreviewDto,
   ImportPostingResultDto,
   ListDebtsRequest,
+  ListPayoffScenariosRequest,
+  PayoffScenarioDto,
   PostImportBatchRequest,
   PreviewImportBatchPostingRequest,
+  RerunPayoffScenarioRequest,
   ReverseDebtTransactionRequest,
   RestoreDebtRequest,
   SelectWorkbookForImportRequest,
@@ -30,15 +36,20 @@ import type {
 import {
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
+  archivePayoffScenarioRequestSchema,
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
   createDebtRequestSchema,
+  createPayoffScenarioRequestSchema,
   getDashboardRequestSchema,
   getDebtRequestSchema,
   getImportBatchRequestSchema,
+  getPayoffScenarioRequestSchema,
   listImportBatchesRequestSchema,
+  listPayoffScenariosRequestSchema,
   listDebtsRequestSchema,
+  rerunPayoffScenarioRequestSchema,
   reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
   selectWorkbookForImportRequestSchema,
@@ -62,6 +73,7 @@ import {
 import type { AppDatabase } from '../database/connection';
 import {
   calculateLedgerBalanceThroughDate,
+  createPayoffScenarioRecord,
   createBalanceReconciliationRecord,
   createBalanceSnapshotRecord,
   createImportBatchRecord,
@@ -70,14 +82,18 @@ import {
   getDebtActivityRecord,
   getDebtTransactionRecord,
   getImportBatchRecord,
+  getPayoffScenarioRecord,
   createDebtAndInitialTerm,
   listImportBatchRecords,
   listActiveDebtActivityRecords,
   listDebtRecords,
+  listPayoffScenarioRecords,
   postImportBatchRecord,
   RepositoryConflictError,
   RepositoryNotFoundError,
   setDebtArchivedState,
+  updatePayoffScenarioArchiveState,
+  updatePayoffScenarioResultRecord,
   updateImportSheetMappingReview,
   updateStagedImportRowReview,
   updateDebtDescriptiveRecord,
@@ -91,6 +107,7 @@ import {
   type ImportBatchWithRowsRecord,
   type ImportPostingRecord,
   type ImportSheetMappingRecord,
+  type PayoffScenarioRecord,
   type StagedImportRowRecord,
 } from '../database/debt-maintenance-repository';
 import { reversePostedTransaction } from '../database/repository';
@@ -103,6 +120,7 @@ import type {
   DebtTransactionInsert,
   ImportPostingInsert,
   ImportSheetMappingInsert,
+  PayoffScenarioInsert,
   StagedImportRowInsert,
   TransactionAllocationInsert,
 } from '../database/validation';
@@ -122,6 +140,13 @@ import {
   rateMicrosToPercentString,
 } from '../domain/accounting/interest-rate';
 import { centsToDollars } from '../domain/accounting/money';
+import {
+  PAYOFF_ENGINE_VERSION,
+  projectPayoffScenario,
+  type PayoffAssumptions,
+  type PayoffDebtInput,
+  type PayoffProjectionResult,
+} from '../domain/accounting/payoff-engine';
 import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
 import { ApplicationServiceError } from './application-error';
 import { parseWorkbookForImport } from './workbook-import-parser';
@@ -142,6 +167,13 @@ export interface DebtMaintenanceService {
     request: PreviewImportBatchPostingRequest,
   ): ImportPostingPreviewDto;
   postImportBatch(request: PostImportBatchRequest): ImportPostingResultDto;
+  listPayoffScenarios(
+    request: ListPayoffScenariosRequest,
+  ): readonly PayoffScenarioDto[];
+  getPayoffScenario(request: GetPayoffScenarioRequest): PayoffScenarioDto;
+  createPayoffScenario(request: CreatePayoffScenarioRequest): PayoffScenarioDto;
+  rerunPayoffScenario(request: RerunPayoffScenarioRequest): PayoffScenarioDto;
+  archivePayoffScenario(request: ArchivePayoffScenarioRequest): PayoffScenarioDto;
   getDebt(request: GetDebtRequest): DebtDetailDto;
   createDebt(request: CreateDebtRequest): DebtDetailDto;
   updateDebt(request: UpdateDebtRequest): DebtDetailDto;
@@ -382,6 +414,27 @@ const createImportAudit = (
   action,
   occurredAtUtc: timestamp,
   source: 'import',
+  summary,
+  beforeMetadataJson: null,
+  afterMetadataJson: afterMetadata ? JSON.stringify(afterMetadata) : null,
+});
+
+const createPayoffScenarioAudit = (
+  id: string,
+  scenarioId: string,
+  eventType: string,
+  action: string,
+  timestamp: string,
+  summary: string,
+  afterMetadata?: Record<string, unknown>,
+): AuditEventInsert => ({
+  id,
+  eventType,
+  entityType: 'payoff_scenario',
+  entityId: scenarioId,
+  action,
+  occurredAtUtc: timestamp,
+  source: 'user',
   summary,
   beforeMetadataJson: null,
   afterMetadataJson: afterMetadata ? JSON.stringify(afterMetadata) : null,
@@ -872,6 +925,133 @@ const createDashboard = (
     attentionItems: attentionItems.slice(0, 10),
   };
 };
+
+const mapPayoffResult = (
+  result: PayoffProjectionResult,
+): PayoffScenarioDto['result'] => ({
+  calculationEngineVersion: result.calculationEngineVersion,
+  scenarioStartDate: result.scenarioStartDate,
+  projectedPayoffDate: result.projectedPayoffDate,
+  totalProjectedInterest: centsToDollars(result.totalProjectedInterestCents),
+  monthlyCashRequirement: centsToDollars(result.monthlyCashRequirementCents),
+  baselineInterest: centsToDollars(result.baselineInterestCents),
+  interestSavings: centsToDollars(result.interestSavingsCents),
+  assumptions: [...result.assumptions],
+  debts: result.debts.map((debt) => ({
+    debtId: debt.debtId,
+    debtName: debt.debtName,
+    creditor: debt.creditor,
+    startingBalance: centsToDollars(debt.startingBalanceCents),
+    projectionStatus: debt.projectionStatus,
+    projectedPayoffDate: debt.projectedPayoffDate,
+    projectedInterest:
+      debt.projectedInterestCents === null
+        ? null
+        : centsToDollars(debt.projectedInterestCents),
+    requiredMonthlyPayment: centsToDollars(debt.requiredMonthlyPaymentCents),
+    warnings: [...debt.warnings],
+  })),
+  warnings: [...result.warnings],
+});
+
+const parsePayoffAssumptions = (text: string): PayoffAssumptions => {
+  const parsed = JSON.parse(text) as PayoffAssumptions;
+  return parsed;
+};
+
+const parsePayoffResult = (text: string): PayoffProjectionResult => {
+  const parsed = JSON.parse(text) as PayoffProjectionResult;
+  return parsed;
+};
+
+const mapPayoffScenario = (record: PayoffScenarioRecord): PayoffScenarioDto => {
+  const assumptions = parsePayoffAssumptions(record.assumptionsJson);
+  return {
+    id: record.id,
+    name: record.name,
+    strategy: record.strategy,
+    status: record.status,
+    scenarioStartDate: record.scenarioStartDate,
+    extraMonthlyPayment: centsToDollars(record.extraMonthlyPaymentCents),
+    customPriority: JSON.parse(record.customPriorityJson) as string[],
+    variableRateOverrides: Object.fromEntries(
+      Object.entries(assumptions.variableRateOverrides).map(([debtId, rateMicros]) => [
+        debtId,
+        rateMicrosToPercentString(rateMicros),
+      ]),
+    ),
+    maxProjectionMonths: assumptions.maxProjectionMonths,
+    result: mapPayoffResult(parsePayoffResult(record.resultJson)),
+    calculationEngineVersion: record.calculationEngineVersion,
+    createdAtUtc: record.createdAtUtc,
+    updatedAtUtc: record.updatedAtUtc,
+    archivedAtUtc: record.archivedAtUtc,
+  };
+};
+
+const buildPayoffDebtInputs = (
+  database: AppDatabase,
+  scenarioStartDate: string,
+): readonly PayoffDebtInput[] => {
+  const records = listActiveDebtActivityRecords(database);
+  const inputs = records
+    .map((record): PayoffDebtInput => ({
+      debtId: record.debt.id,
+      debtName: record.debt.name,
+      creditor: record.debt.creditor,
+      debtType: record.debt.debtType,
+      startingBalanceCents: calculateLedgerBalanceThroughDate(
+        database,
+        record.debt.id,
+        scenarioStartDate,
+      ),
+      maturityDate: record.debt.maturityDate,
+      terms: record.terms.map((term) => ({
+        effectiveStartDate: term.effectiveStartDate,
+        effectiveEndDate: term.effectiveEndDate,
+        interestRateType: term.interestRateType,
+        interestRateMicros: term.interestRateMicros,
+        requiredPaymentCents: term.requiredPaymentCents,
+        paymentFrequency: term.paymentFrequency,
+        dayCountConvention: term.dayCountConvention,
+        calculationConvention: term.calculationConvention,
+      })),
+    }))
+    .filter((debt) => debt.startingBalanceCents > 0);
+
+  if (inputs.length === 0) {
+    throw new ApplicationServiceError(
+      'validation',
+      'No active debt balances are available to project.',
+      {
+        scenarioStartDate: [
+          'Record posted balances for at least one active debt before creating a scenario.',
+        ],
+      },
+    );
+  }
+
+  return inputs;
+};
+
+const buildPayoffAssumptions = (
+  request: CreatePayoffScenarioRequest,
+): PayoffAssumptions => ({
+  scenarioStartDate: ensureCalendarDate('scenarioStartDate', request.scenarioStartDate),
+  strategy: request.strategy,
+  extraMonthlyPaymentCents: convertMoney(
+    'extraMonthlyPayment',
+    request.extraMonthlyPayment,
+  ),
+  customPriority: [...request.customPriority],
+  variableRateOverrides: Object.fromEntries(
+    Object.entries(request.variableRateOverrides).map(([debtId, rate]) => [
+      debtId,
+      convertRate(`variableRateOverrides.${debtId}`, rate),
+    ]),
+  ),
+  maxProjectionMonths: request.maxProjectionMonths,
+});
 
 const parseJsonRecord = (
   text: string,
@@ -1755,6 +1935,24 @@ export const createDebtMaintenanceService = ({
     return record;
   };
 
+  const getScenarioOrThrow = (id: string): PayoffScenarioRecord => {
+    const record = getPayoffScenarioRecord(database, id);
+
+    if (!record) {
+      throw new ApplicationServiceError('not_found', 'Payoff scenario was not found.');
+    }
+
+    return record;
+  };
+
+  const calculatePayoffResult = (
+    assumptions: PayoffAssumptions,
+  ): PayoffProjectionResult =>
+    projectPayoffScenario(
+      buildPayoffDebtInputs(database, assumptions.scenarioStartDate),
+      assumptions,
+    );
+
   const service: DebtMaintenanceService = {
     listDebts: (request) => {
       try {
@@ -2037,6 +2235,159 @@ export const createDebtMaintenanceService = ({
         });
 
         return mapImportBatch(getImportBatchOrThrow(database, parsed.batchId));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    listPayoffScenarios: (request) => {
+      try {
+        const parsed = listPayoffScenariosRequestSchema.parse(request);
+        return listPayoffScenarioRecords(database, parsed.includeArchived).map(
+          mapPayoffScenario,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getPayoffScenario: (request) => {
+      try {
+        const parsed = getPayoffScenarioRequestSchema.parse(request);
+        return mapPayoffScenario(getScenarioOrThrow(parsed.id));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    createPayoffScenario: (request) => {
+      try {
+        const parsed = createPayoffScenarioRequestSchema.parse(request);
+        const timestamp = currentUtcTimestampSchema(now());
+        const scenarioId = createId();
+        const assumptions = buildPayoffAssumptions(parsed);
+
+        if (
+          assumptions.strategy === 'custom' &&
+          assumptions.customPriority.length === 0
+        ) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              customPriority: [
+                'Custom payoff priority requires at least one debt identifier.',
+              ],
+            },
+          );
+        }
+
+        const result = calculatePayoffResult(assumptions);
+        const scenario: PayoffScenarioInsert = {
+          id: scenarioId,
+          name: parsed.name,
+          strategy: parsed.strategy,
+          status: 'active',
+          scenarioStartDate: assumptions.scenarioStartDate,
+          extraMonthlyPaymentCents: assumptions.extraMonthlyPaymentCents,
+          customPriorityJson: JSON.stringify(assumptions.customPriority),
+          assumptionsJson: JSON.stringify(assumptions),
+          resultJson: JSON.stringify(result),
+          calculationEngineVersion: PAYOFF_ENGINE_VERSION,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+          archivedAtUtc: null,
+        };
+
+        createPayoffScenarioRecord(
+          database,
+          scenario,
+          createPayoffScenarioAudit(
+            createId(),
+            scenarioId,
+            'payoff_scenario_created',
+            'create',
+            timestamp,
+            'Payoff scenario was created from posted activity and saved assumptions.',
+            {
+              strategy: parsed.strategy,
+              calculationEngineVersion: PAYOFF_ENGINE_VERSION,
+            },
+          ),
+        );
+
+        return mapPayoffScenario(getScenarioOrThrow(scenarioId));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    rerunPayoffScenario: (request) => {
+      try {
+        const parsed = rerunPayoffScenarioRequestSchema.parse(request);
+        const existing = getScenarioOrThrow(parsed.id);
+
+        if (existing.status === 'archived') {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Archived payoff scenarios cannot be rerun.',
+          );
+        }
+
+        const timestamp = nextTimestamp(now, existing.updatedAtUtc);
+        const assumptions = parsePayoffAssumptions(existing.assumptionsJson);
+        const result = calculatePayoffResult(assumptions);
+
+        updatePayoffScenarioResultRecord(database, {
+          id: parsed.id,
+          expectedUpdatedAtUtc: existing.updatedAtUtc,
+          resultJson: JSON.stringify(result),
+          calculationEngineVersion: PAYOFF_ENGINE_VERSION,
+          updatedAtUtc: timestamp,
+          audit: createPayoffScenarioAudit(
+            createId(),
+            parsed.id,
+            'payoff_scenario_rerun',
+            'rerun',
+            timestamp,
+            'Payoff scenario was rerun using its saved assumptions and current posted activity through the start date.',
+            { calculationEngineVersion: PAYOFF_ENGINE_VERSION },
+          ),
+        });
+
+        return mapPayoffScenario(getScenarioOrThrow(parsed.id));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    archivePayoffScenario: (request) => {
+      try {
+        const parsed = archivePayoffScenarioRequestSchema.parse(request);
+        const existing = getScenarioOrThrow(parsed.id);
+        const timestamp = nextTimestamp(now, existing.updatedAtUtc);
+
+        if (existing.status === 'archived') {
+          return mapPayoffScenario(existing);
+        }
+
+        updatePayoffScenarioArchiveState(database, {
+          id: parsed.id,
+          expectedUpdatedAtUtc: parsed.expectedUpdatedAtUtc,
+          status: 'archived',
+          archivedAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+          audit: createPayoffScenarioAudit(
+            createId(),
+            parsed.id,
+            'payoff_scenario_archived',
+            'archive',
+            timestamp,
+            'Payoff scenario was archived.',
+          ),
+        });
+
+        return mapPayoffScenario(getScenarioOrThrow(parsed.id));
       } catch (error) {
         return normalizeError(error);
       }

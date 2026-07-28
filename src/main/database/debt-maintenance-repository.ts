@@ -10,6 +10,7 @@ import {
   importBatches,
   importPostings,
   importSheetMappings,
+  payoffScenarios,
   stagedImportRows,
   transactionAllocations,
 } from './schema';
@@ -24,6 +25,7 @@ import {
   importBatchInsertSchema,
   importPostingInsertSchema,
   importSheetMappingInsertSchema,
+  payoffScenarioInsertSchema,
   stagedImportRowInsertSchema,
   transactionAllocationInsertSchema,
   type AuditEventInsert,
@@ -35,6 +37,7 @@ import {
   type ImportBatchInsert,
   type ImportPostingInsert,
   type ImportSheetMappingInsert,
+  type PayoffScenarioInsert,
   type StagedImportRowInsert,
   type TransactionAllocationInsert,
 } from './validation';
@@ -49,6 +52,7 @@ export type BalanceReconciliationRecord = typeof balanceReconciliations.$inferSe
 export type ImportBatchRecord = typeof importBatches.$inferSelect;
 export type ImportPostingRecord = typeof importPostings.$inferSelect;
 export type ImportSheetMappingRecord = typeof importSheetMappings.$inferSelect;
+export type PayoffScenarioRecord = typeof payoffScenarios.$inferSelect;
 export type StagedImportRowRecord = typeof stagedImportRows.$inferSelect;
 
 export interface DebtWithTermsRecord {
@@ -837,5 +841,127 @@ export const postImportBatchRecord = (
     }
     if (auditInputs.length > 0)
       transactionDb.insert(auditEvents).values(auditInputs).run();
+  });
+};
+
+export const listPayoffScenarioRecords = (
+  database: AppDatabase,
+  includeArchived: boolean,
+): readonly PayoffScenarioRecord[] => {
+  const query = database.select().from(payoffScenarios);
+  return includeArchived
+    ? query.orderBy(asc(payoffScenarios.createdAtUtc)).all()
+    : query
+        .where(eq(payoffScenarios.status, 'active'))
+        .orderBy(asc(payoffScenarios.createdAtUtc))
+        .all();
+};
+
+export const getPayoffScenarioRecord = (
+  database: AppDatabase,
+  id: string,
+): PayoffScenarioRecord | undefined =>
+  database.select().from(payoffScenarios).where(eq(payoffScenarios.id, id)).get();
+
+export const createPayoffScenarioRecord = (
+  database: AppDatabase,
+  input: PayoffScenarioInsert,
+  auditInput: AuditEventInsert,
+): void => {
+  const scenario = payoffScenarioInsertSchema.parse(input);
+  const audit = auditEventInsertSchema.parse(auditInput);
+
+  database.transaction((transaction) => {
+    transaction.insert(payoffScenarios).values(scenario).run();
+    transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const updatePayoffScenarioArchiveState = (
+  database: AppDatabase,
+  input: {
+    readonly id: string;
+    readonly expectedUpdatedAtUtc: string;
+    readonly status: PayoffScenarioRecord['status'];
+    readonly archivedAtUtc: string | null;
+    readonly updatedAtUtc: string;
+    readonly audit: AuditEventInsert;
+  },
+): void => {
+  const audit = auditEventInsertSchema.parse(input.audit);
+
+  database.transaction((transaction) => {
+    const result = transaction
+      .update(payoffScenarios)
+      .set({
+        status: input.status,
+        archivedAtUtc: input.archivedAtUtc,
+        updatedAtUtc: input.updatedAtUtc,
+      })
+      .where(
+        and(
+          eq(payoffScenarios.id, input.id),
+          eq(payoffScenarios.updatedAtUtc, input.expectedUpdatedAtUtc),
+        ),
+      )
+      .run();
+
+    if (result.changes !== 1) {
+      const existing = transaction
+        .select({ id: payoffScenarios.id })
+        .from(payoffScenarios)
+        .where(eq(payoffScenarios.id, input.id))
+        .get();
+
+      if (!existing) throw new RepositoryNotFoundError('Scenario was not found.');
+      throw new RepositoryConflictError('Scenario changed before archive update.');
+    }
+
+    transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const updatePayoffScenarioResultRecord = (
+  database: AppDatabase,
+  input: {
+    readonly id: string;
+    readonly expectedUpdatedAtUtc: string;
+    readonly resultJson: string;
+    readonly calculationEngineVersion: string;
+    readonly updatedAtUtc: string;
+    readonly audit: AuditEventInsert;
+  },
+): void => {
+  const audit = auditEventInsertSchema.parse(input.audit);
+
+  database.transaction((transaction) => {
+    const result = transaction
+      .update(payoffScenarios)
+      .set({
+        resultJson: input.resultJson,
+        calculationEngineVersion: input.calculationEngineVersion,
+        updatedAtUtc: input.updatedAtUtc,
+      })
+      .where(
+        and(
+          eq(payoffScenarios.id, input.id),
+          eq(payoffScenarios.updatedAtUtc, input.expectedUpdatedAtUtc),
+          eq(payoffScenarios.status, 'active'),
+        ),
+      )
+      .run();
+
+    if (result.changes !== 1) {
+      const existing = transaction
+        .select({ id: payoffScenarios.id })
+        .from(payoffScenarios)
+        .where(eq(payoffScenarios.id, input.id))
+        .get();
+
+      if (!existing) throw new RepositoryNotFoundError('Scenario was not found.');
+      throw new RepositoryConflictError('Scenario changed before rerun.');
+    }
+
+    transaction.insert(auditEvents).values(audit).run();
   });
 };

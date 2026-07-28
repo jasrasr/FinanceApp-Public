@@ -13,18 +13,23 @@ describe('typed preload bridge', () => {
       'appMetadata',
       'appName',
       'archiveDebt',
+      'archivePayoffScenario',
       'bridgeVersion',
       'createBalanceReconciliation',
       'createBalanceSnapshot',
       'createDebt',
       'createDebtTransaction',
+      'createPayoffScenario',
       'getDashboard',
       'getDebt',
       'getImportBatch',
+      'getPayoffScenario',
       'listDebts',
       'listImportBatches',
+      'listPayoffScenarios',
       'postImportBatch',
       'previewImportBatchPosting',
+      'rerunPayoffScenario',
       'restoreDebt',
       'reverseDebtTransaction',
       'selectWorkbookForImport',
@@ -32,9 +37,9 @@ describe('typed preload bridge', () => {
       'updateImportSheetMapping',
       'updateStagedImportRowReview',
     ]);
-    expect(bridge.bridgeVersion).toBe(8);
+    expect(bridge.bridgeVersion).toBe(9);
     expect(bridge.appMetadata).toEqual({
-      version: '0.8.0',
+      version: '0.9.0',
       lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);

@@ -91,6 +91,7 @@ describe('database migrations and isolation', () => {
       'import_batches',
       'import_postings',
       'import_sheet_mappings',
+      'payoff_scenarios',
       'staged_import_rows',
       'transaction_allocations',
     ]);

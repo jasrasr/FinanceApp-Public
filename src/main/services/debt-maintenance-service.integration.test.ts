@@ -19,6 +19,7 @@ import {
   importBatches,
   importPostings,
   importSheetMappings,
+  payoffScenarios,
   stagedImportRows,
   transactionAllocations,
 } from '../database/schema';
@@ -626,6 +627,82 @@ describe('debt creation', () => {
     expect(
       context.database.select().from(debts).where(eq(debts.id, newDebtId)).get(),
     ).toBeUndefined();
+  });
+});
+
+describe('payoff scenarios', () => {
+  it('creates, saves, reruns, and archives a scenario without writing projected ledger activity', () => {
+    const debt = service.createDebt(validRequest('Generated Payoff Scenario Note'));
+    service.createDebtTransaction(validTransactionRequest(debt.id));
+
+    const scenario = service.createPayoffScenario({
+      name: 'Generated avalanche payoff',
+      scenarioStartDate: '2026-07-28',
+      strategy: 'avalanche',
+      extraMonthlyPayment: '5000.00',
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 360,
+    });
+
+    expect(scenario).toMatchObject({
+      name: 'Generated avalanche payoff',
+      strategy: 'avalanche',
+      scenarioStartDate: '2026-07-28',
+      extraMonthlyPayment: '5000.00',
+      calculationEngineVersion: 'payoff-engine-v2',
+    });
+    expect(scenario.result.projectedPayoffDate).not.toBeNull();
+    expect(scenario.result.assumptions).toContain(
+      'Projected activity is scenario-only and is not written to the posted ledger.',
+    );
+    expect(context.database.select().from(payoffScenarios).all()).toHaveLength(1);
+    expect(context.database.select().from(debtTransactions).all()).toHaveLength(1);
+
+    const saved = service.getPayoffScenario({ id: scenario.id });
+    expect(saved.result.debts[0]).toMatchObject({
+      debtId: debt.id,
+      startingBalance: '124500.13',
+    });
+
+    const rerun = service.rerunPayoffScenario({ id: scenario.id });
+    expect(rerun.updatedAtUtc).not.toBe(scenario.updatedAtUtc);
+    expect(context.database.select().from(payoffScenarios).all()).toHaveLength(1);
+    expect(context.database.select().from(debtTransactions).all()).toHaveLength(1);
+
+    const archived = service.archivePayoffScenario({
+      id: scenario.id,
+      expectedUpdatedAtUtc: rerun.updatedAtUtc,
+      confirmed: true,
+    });
+    expect(archived.status).toBe('archived');
+    expect(service.listPayoffScenarios({ includeArchived: false })).toHaveLength(0);
+    expect(service.listPayoffScenarios({ includeArchived: true })).toHaveLength(1);
+
+    const scenarioAuditEvents = context.database
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.entityType, 'payoff_scenario'))
+      .all();
+    expect(scenarioAuditEvents.map((event) => event.eventType)).toEqual([
+      'payoff_scenario_created',
+      'payoff_scenario_rerun',
+      'payoff_scenario_archived',
+    ]);
+  });
+
+  it('rejects scenarios when no active calculated debt balance exists', () => {
+    expect(() =>
+      service.createPayoffScenario({
+        name: 'Generated empty scenario',
+        scenarioStartDate: '2026-07-28',
+        strategy: 'snowball',
+        extraMonthlyPayment: '100.00',
+        customPriority: [],
+        variableRateOverrides: {},
+        maxProjectionMonths: 120,
+      }),
+    ).toThrow(ApplicationServiceError);
   });
 });
 

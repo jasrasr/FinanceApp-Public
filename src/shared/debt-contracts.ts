@@ -9,6 +9,8 @@ import {
   INTEREST_RATE_TYPES,
   MANUAL_ENTRY_SOURCE_TYPES,
   PAYMENT_FREQUENCIES,
+  PAYOFF_SCENARIO_STATUSES,
+  PAYOFF_STRATEGIES,
   POSTED_ACTIVITY_TRANSACTION_TYPES,
   RECONCILIATION_STATUSES,
   TAX_CATEGORIES,
@@ -242,6 +244,36 @@ export const previewImportBatchPostingRequestSchema = z
   .strict();
 export const postImportBatchRequestSchema = z
   .object({ batchId: uuidSchema, confirmed: z.literal(true) })
+  .strict();
+
+const payoffStrategySchema = z.enum(PAYOFF_STRATEGIES);
+
+export const createPayoffScenarioRequestSchema = z
+  .object({
+    name: requiredTextSchema,
+    scenarioStartDate: financialDateInputSchema,
+    strategy: payoffStrategySchema,
+    extraMonthlyPayment: moneyInputSchema,
+    customPriority: z.array(uuidSchema),
+    variableRateOverrides: z.record(uuidSchema, requiredTextSchema),
+    maxProjectionMonths: z.number().int().min(1).max(600),
+  })
+  .strict();
+
+export const listPayoffScenariosRequestSchema = z
+  .object({ includeArchived: z.boolean() })
+  .strict();
+
+export const getPayoffScenarioRequestSchema = z.object({ id: uuidSchema }).strict();
+
+export const rerunPayoffScenarioRequestSchema = z.object({ id: uuidSchema }).strict();
+
+export const archivePayoffScenarioRequestSchema = z
+  .object({
+    id: uuidSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+    confirmed: z.literal(true),
+  })
   .strict();
 
 export const updateImportSheetMappingRequestSchema = z
@@ -608,6 +640,54 @@ export const importPostingResultDtoSchema = importPostingPreviewDtoSchema
   })
   .strict();
 
+export const payoffScenarioDebtResultDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    creditor: z.string(),
+    startingBalance: z.string(),
+    projectionStatus: z.enum(['projected', 'unsupported']),
+    projectedPayoffDate: financialDateInputSchema.nullable(),
+    projectedInterest: z.string().nullable(),
+    requiredMonthlyPayment: z.string(),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
+export const payoffScenarioResultDtoSchema = z
+  .object({
+    calculationEngineVersion: z.string(),
+    scenarioStartDate: financialDateInputSchema,
+    projectedPayoffDate: financialDateInputSchema.nullable(),
+    totalProjectedInterest: z.string(),
+    monthlyCashRequirement: z.string(),
+    baselineInterest: z.string(),
+    interestSavings: z.string(),
+    assumptions: z.array(z.string()),
+    debts: z.array(payoffScenarioDebtResultDtoSchema),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
+export const payoffScenarioDtoSchema = z
+  .object({
+    id: uuidSchema,
+    name: z.string(),
+    strategy: payoffStrategySchema,
+    status: z.enum(PAYOFF_SCENARIO_STATUSES),
+    scenarioStartDate: financialDateInputSchema,
+    extraMonthlyPayment: z.string(),
+    customPriority: z.array(uuidSchema),
+    variableRateOverrides: z.record(uuidSchema, z.string()),
+    maxProjectionMonths: z.number().int().positive(),
+    result: payoffScenarioResultDtoSchema,
+    calculationEngineVersion: z.string(),
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+    archivedAtUtc: utcTimestampSchema.nullable(),
+  })
+  .strict();
+
 export const applicationErrorSchema = z
   .object({
     code: z.enum([
@@ -646,6 +726,12 @@ export const importPostingPreviewResultSchema = applicationResultSchema(
 export const importPostingResultSchema = applicationResultSchema(
   importPostingResultDtoSchema,
 );
+export const payoffScenarioResultSchema = applicationResultSchema(
+  payoffScenarioDtoSchema,
+);
+export const payoffScenarioListResultSchema = applicationResultSchema(
+  z.array(payoffScenarioDtoSchema),
+);
 
 export type CreateDebtRequest = z.infer<typeof createDebtRequestSchema>;
 export type DebtCoreInput = z.infer<typeof debtCoreInputSchema>;
@@ -675,6 +761,19 @@ export type PreviewImportBatchPostingRequest = z.infer<
   typeof previewImportBatchPostingRequestSchema
 >;
 export type PostImportBatchRequest = z.infer<typeof postImportBatchRequestSchema>;
+export type CreatePayoffScenarioRequest = z.infer<
+  typeof createPayoffScenarioRequestSchema
+>;
+export type ListPayoffScenariosRequest = z.infer<
+  typeof listPayoffScenariosRequestSchema
+>;
+export type GetPayoffScenarioRequest = z.infer<typeof getPayoffScenarioRequestSchema>;
+export type RerunPayoffScenarioRequest = z.infer<
+  typeof rerunPayoffScenarioRequestSchema
+>;
+export type ArchivePayoffScenarioRequest = z.infer<
+  typeof archivePayoffScenarioRequestSchema
+>;
 export type UpdateImportSheetMappingRequest = z.infer<
   typeof updateImportSheetMappingRequestSchema
 >;
@@ -699,6 +798,8 @@ export type ImportSheetMappingDto = z.infer<typeof importSheetMappingDtoSchema>;
 export type StagedImportRowDto = z.infer<typeof stagedImportRowDtoSchema>;
 export type ImportPostingPreviewDto = z.infer<typeof importPostingPreviewDtoSchema>;
 export type ImportPostingResultDto = z.infer<typeof importPostingResultDtoSchema>;
+export type PayoffScenarioDto = z.infer<typeof payoffScenarioDtoSchema>;
+export type PayoffScenarioResultDto = z.infer<typeof payoffScenarioResultDtoSchema>;
 export type ApplicationError = z.infer<typeof applicationErrorSchema>;
 export type ApplicationResult<T> =
   | { readonly ok: true; readonly value: T }

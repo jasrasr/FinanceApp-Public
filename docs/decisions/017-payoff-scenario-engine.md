@@ -1,0 +1,55 @@
+# ADR 017: Payoff Scenario Engine and Persistence
+
+## Status
+
+Accepted.
+
+## Context
+
+Phase nine adds payoff projections for baseline, avalanche, snowball, and custom
+priority strategies. Projection results must support decision-making without
+mixing forecasted activity into posted actual ledger tables.
+
+## Decision
+
+Persist scenarios in a dedicated `payoff_scenarios` table. Store scenario input
+assumptions, custom priority, calculation result JSON, calculation-engine
+version, status, and timestamps. Do not store projected transactions in
+`debt_transactions`.
+
+The engine starts from application-calculated ledger balances as of an explicit
+scenario start date and uses effective-dated debt terms for each monthly
+projection period.
+
+The current calculation engine version is `payoff-engine-v2`.
+
+Phase-nine supported behavior is:
+
+- Monthly interest for monthly day-count terms using amortized monthly, simple,
+  or interest-only calculation conventions.
+- Actual/360 and actual/365 simple daily interest when term data is sufficient.
+- Explicit zero-interest obligations.
+- Cents rounded each month.
+- Required payments normalized to monthly equivalents.
+- Extra payments applied after scheduled payments by selected strategy.
+- Freed scheduled payments roll into the remaining prioritized debts.
+- Variable rates use explicit scenario overrides when supplied; without an
+  override, the debt is marked unsupported.
+- Revolving debts assume no future draws.
+- Balloon maturities are enforced; if balance remains at maturity, the debt is
+  marked unsupported unless a future explicit balloon-payment assumption exists.
+- Irregular or unsupported payment schedules and unsupported day-count or
+  calculation-convention combinations are marked unsupported.
+- Unsupported debts are excluded from scenario totals and receive debt-level and
+  scenario-level warnings.
+
+## Consequences
+
+- Scenario calculations are reproducible from saved assumptions, engine version,
+  and the posted ledger as of the scenario start date.
+- Actual activity remains auditable and unaffected by planning workflows.
+- Rerunning a scenario updates the saved scenario result and audit trail but does
+  not create ledger entries.
+- More precise future features, such as lender-specific amortization, tax
+  effects, irregular payment schedules, refinance analysis, and explicit
+  balloon-payment modeling, require new documented engine versions.

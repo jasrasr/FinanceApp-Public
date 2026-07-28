@@ -24,6 +24,7 @@ import {
   TRANSACTION_SOURCE_TYPES,
   TRANSACTION_TYPES,
 } from '../domain/accounting/constants';
+import { PAYOFF_SCENARIO_STATUSES, PAYOFF_STRATEGIES } from '../../shared/debt-options';
 
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991;
 const FINANCIAL_DATE_GLOB = '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]';
@@ -638,6 +639,49 @@ export const importPostings = sqliteTable(
   ],
 );
 
+export const payoffScenarios = sqliteTable(
+  'payoff_scenarios',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    strategy: text('strategy', { enum: PAYOFF_STRATEGIES }).notNull(),
+    status: text('status', { enum: PAYOFF_SCENARIO_STATUSES }).notNull(),
+    scenarioStartDate: text('scenario_start_date').notNull(),
+    extraMonthlyPaymentCents: integer('extra_monthly_payment_cents').notNull(),
+    customPriorityJson: text('custom_priority_json').notNull(),
+    assumptionsJson: text('assumptions_json').notNull(),
+    resultJson: text('result_json').notNull(),
+    calculationEngineVersion: text('calculation_engine_version').notNull(),
+    createdAtUtc: text('created_at_utc').notNull(),
+    updatedAtUtc: text('updated_at_utc').notNull(),
+    archivedAtUtc: text('archived_at_utc'),
+  },
+  (table) => [
+    index('payoff_scenarios_status_idx').on(table.status),
+    index('payoff_scenarios_start_date_idx').on(table.scenarioStartDate),
+    check(
+      'payoff_scenarios_strategy_valid',
+      sql`${table.strategy} IN (${sqlList(PAYOFF_STRATEGIES)})`,
+    ),
+    check(
+      'payoff_scenarios_status_valid',
+      sql`${table.status} IN (${sqlList(PAYOFF_SCENARIO_STATUSES)})`,
+    ),
+    check(
+      'payoff_scenarios_start_date_format',
+      sql`${table.scenarioStartDate} GLOB ${FINANCIAL_DATE_GLOB_SQL}`,
+    ),
+    check(
+      'payoff_scenarios_extra_payment_range',
+      sql`${table.extraMonthlyPaymentCents} BETWEEN 0 AND ${MAX_SAFE_INTEGER_SQL}`,
+    ),
+    check(
+      'payoff_scenarios_timestamp_format',
+      sql`${table.createdAtUtc} LIKE '%Z' AND ${table.updatedAtUtc} LIKE '%Z' AND (${table.archivedAtUtc} IS NULL OR ${table.archivedAtUtc} LIKE '%Z')`,
+    ),
+  ],
+);
+
 export const schema = {
   auditEvents,
   balanceReconciliations,
@@ -648,6 +692,7 @@ export const schema = {
   importBatches,
   importPostings,
   importSheetMappings,
+  payoffScenarios,
   stagedImportRows,
   transactionAllocations,
 };

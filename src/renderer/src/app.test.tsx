@@ -9,6 +9,7 @@ import type {
   DebtSummaryDto,
   ImportBatchDto,
   ImportPostingPreviewDto,
+  PayoffScenarioDto,
 } from '../../shared/debt-contracts';
 import { App } from './app';
 import { formatLastChanged } from './components/display-format';
@@ -18,9 +19,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 8,
+  bridgeVersion: 9,
   appMetadata: {
-    version: '0.8.0',
+    version: '0.9.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -46,6 +47,23 @@ const createBridge = (): AppBridge => ({
   updateStagedImportRowReview: vi.fn(async () => ({
     ok: true as const,
     value: sampleImportBatch,
+  })),
+  createPayoffScenario: vi.fn(async () => ({
+    ok: true as const,
+    value: samplePayoffScenario,
+  })),
+  listPayoffScenarios: vi.fn(async () => ({ ok: true as const, value: [] })),
+  getPayoffScenario: vi.fn(async () => ({
+    ok: true as const,
+    value: samplePayoffScenario,
+  })),
+  rerunPayoffScenario: vi.fn(async () => ({
+    ok: true as const,
+    value: samplePayoffScenario,
+  })),
+  archivePayoffScenario: vi.fn(async () => ({
+    ok: true as const,
+    value: { ...samplePayoffScenario, status: 'archived' as const },
   })),
   getDebt: vi.fn(),
   createDebt: vi.fn(),
@@ -184,6 +202,74 @@ const sampleImportPostingPreview: ImportPostingPreviewDto = {
       createdRecords: [],
     },
   ],
+};
+
+const samplePayoffScenario: PayoffScenarioDto = {
+  id: '77777777-7777-4777-8777-777777777777',
+  name: 'Generated avalanche scenario',
+  strategy: 'avalanche',
+  status: 'active',
+  scenarioStartDate: '2026-07-28',
+  extraMonthlyPayment: '250.00',
+  customPriority: [],
+  variableRateOverrides: {},
+  maxProjectionMonths: 360,
+  result: {
+    calculationEngineVersion: 'payoff-engine-v2',
+    scenarioStartDate: '2026-07-28',
+    projectedPayoffDate: '2030-06-28',
+    totalProjectedInterest: '11250.00',
+    monthlyCashRequirement: '2700.00',
+    baselineInterest: '12500.00',
+    interestSavings: '1250.00',
+    assumptions: [
+      'Uses application-calculated ledger balances as of the scenario start date.',
+      'Projected activity is scenario-only and is not written to the posted ledger.',
+    ],
+    warnings: [],
+    debts: [
+      {
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+        debtName: 'Fictional Equipment Note',
+        creditor: 'Harbor Ridge Cooperative',
+        startingBalance: '124500.00',
+        projectionStatus: 'projected',
+        projectedPayoffDate: '2030-06-28',
+        projectedInterest: '11250.00',
+        requiredMonthlyPayment: '2450.00',
+        warnings: [],
+      },
+    ],
+  },
+  calculationEngineVersion: 'payoff-engine-v2',
+  createdAtUtc: '2026-07-28T13:00:00.000Z',
+  updatedAtUtc: '2026-07-28T13:00:00.000Z',
+  archivedAtUtc: null,
+};
+
+const unsupportedPayoffScenario: PayoffScenarioDto = {
+  ...samplePayoffScenario,
+  id: '88888888-8888-4888-8888-888888888888',
+  name: 'Generated unsupported scenario',
+  result: {
+    ...samplePayoffScenario.result,
+    projectedPayoffDate: null,
+    totalProjectedInterest: '0.00',
+    baselineInterest: '0.00',
+    interestSavings: '0.00',
+    warnings: ['One or more debts are unsupported and excluded from scenario totals.'],
+    debts: [
+      {
+        ...samplePayoffScenario.result.debts[0]!,
+        projectionStatus: 'unsupported',
+        projectedPayoffDate: null,
+        projectedInterest: null,
+        warnings: [
+          'Payment frequency irregular is not yet supported for reliable payoff projection.',
+        ],
+      },
+    ],
+  },
 };
 
 const sampleDebtDetail: DebtDetailDto = {
@@ -388,7 +474,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.8.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.9.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -406,6 +492,49 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
     expect(screen.getByText(/No staged workbook imports yet/)).toBeVisible();
     expect(screen.getByRole('button', { name: 'Select workbook' })).toBeVisible();
+  });
+
+  it('renders saved payoff scenarios and scenario-only assumptions', async () => {
+    const bridge = createBridge();
+    bridge.listPayoffScenarios = vi.fn(async () => ({
+      ok: true as const,
+      value: [samplePayoffScenario],
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Payoff scenarios' }));
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Projection and payoff scenarios',
+      }),
+    ).toBeVisible();
+    expect(screen.getByText('Generated avalanche scenario')).toBeVisible();
+    expect(screen.getAllByText('$11,250.00').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/do not create, edit, or post ledger transactions/i),
+    ).toBeVisible();
+  });
+
+  it('identifies unsupported payoff scenario debt results without precise interest totals', async () => {
+    const bridge = createBridge();
+    bridge.listPayoffScenarios = vi.fn(async () => ({
+      ok: true as const,
+      value: [unsupportedPayoffScenario],
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Payoff scenarios' }));
+
+    expect(await screen.findByText('Generated unsupported scenario')).toBeVisible();
+    fireEvent.click(screen.getByText('Assumptions, debt results, and warnings'));
+    expect(screen.getAllByText('Unsupported').length).toBeGreaterThan(0);
+    expect(screen.getByText('Not reliable')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Payment frequency irregular is not yet supported for reliable payoff projection.',
+      ),
+    ).toBeVisible();
   });
 
   it('stages a generated workbook and displays review-only import rows', async () => {

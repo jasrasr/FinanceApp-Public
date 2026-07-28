@@ -285,6 +285,32 @@ Completed posting closes the import batch. Re-running a closed batch returns the
 existing posting provenance rather than inserting duplicate debts, terms,
 transactions, allocations, or snapshots.
 
+## `payoff_scenarios`
+
+Stores saved projection inputs and calculation results separately from posted
+actual activity.
+
+| Column                        |    Type | Required | Rule                                                         |
+| ----------------------------- | ------: | :------: | ------------------------------------------------------------ |
+| `id`                          |    text |   Yes    | Primary key; UUID                                            |
+| `name`                        |    text |   Yes    | User-facing scenario name                                    |
+| `strategy`                    |    text |   Yes    | Baseline, avalanche, snowball, or custom                     |
+| `status`                      |    text |   Yes    | Active or archived                                           |
+| `scenario_start_date`         |    text |   Yes    | Financial date for application-calculated starting balances  |
+| `extra_monthly_payment_cents` | integer |   Yes    | Nonnegative safe-integer cents                               |
+| `custom_priority_json`        |    text |   Yes    | JSON array of debt IDs for custom strategy                   |
+| `assumptions_json`            |    text |   Yes    | Versioned scenario inputs, including variable-rate overrides |
+| `result_json`                 |    text |   Yes    | Calculation-engine output captured at save or rerun time     |
+| `calculation_engine_version`  |    text |   Yes    | Engine version used to create `result_json`                  |
+| `created_at_utc`              |    text |   Yes    | UTC timestamp                                                |
+| `updated_at_utc`              |    text |   Yes    | UTC timestamp                                                |
+| `archived_at_utc`             |    text |    No    | UTC timestamp                                                |
+
+Indexes cover status and start date. Scenario results are reproducible from the
+stored assumptions, engine version, and actual ledger state as of the scenario
+start date. They are not posted transactions and must not update debts,
+transactions, snapshots, or reconciliations.
+
 ## Settings
 
 No `app_settings` table is created. Drizzle maintains migration state, and no

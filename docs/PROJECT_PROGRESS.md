@@ -5,8 +5,8 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.8.0`, aligned
-to the eight completed feature phases. Earlier phase entries did not record an
+phase seven on 2026-07-28. The current application version is `0.9.0`, aligned
+to the nine completed feature phases. Earlier phase entries did not record an
 application version at the time they were completed.
 
 ## Phase 1: Application Foundation
@@ -340,3 +340,68 @@ application version at the time they were completed.
   - No payoff projections, advanced reports, backups, exports, or packaging.
 - Recommended next phase:
   - Phase 9: Projection and payoff engine.
+
+## Phase 9: Projection and Payoff Engine
+
+- Completion date: 2026-07-28
+- Application version: 0.9.0
+- Features implemented:
+  - Saved payoff scenarios for baseline, debt avalanche, debt snowball, and
+    custom priority strategies.
+  - User-defined extra monthly payment.
+  - Scenario viewing, rerun, and archive behavior.
+  - Projected payoff date, total projected interest, monthly cash requirement,
+    and interest savings versus baseline.
+  - Displayed assumptions, effective dates, engine version, warnings, and
+    per-debt projected results.
+- Material architecture and accounting decisions:
+  - Scenario results are separate from posted actual activity.
+  - Scenario starting balances use application-calculated ledger balances as of
+    an explicit scenario start date.
+  - Effective-dated debt terms are selected for each projection month.
+  - Calculation engine version is `payoff-engine-v2`.
+  - Engine supports monthly interest, explicit zero-interest obligations, and
+    actual/360 or actual/365 simple daily interest where term data is sufficient.
+  - Variable-rate debts require explicit scenario assumptions; otherwise they
+    are marked unsupported.
+  - Revolving debts assume no future draws.
+  - Balloon maturities are enforced, and remaining balances at maturity are
+    marked unsupported without an explicit balloon-payment assumption.
+  - Irregular schedules and unsupported day-count or calculation conventions are
+    excluded from reliable scenario totals with debt-level and scenario-level
+    warnings.
+- Database schema or migration changes:
+  - Added `drizzle/0003_peaceful_ghost_rider.sql`.
+  - Added `payoff_scenarios` with saved assumptions, result JSON, calculation
+    engine version, active/archive status, and timestamps.
+- New or changed IPC operations:
+  - Added typed payoff scenario operations:
+    - `listPayoffScenarios`
+    - `getPayoffScenario`
+    - `createPayoffScenario`
+    - `rerunPayoffScenario`
+    - `archivePayoffScenario`
+  - Preload bridge advanced to version 9.
+- New UI screens or workflows:
+  - Payoff scenarios navigation item.
+  - Scenario creation form.
+  - Saved scenario list with assumption and debt-result details.
+  - Rerun and archive actions.
+- Validation and smoke-test results:
+  - Added pure projection-engine tests for payoff savings, strategy behavior,
+    daily-interest calculations, zero-interest debt, variable-rate assumptions,
+    balloon maturity, insufficient payments, and unsupported irregular schedules.
+  - Added service integration tests for saved scenarios, rerun, archive, audit
+    events, and no projected ledger writes.
+  - Added renderer and IPC tests for payoff scenario workflow and validation.
+- Known limitations and technical debt:
+  - Engine supports only documented monthly and simple daily conventions, not
+    lender-specific amortization.
+  - Custom-priority UI currently accepts debt IDs rather than a drag-and-drop
+    ordered debt list.
+  - Variable-rate overrides are supported in the service contract but not yet
+    exposed as per-debt UI fields.
+  - Explicit balloon-payment assumptions, irregular payment schedules, tax
+    effects, refinance analysis, and advanced reports are not implemented.
+- Recommended next phase:
+  - Phase 10: Advanced reports.

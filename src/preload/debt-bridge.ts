@@ -4,8 +4,10 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  createPayoffScenarioRequestSchema,
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
+  archivePayoffScenarioRequestSchema,
   createDebtRequestSchema,
   dashboardResultSchema,
   debtDetailResultSchema,
@@ -13,16 +15,21 @@ import {
   getDashboardRequestSchema,
   getDebtRequestSchema,
   getImportBatchRequestSchema,
+  getPayoffScenarioRequestSchema,
   importBatchOrNullResultSchema,
   importBatchResultSchema,
   importBatchSummaryListResultSchema,
   importPostingPreviewResultSchema,
   importPostingResultSchema,
+  listPayoffScenariosRequestSchema,
   listImportBatchesRequestSchema,
   listDebtsRequestSchema,
+  payoffScenarioListResultSchema,
+  payoffScenarioResultSchema,
   postImportBatchRequestSchema,
   previewImportBatchPostingRequestSchema,
   reverseDebtTransactionRequestSchema,
+  rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
   selectWorkbookForImportRequestSchema,
   updateImportSheetMappingRequestSchema,
@@ -32,14 +39,19 @@ import {
   type CreateBalanceReconciliationRequest,
   type CreateBalanceSnapshotRequest,
   type CreateDebtTransactionRequest,
+  type CreatePayoffScenarioRequest,
   type ArchiveDebtRequest,
+  type ArchivePayoffScenarioRequest,
   type CreateDebtRequest,
   type GetDashboardRequest,
   type GetDebtRequest,
   type GetImportBatchRequest,
+  type GetPayoffScenarioRequest,
   type ListDebtsRequest,
+  type ListPayoffScenariosRequest,
   type PostImportBatchRequest,
   type PreviewImportBatchPostingRequest,
+  type RerunPayoffScenarioRequest,
   type ReverseDebtTransactionRequest,
   type RestoreDebtRequest,
   type SelectWorkbookForImportRequest,
@@ -55,7 +67,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 8,
+    bridgeVersion: 9,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -115,6 +127,41 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.updateStagedImportRowReview,
           updateStagedImportRowReviewRequestSchema.parse(request),
+        ),
+      ),
+    createPayoffScenario: async (request: CreatePayoffScenarioRequest) =>
+      payoffScenarioResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.createPayoffScenario,
+          createPayoffScenarioRequestSchema.parse(request),
+        ),
+      ),
+    listPayoffScenarios: async (request: ListPayoffScenariosRequest) =>
+      payoffScenarioListResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.listPayoffScenarios,
+          listPayoffScenariosRequestSchema.parse(request),
+        ),
+      ),
+    getPayoffScenario: async (request: GetPayoffScenarioRequest) =>
+      payoffScenarioResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.getPayoffScenario,
+          getPayoffScenarioRequestSchema.parse(request),
+        ),
+      ),
+    rerunPayoffScenario: async (request: RerunPayoffScenarioRequest) =>
+      payoffScenarioResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.rerunPayoffScenario,
+          rerunPayoffScenarioRequestSchema.parse(request),
+        ),
+      ),
+    archivePayoffScenario: async (request: ArchivePayoffScenarioRequest) =>
+      payoffScenarioResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.archivePayoffScenario,
+          archivePayoffScenarioRequestSchema.parse(request),
         ),
       ),
     getDebt: async (request: GetDebtRequest) =>

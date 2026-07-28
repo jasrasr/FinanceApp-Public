@@ -15,6 +15,7 @@ import {
   TRANSACTION_SOURCE_TYPES,
   TRANSACTION_TYPES,
 } from '../domain/accounting/constants';
+import { PAYOFF_SCENARIO_STATUSES, PAYOFF_STRATEGIES } from '../../shared/debt-options';
 import { isFinancialDate, isUtcTimestamp } from '../domain/accounting/financial-date';
 import { calculateReconciliationDifference } from '../domain/accounting/reconciliation';
 import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
@@ -305,6 +306,22 @@ export const importPostingInsertSchema = z.object({
   createdAtUtc: utcTimestampSchema,
 });
 
+export const payoffScenarioInsertSchema = z.object({
+  id: idSchema,
+  name: requiredText,
+  strategy: z.enum(PAYOFF_STRATEGIES),
+  status: z.enum(PAYOFF_SCENARIO_STATUSES),
+  scenarioStartDate: financialDateSchema,
+  extraMonthlyPaymentCents: nonnegativeMoneyCentsSchema,
+  customPriorityJson: jsonTextSchema,
+  assumptionsJson: jsonTextSchema,
+  resultJson: jsonTextSchema,
+  calculationEngineVersion: requiredText,
+  createdAtUtc: utcTimestampSchema,
+  updatedAtUtc: utcTimestampSchema,
+  archivedAtUtc: utcTimestampSchema.nullable().optional(),
+});
+
 export type DebtInsert = z.infer<typeof debtInsertSchema>;
 export type DebtTermInsert = z.infer<typeof debtTermInsertSchema>;
 export type DebtTransactionInsert = z.infer<typeof debtTransactionInsertSchema>;
@@ -320,3 +337,4 @@ export type ImportBatchInsert = z.infer<typeof importBatchInsertSchema>;
 export type ImportSheetMappingInsert = z.infer<typeof importSheetMappingInsertSchema>;
 export type StagedImportRowInsert = z.infer<typeof stagedImportRowInsertSchema>;
 export type ImportPostingInsert = z.infer<typeof importPostingInsertSchema>;
+export type PayoffScenarioInsert = z.infer<typeof payoffScenarioInsertSchema>;

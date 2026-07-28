@@ -246,6 +246,45 @@ sheet mappings into live records.
 - Import posting does not create reconciliations. Statement reconciliations
   remain a separate workflow.
 
+## Projection and Payoff Scenarios
+
+Payoff scenarios are decision-support records. They are saved separately from
+actual debts, transactions, allocations, snapshots, and reconciliations.
+
+- Starting balances are application-calculated ledger balances as of the
+  explicit scenario start date.
+- The projection engine uses the applicable effective-dated debt term for each
+  monthly projection period.
+- Required payments are normalized to monthly equivalents by payment frequency.
+- Extra monthly payments are applied after scheduled payments according to the
+  selected strategy: baseline, debt avalanche, debt snowball, or custom priority.
+- Freed scheduled payments roll into the next prioritized debt because the
+  engine uses a constant monthly cash requirement once the scenario starts.
+- Interest is calculated only for supported conventions:
+  - Explicit zero-interest obligations accrue no interest.
+  - Monthly day-count terms with amortized monthly, simple, or interest-only
+    calculation conventions use a monthly interest period.
+  - Actual/360 and actual/365 terms with simple daily calculation use actual
+    days between monthly projection dates.
+- Zero-interest obligations accrue no interest while zero-rate terms apply.
+- Variable-rate debts require explicit scenario rate overrides. Without an
+  override, the debt is marked unsupported rather than projected with a silently
+  held rate.
+- Revolving debts assume no future draws and display that assumption.
+- Balloon maturities are enforced. If a balance remains at maturity, the debt is
+  marked unsupported because phase nine does not yet have an explicit
+  balloon-payment assumption.
+- Irregular or unsupported payment schedules are marked unsupported for
+  projection.
+- Unsupported calculation conventions or day-count combinations are marked
+  unsupported and excluded from scenario totals.
+- Insufficient payments, including periods where required payments do not cover
+  projected interest, are shown as negative-amortization warnings.
+- Negative projected balances are prevented and interest stops after payoff.
+- Scenario assumptions, results, and calculation-engine version are saved so
+  results remain reviewable and rerunnable.
+- Projected transactions are never written to the posted actual ledger.
+
 ## Corrections and Reversals
 
 Posted activity is not silently deleted or overwritten.

@@ -4,8 +4,10 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  createPayoffScenarioRequestSchema,
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
+  archivePayoffScenarioRequestSchema,
   createDebtRequestSchema,
   dashboardDtoSchema,
   debtDetailDtoSchema,
@@ -13,15 +15,19 @@ import {
   getDashboardRequestSchema,
   getDebtRequestSchema,
   getImportBatchRequestSchema,
+  getPayoffScenarioRequestSchema,
   importBatchDtoSchema,
   importBatchSummaryDtoSchema,
   importPostingPreviewDtoSchema,
   importPostingResultDtoSchema,
   listImportBatchesRequestSchema,
   listDebtsRequestSchema,
+  listPayoffScenariosRequestSchema,
+  payoffScenarioDtoSchema,
   postImportBatchRequestSchema,
   previewImportBatchPostingRequestSchema,
   reverseDebtTransactionRequestSchema,
+  rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
   selectWorkbookForImportRequestSchema,
   updateImportSheetMappingRequestSchema,
@@ -176,6 +182,46 @@ export const registerDebtIpcHandlers = (
     importPostingResultDtoSchema,
     isTrustedSender,
     (request) => service.postImportBatch(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.createPayoffScenario,
+    createPayoffScenarioRequestSchema,
+    payoffScenarioDtoSchema,
+    isTrustedSender,
+    (request) => service.createPayoffScenario(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.listPayoffScenarios,
+    listPayoffScenariosRequestSchema,
+    payoffScenarioDtoSchema.array(),
+    isTrustedSender,
+    (request) => service.listPayoffScenarios(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.getPayoffScenario,
+    getPayoffScenarioRequestSchema,
+    payoffScenarioDtoSchema,
+    isTrustedSender,
+    (request) => service.getPayoffScenario(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.rerunPayoffScenario,
+    rerunPayoffScenarioRequestSchema,
+    payoffScenarioDtoSchema,
+    isTrustedSender,
+    (request) => service.rerunPayoffScenario(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.archivePayoffScenario,
+    archivePayoffScenarioRequestSchema,
+    payoffScenarioDtoSchema,
+    isTrustedSender,
+    (request) => service.archivePayoffScenario(request),
   );
   registerHandler(
     ipcMain,

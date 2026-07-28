@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.8.0')).toBeVisible();
+    await expect(window.getByText('Version 0.9.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -145,6 +145,19 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(window.getByText('$400.00')).toBeVisible();
     await expect(window.getByText('Interest activity YTD')).toBeVisible();
     await expect(window.getByText('-$100.00')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Payoff scenarios' }).click();
+    await expect(
+      window.getByRole('heading', { name: 'Projection and payoff scenarios' }),
+    ).toBeVisible();
+    await window.getByLabel('Scenario name').fill('Generated E2E Avalanche');
+    await window.getByLabel('Scenario start date').fill('2026-07-28');
+    await window.getByLabel('Extra monthly payment').fill('250.00');
+    await window.getByRole('button', { name: 'Save scenario' }).click();
+    await expect(window.getByText('Payoff scenario was saved.')).toBeVisible();
+    await expect(window.getByText('Generated E2E Avalanche')).toBeVisible();
+    await expect(window.getByText('Savings vs baseline')).toBeVisible();
+
     await window.getByRole('button', { name: 'Debts' }).click();
     await window.getByRole('button', { name: 'View' }).click();
 

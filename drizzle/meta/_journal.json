@@ -22,6 +22,13 @@
       "when": 1785249936406,
       "tag": "0002_foamy_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785251746238,
+      "tag": "0003_peaceful_ghost_rider",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,12 @@ import type {
   ImportPostingPreviewDto,
   ImportPostingResultDto,
   ListDebtsRequest,
+  ListPayoffScenariosRequest,
+  CreatePayoffScenarioRequest,
+  GetPayoffScenarioRequest,
+  RerunPayoffScenarioRequest,
+  ArchivePayoffScenarioRequest,
+  PayoffScenarioDto,
   PostImportBatchRequest,
   PreviewImportBatchPostingRequest,
   ReverseDebtTransactionRequest,
@@ -46,6 +52,21 @@ export interface DebtBridge {
   postImportBatch(
     request: PostImportBatchRequest,
   ): Promise<ApplicationResult<ImportPostingResultDto>>;
+  createPayoffScenario(
+    request: CreatePayoffScenarioRequest,
+  ): Promise<ApplicationResult<PayoffScenarioDto>>;
+  listPayoffScenarios(
+    request: ListPayoffScenariosRequest,
+  ): Promise<ApplicationResult<readonly PayoffScenarioDto[]>>;
+  getPayoffScenario(
+    request: GetPayoffScenarioRequest,
+  ): Promise<ApplicationResult<PayoffScenarioDto>>;
+  rerunPayoffScenario(
+    request: RerunPayoffScenarioRequest,
+  ): Promise<ApplicationResult<PayoffScenarioDto>>;
+  archivePayoffScenario(
+    request: ArchivePayoffScenarioRequest,
+  ): Promise<ApplicationResult<PayoffScenarioDto>>;
   updateImportSheetMapping(
     request: UpdateImportSheetMappingRequest,
   ): Promise<ApplicationResult<ImportBatchDto>>;
@@ -74,6 +95,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 8;
+  readonly bridgeVersion: 9;
   readonly appMetadata: AppMetadataDto;
 }

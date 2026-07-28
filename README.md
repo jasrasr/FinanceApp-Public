@@ -28,6 +28,8 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Reviewed workbook import posting for approved actual rows into debts, debt
   terms, posted transactions, allocations, and balance snapshots, with batch
   previews, all-or-nothing posting, safe retry behavior, and source provenance.
+- Saved payoff scenarios using baseline, debt avalanche, debt snowball, and
+  custom-priority strategies, with rerun and archive support.
 - Restrained in-app display of the current package version and automatically
   generated last-changed timestamp.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
@@ -35,8 +37,8 @@ for maintaining debts and supporting future debt-paydown analysis.
   user-data directory.
 - Playwright-controlled Electron testing against disposable user-data directories.
 
-Payoff scenario, reporting, backup, export, and packaging workflows have not
-been implemented.
+Advanced reporting, backup, export, and packaging workflows have not been
+implemented.
 
 ## Prerequisites
 
@@ -167,6 +169,27 @@ Electron user-data directory that it removes after the workflow.
   amount.
 - Weighted-average interest rate uses current effective rates weighted by
   application-calculated ledger balances.
+
+## Projection and Payoff Scenario Rules
+
+- Scenario starting balances use application-calculated ledger balances as of an
+  explicit scenario start date.
+- Scenario results are saved separately from posted actual activity and never
+  write projected transactions to the ledger.
+- The engine uses effective-dated debt terms for each monthly projection period.
+- Interest is projected only for supported term conventions: monthly interest,
+  explicit zero-interest, and actual/360 or actual/365 simple daily interest
+  when term data is sufficient.
+- Variable-rate debts require explicit scenario rate assumptions; otherwise the
+  debt is marked unsupported for projection.
+- Revolving debts assume no future draws.
+- Balloon maturities are enforced: a debt with balance remaining at maturity is
+  marked unsupported unless a future explicit balloon-payment assumption exists.
+- Irregular or unsupported payment schedules and unsupported day-count or
+  calculation conventions are marked unsupported rather than treated as standard
+  monthly amortizing debts.
+- Saved scenarios preserve assumptions, results, and calculation-engine version
+  for review and rerun.
 
 ## Workbook Import Rules
 
