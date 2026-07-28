@@ -28,7 +28,6 @@ export interface DebtDetailProps {
   readonly onArchiveOrRestore: () => void;
   readonly onBack: () => void;
   readonly onEdit: () => void;
-  readonly onRecordSnapshot: () => void;
   readonly onRecordReconciliation: () => void;
   readonly onRecordTransaction: () => void;
   readonly onReverseTransaction: (
@@ -43,7 +42,6 @@ export const DebtDetail = ({
   onArchiveOrRestore,
   onBack,
   onEdit,
-  onRecordSnapshot,
   onRecordReconciliation,
   onRecordTransaction,
   onReverseTransaction,
@@ -100,17 +98,10 @@ export const DebtDetail = ({
             </button>
             <button
               className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-              onClick={onRecordSnapshot}
-              type="button"
-            >
-              Record snapshot
-            </button>
-            <button
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
               onClick={onRecordReconciliation}
               type="button"
             >
-              Record reconciliation
+              Reconcile balance
             </button>
           </>
         ) : null}
@@ -133,7 +124,6 @@ export const DebtDetail = ({
           Core debt information
         </h3>
         <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
-          <Definition label="Owner or entity" value={debt.ownerEntity} />
           <Definition label="Debt type" value={labelFromValue(debt.debtType)} />
           <Definition label="Status" value={labelFromValue(debt.status)} />
           <Definition label="Purpose" value={debt.purpose} />
@@ -147,8 +137,8 @@ export const DebtDetail = ({
             value={debt.maturityDate ?? 'Not provided'}
           />
           <Definition
-            label="Opening minimum payment"
-            value={`${formatDollarString(debt.minimumPayment)} · ${labelFromValue(debt.paymentFrequency)}`}
+            label="Calculated escrow balance"
+            value={formatDollarString(debt.calculatedEscrowBalance)}
           />
           <Definition
             label="Credit limit"
@@ -177,8 +167,9 @@ export const DebtDetail = ({
       <aside className="rounded-xl border border-blue-200 bg-blue-50 p-6">
         <h3 className="font-semibold text-blue-950">Balance information</h3>
         <p className="mt-2 text-sm leading-6 text-blue-900">
-          Reconciliations calculate a ledger balance as of the statement date. This is
-          not a confirmed, projected, scenario, or rolling current balance.
+          Reconciliations calculate a debt ledger balance as of the statement date.
+          Escrow deposits and disbursements are tracked separately from mortgage
+          principal.
         </p>
         <p className="mt-4 text-sm leading-6 text-blue-900">
           Statement balances, calculated balances, confirmed snapshots, and posted
@@ -282,8 +273,8 @@ export const DebtDetail = ({
             No reconciliations yet
           </h4>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-            Record a statement reconciliation after posted activity and statement
-            evidence are available for review.
+            Use Reconcile balance when statement evidence is available. The workflow
+            records the verified lender balance as a supporting confirmed snapshot.
           </p>
         </div>
       ) : (
@@ -389,16 +380,13 @@ export const DebtDetail = ({
             <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
               <tr>
                 <th className="py-3 pr-4 font-semibold" scope="col">
-                  Effective / posting
+                  Transaction date
                 </th>
                 <th className="px-4 py-3 font-semibold" scope="col">
                   Type
                 </th>
                 <th className="px-4 py-3 text-right font-semibold" scope="col">
                   Total
-                </th>
-                <th className="px-4 py-3 font-semibold" scope="col">
-                  Source
                 </th>
                 <th className="px-4 py-3 font-semibold" scope="col">
                   Description
@@ -421,21 +409,12 @@ export const DebtDetail = ({
                     <span className="block font-medium text-slate-900">
                       {transaction.effectiveDate}
                     </span>
-                    <span className="mt-1 block text-slate-500">
-                      Posted {transaction.postingDate}
-                    </span>
                   </td>
                   <td className="px-4 py-4 align-top text-slate-700">
                     {labelFromValue(transaction.transactionType)}
                   </td>
                   <td className="px-4 py-4 align-top text-right tabular-nums">
                     {formatDollarString(transaction.totalAmount)}
-                  </td>
-                  <td className="px-4 py-4 align-top text-slate-700">
-                    {labelFromValue(transaction.sourceType)}
-                    <span className="mt-1 block text-xs text-slate-500">
-                      {transaction.sourceReference ?? 'No source reference'}
-                    </span>
                   </td>
                   <td className="px-4 py-4 align-top text-slate-700">
                     {transaction.description}
@@ -507,8 +486,8 @@ export const DebtDetail = ({
             No confirmed balance snapshots yet
           </h4>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-            Record a statement or manually confirmed balance once you have external
-            evidence for a specific date.
+            Confirmed balances are now created by the combined Reconcile balance
+            workflow.
           </p>
         </div>
       ) : (
@@ -541,9 +520,6 @@ export const DebtDetail = ({
                   </td>
                   <td className="px-4 py-4 align-top text-slate-700">
                     {labelFromValue(snapshot.sourceType)}
-                    <span className="mt-1 block text-xs text-slate-500">
-                      {snapshot.sourceReference ?? 'No source reference'}
-                    </span>
                   </td>
                   <td className="px-4 py-4 align-top text-slate-700">
                     {snapshot.notes ?? '—'}

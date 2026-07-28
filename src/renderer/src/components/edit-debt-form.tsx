@@ -1,8 +1,8 @@
 import type { DebtDetailDto, UpdateDebtRequest } from '../../../shared/debt-contracts';
 import {
   DEBT_STATUSES,
-  DEBT_TYPES,
   TAX_CATEGORIES,
+  USER_SELECTABLE_DEBT_TYPES,
 } from '../../../shared/debt-options';
 import { Field, FormActions } from './form-controls';
 import { inputClassName, labelFromValue } from './form-utils';
@@ -39,7 +39,7 @@ export const EditDebtForm = ({
       changes: {
         name: value(data, 'changes.name'),
         creditor: value(data, 'changes.creditor'),
-        ownerEntity: value(data, 'changes.ownerEntity'),
+        ownerEntity: debt.ownerEntity || 'Personal',
         debtType: value(
           data,
           'changes.debtType',
@@ -94,19 +94,6 @@ export const EditDebtForm = ({
           />
         </Field>
         <Field
-          error={fieldErrors?.['changes.ownerEntity']}
-          label="Owner or entity"
-          name="changes.ownerEntity"
-        >
-          <input
-            className={inputClassName}
-            defaultValue={debt.ownerEntity}
-            id="changes.ownerEntity"
-            name="changes.ownerEntity"
-            required
-          />
-        </Field>
-        <Field
           error={fieldErrors?.['changes.debtType']}
           label="Debt type"
           name="changes.debtType"
@@ -117,7 +104,14 @@ export const EditDebtForm = ({
             id="changes.debtType"
             name="changes.debtType"
           >
-            {DEBT_TYPES.map((option) => (
+            {!USER_SELECTABLE_DEBT_TYPES.includes(
+              debt.debtType as (typeof USER_SELECTABLE_DEBT_TYPES)[number],
+            ) ? (
+              <option value={debt.debtType}>
+                {labelFromValue(debt.debtType)} — convert deliberately
+              </option>
+            ) : null}
+            {USER_SELECTABLE_DEBT_TYPES.map((option) => (
               <option key={option} value={option}>
                 {labelFromValue(option)}
               </option>

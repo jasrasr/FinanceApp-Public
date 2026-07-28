@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import type { AppBridge } from '../../shared/app-bridge';
 import type {
   CreateBalanceReconciliationRequest,
-  CreateBalanceSnapshotRequest,
   CreateDebtTransactionRequest,
   AddDebtTermRequest,
   ApplicationError,
@@ -27,7 +26,6 @@ import type {
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
 import { AdvancedReports } from './components/advanced-reports';
-import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-form';
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { ConfirmationDialog } from './components/confirmation-dialog';
 import { CreateDebtForm } from './components/create-debt-form';
@@ -52,7 +50,7 @@ type View =
   | 'payoff'
   | 'reports'
   | 'data-management';
-type DetailPanel = 'overview' | 'transaction' | 'snapshot' | 'reconciliation';
+type DetailPanel = 'overview' | 'transaction' | 'reconciliation';
 type Confirmation = 'archive' | 'restore' | 'reverse' | null;
 type ReverseTarget = {
   readonly id: string;
@@ -74,6 +72,11 @@ const invokeBridge = async <T,>(
     };
   }
 };
+
+const navigationButtonClassName = (active: boolean): string =>
+  active
+    ? 'w-full rounded-md bg-slate-200 px-3 py-2 text-left text-sm font-semibold text-slate-900 hover:bg-slate-300'
+    : 'w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200';
 
 export interface AppProps {
   readonly bridge?: AppBridge;
@@ -679,27 +682,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
-  const recordSnapshot = async (
-    request: CreateBalanceSnapshotRequest,
-  ): Promise<void> => {
-    setSaving(true);
-    setError(null);
-    setFieldErrors(undefined);
-    const result = await invokeBridge(() => bridge.createBalanceSnapshot(request));
-
-    if (result.ok) {
-      setSelectedDebt(result.value);
-      setSuccessMessage('Confirmed balance snapshot was recorded.');
-      setDetailPanel('overview');
-      await loadDebts();
-      await loadDashboard();
-    } else {
-      handleFailure(result.error);
-    }
-
-    setSaving(false);
-  };
-
   const recordReconciliation = async (
     request: CreateBalanceReconciliationRequest,
   ): Promise<void> => {
@@ -829,7 +811,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             <li>
               <button
                 aria-current={view === 'dashboard' ? 'page' : undefined}
-                className="w-full rounded-md bg-slate-200 px-3 py-2 text-left text-sm font-semibold text-slate-900 hover:bg-slate-300"
+                className={navigationButtonClassName(view === 'dashboard')}
                 onClick={showDashboard}
                 type="button"
               >
@@ -839,7 +821,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             <li className="mt-1">
               <button
                 aria-current={view === 'list' ? 'page' : undefined}
-                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                className={navigationButtonClassName(view === 'list')}
                 onClick={showList}
                 type="button"
               >
@@ -849,7 +831,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             <li className="mt-1">
               <button
                 aria-current={view === 'import' ? 'page' : undefined}
-                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                className={navigationButtonClassName(view === 'import')}
                 onClick={showImports}
                 type="button"
               >
@@ -859,7 +841,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             <li className="mt-1">
               <button
                 aria-current={view === 'payoff' ? 'page' : undefined}
-                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                className={navigationButtonClassName(view === 'payoff')}
                 onClick={showPayoffScenarios}
                 type="button"
               >
@@ -869,7 +851,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             <li className="mt-1">
               <button
                 aria-current={view === 'reports' ? 'page' : undefined}
-                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                className={navigationButtonClassName(view === 'reports')}
                 onClick={showReports}
                 type="button"
               >
@@ -879,7 +861,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             <li className="mt-1">
               <button
                 aria-current={view === 'data-management' ? 'page' : undefined}
-                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                className={navigationButtonClassName(view === 'data-management')}
                 onClick={showDataManagement}
                 type="button"
               >
@@ -1090,36 +1072,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 </section>
               ) : null}
 
-              {detailPanel === 'snapshot' ? (
-                <section
-                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
-                  aria-labelledby="snapshot-workflow-heading"
-                >
-                  <p className="text-sm font-medium text-slate-500">
-                    {selectedDebt.name}
-                  </p>
-                  <h2
-                    className="mt-1 text-3xl font-semibold tracking-tight"
-                    id="snapshot-workflow-heading"
-                  >
-                    Record balance snapshot
-                  </h2>
-                  <div className="mt-8">
-                    <RecordBalanceSnapshotForm
-                      busy={saving}
-                      debt={selectedDebt}
-                      fieldErrors={fieldErrors}
-                      onCancel={() => {
-                        setDetailPanel('overview');
-                        setError(null);
-                        setFieldErrors(undefined);
-                      }}
-                      onSubmit={(request) => void recordSnapshot(request)}
-                    />
-                  </div>
-                </section>
-              ) : null}
-
               {detailPanel === 'reconciliation' ? (
                 <section
                   className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
@@ -1132,7 +1084,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                     className="mt-1 text-3xl font-semibold tracking-tight"
                     id="reconciliation-workflow-heading"
                   >
-                    Record balance reconciliation
+                    Reconcile balance
                   </h2>
                   <div className="mt-8">
                     <RecordBalanceReconciliationForm
@@ -1167,12 +1119,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   setFieldErrors(undefined);
                   setDetailPanel('overview');
                   setView('edit');
-                }}
-                onRecordSnapshot={() => {
-                  setError(null);
-                  setFieldErrors(undefined);
-                  setSuccessMessage(null);
-                  setDetailPanel('snapshot');
                 }}
                 onRecordReconciliation={() => {
                   setError(null);

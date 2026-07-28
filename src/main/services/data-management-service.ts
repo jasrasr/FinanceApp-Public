@@ -492,7 +492,7 @@ export const createDataManagementService = ({
       'actual-debts.csv',
       queryRows(
         sqlite,
-        `select id, name, creditor, owner_entity, debt_type, purpose, status,
+        `select id, name, creditor, debt_type, purpose, status,
           original_principal_cents, origination_date, maturity_date,
           minimum_payment_cents, payment_frequency, credit_limit_cents,
           collateral_description, tax_category, deductible_percentage_bps,
@@ -514,7 +514,11 @@ export const createDataManagementService = ({
       'actual-posted-transactions.csv',
       queryRows(
         sqlite,
-        "select *, 'actual/posted ledger activity' as value_basis from debt_transactions order by effective_date, created_at_utc",
+        `select id, debt_id, transaction_type, effective_date as transaction_date,
+          total_amount_cents, status, description, reversal_of_transaction_id,
+          supersedes_transaction_id, created_at_utc, updated_at_utc,
+          'actual/posted ledger activity' as value_basis
+        from debt_transactions order by effective_date, created_at_utc`,
       ),
     );
     fileCount += writeCsvFile(
@@ -522,7 +526,16 @@ export const createDataManagementService = ({
       'actual-transaction-allocations.csv',
       queryRows(
         sqlite,
-        "select *, 'actual/posted allocation detail' as value_basis from transaction_allocations order by transaction_id, allocation_type",
+        `select id, transaction_id,
+          case when allocation_type = 'extra_principal' then 'principal' else allocation_type end as allocation_type,
+          amount_cents, notes, created_at_utc, updated_at_utc,
+          case
+            when allocation_type = 'escrow' then 'actual/posted escrow allocation detail'
+            else 'actual/posted allocation detail'
+          end as value_basis
+        from transaction_allocations
+        where allocation_type <> 'other'
+        order by transaction_id, allocation_type`,
       ),
     );
     fileCount += writeCsvFile(

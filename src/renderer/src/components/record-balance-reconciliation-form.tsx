@@ -30,8 +30,6 @@ const allocationFields = [
   ['escrow', 'Escrow'],
   ['fee', 'Fees'],
   ['penalty', 'Penalties'],
-  ['extraPrincipal', 'Extra principal'],
-  ['other', 'Other'],
 ] as const;
 
 export const RecordBalanceReconciliationForm = ({
@@ -61,7 +59,10 @@ export const RecordBalanceReconciliationForm = ({
         approvedAdjustment: includesAdjustment
           ? {
               totalAmount: value(data, 'reconciliation.approvedAdjustment.totalAmount'),
-              description: value(data, 'reconciliation.approvedAdjustment.description'),
+              description: nullableValue(
+                data,
+                'reconciliation.approvedAdjustment.description',
+              ),
               allocations: {
                 principal: nullableValue(
                   data,
@@ -83,18 +84,12 @@ export const RecordBalanceReconciliationForm = ({
                   data,
                   'reconciliation.approvedAdjustment.allocations.penalty',
                 ),
-                extraPrincipal: nullableValue(
-                  data,
-                  'reconciliation.approvedAdjustment.allocations.extraPrincipal',
-                ),
-                other: nullableValue(
-                  data,
-                  'reconciliation.approvedAdjustment.allocations.other',
-                ),
+                extraPrincipal: null,
+                other: null,
               },
             }
           : null,
-        sourceReference: nullableValue(data, 'reconciliation.sourceReference'),
+        sourceReference: null,
         supportingNotes: nullableValue(data, 'reconciliation.supportingNotes'),
       },
     });
@@ -107,14 +102,15 @@ export const RecordBalanceReconciliationForm = ({
       onSubmit={submit}
     >
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
-        Record a statement reconciliation. Debt Tracker calculates the ledger balance
-        and difference when you save; the difference is not manually entered.
+        Enter the verified lender balance once. Debt Tracker records it as supporting
+        confirmed balance evidence and calculates the ledger difference through the same
+        date without overwriting posted activity.
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Field
           error={fieldErrors?.['reconciliation.statementDate']}
-          label="Statement date"
+          label="Reconciliation date"
           name="reconciliation.statementDate"
         >
           <input
@@ -128,8 +124,8 @@ export const RecordBalanceReconciliationForm = ({
         </Field>
         <Field
           error={fieldErrors?.['reconciliation.statementEndingBalance']}
-          hint="Enter the external statement balance as a positive obligation."
-          label="Statement ending balance"
+          hint="Enter the verified lender balance as a positive obligation."
+          label="Verified lender balance"
           name="reconciliation.statementEndingBalance"
         >
           <input
@@ -163,18 +159,6 @@ export const RecordBalanceReconciliationForm = ({
               </option>
             ))}
           </select>
-        </Field>
-        <Field
-          error={fieldErrors?.['reconciliation.sourceReference']}
-          label="Statement reference"
-          name="reconciliation.sourceReference"
-          optional
-        >
-          <input
-            className={inputClassName}
-            id="reconciliation.sourceReference"
-            name="reconciliation.sourceReference"
-          />
         </Field>
         <div className="lg:col-span-2">
           <Field
@@ -241,12 +225,12 @@ export const RecordBalanceReconciliationForm = ({
               error={fieldErrors?.['reconciliation.approvedAdjustment.description']}
               label="Adjustment description"
               name="reconciliation.approvedAdjustment.description"
+              optional
             >
               <input
                 className={inputClassName}
                 id="reconciliation.approvedAdjustment.description"
                 name="reconciliation.approvedAdjustment.description"
-                required
               />
             </Field>
             {allocationFields.map(([fieldName, label]) => (
@@ -273,11 +257,7 @@ export const RecordBalanceReconciliationForm = ({
         </section>
       ) : null}
 
-      <FormActions
-        busy={busy}
-        onCancel={onCancel}
-        submitLabel="Record reconciliation"
-      />
+      <FormActions busy={busy} onCancel={onCancel} submitLabel="Reconcile balance" />
     </form>
   );
 };

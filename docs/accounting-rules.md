@@ -56,14 +56,19 @@ Transaction totals and allocations are signed changes to the obligation:
 - Interest charges are positive.
 - Fees and penalties are positive.
 - Payments are negative.
+- Escrow disbursements and refunds reduce the escrow asset balance and are
+  positive posted transaction totals under the debt-ledger sign convention.
+- Escrow adjustments may be positive or negative when explicitly classified.
 - Principal and reconciliation adjustments may be positive or negative when
   explicitly classified.
 - Reversals have the exact opposite sign and amount of the original.
 - Other activity may be positive or negative but requires explicit description.
 
 Allocations use the same sign as the transaction total and must sum exactly to
-that total. Principal, interest, escrow, fees, penalties, extra principal, and
-other amounts remain separately classified.
+that total. User-facing transaction entry classifies amounts as principal,
+interest, escrow, fees, or penalties. Principal includes all principal paid,
+including additional principal. Legacy extra-principal and other allocation rows
+remain readable for compatibility but are not new user-facing categories.
 
 For example, a generated payment of `-500.00` may allocate `-400.00` to principal
 and `-100.00` to interest. A separately posted interest charge is positive.
@@ -79,10 +84,30 @@ projected, and scenario statuses are prohibited by validation and database
 constraints.
 
 For statement reconciliation, the application-calculated balance equals original
-principal plus non-superseded ledger transaction totals with effective dates on
-or before the statement date. Reversed originals remain in the historical
-calculation; their linked reversal rows offset them when the reversal effective
-date is also on or before the statement date.
+principal plus non-superseded ledger transaction totals, excluding escrow
+allocations, with effective dates on or before the statement date. Reversed
+originals remain in the historical calculation; their linked reversal rows offset
+them when the reversal effective date is also on or before the statement date.
+
+## Mortgage Escrow Tracking
+
+Mortgage escrow is tracked separately from debt principal and interest.
+
+- A mortgage payment may include an escrow allocation. Under the signed payment
+  convention, a negative escrow allocation is an escrow deposit and increases the
+  calculated escrow balance.
+- Escrow disbursements for real estate taxes, homeowners insurance, mortgage
+  insurance, or other explicitly identified escrow expenses reduce the calculated
+  escrow balance.
+- Escrow refunds reduce the calculated escrow balance and do not reduce mortgage
+  principal.
+- Escrow adjustments may increase or decrease the escrow balance when explicitly
+  classified.
+- Escrow activity never changes mortgage principal unless the same transaction
+  also contains a separate principal allocation.
+
+The calculated escrow balance is derived from posted escrow allocations and is
+displayed separately from the debt ledger balance.
 
 ## Effective-Dated Terms
 
@@ -101,9 +126,10 @@ Material terms are stored as historical periods:
 - Rate, required payment, payment frequency, day-count, and calculation changes
   require a new term rather than a debt-row edit.
 
-The debt table's minimum payment and frequency capture opening debt-level
-information. Effective-dated `debt_terms` records are the historical source for
-contractual changes and are used for list and detail term displays.
+Effective-dated `debt_terms` records are authoritative for required payment and
+payment frequency. The debt table's minimum payment and frequency fields are
+retained for database compatibility and are populated from the initial term for
+new manual debts.
 
 ## Manual Debt Maintenance
 
@@ -126,6 +152,9 @@ contractual changes and are used for list and detail term displays.
 - This phase records only posted actual activity in that ledger.
 - Transaction totals and allocation amounts are signed and must reconcile to one
   another under the documented sign convention.
+- Manual transaction entry exposes one Transaction Date. The application uses
+  that date as both the posting date and the accounting effective date for
+  manually recorded activity.
 - Posted transactions may be reversed only by a new linked reversal transaction;
   the original row remains stored and is marked reversed.
 - Confirmed balance snapshots are separate evidence records and never overwrite
@@ -137,9 +166,10 @@ contractual changes and are used for list and detail term displays.
 ## Confirmed Balances and Reconciliation
 
 A balance snapshot records external evidence and never alters ledger activity.
-A balance reconciliation records the comparison between a statement balance and
-the ledger balance calculated through the same statement date. It does not alter
-confirmed snapshots.
+The user-facing balance workflow is Reconcile Balance: it records the verified
+lender balance as a supporting confirmed snapshot, calculates the ledger balance
+through the same reconciliation date, and creates a reconciliation record. It
+does not silently overwrite ledger activity.
 
 Reconciliation difference is:
 
@@ -181,7 +211,7 @@ Dashboard year-to-date metrics use posted non-superseded actual activity dated
 January 1 through the dashboard effective date:
 
 - Principal reduction is the positive display of negative principal and
-  extra-principal allocations.
+  legacy extra-principal allocations.
 - New borrowings are borrowing and draw transaction totals.
 - Interest activity is the net signed interest allocation total. Negative values
   generally indicate interest paid through payment allocations; positive values

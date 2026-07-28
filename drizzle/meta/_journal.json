@@ -29,6 +29,13 @@
       "when": 1785251746238,
       "tag": "0003_peaceful_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785265564147,
+      "tag": "0004_youthful_starbolt",
+      "breakpoints": true
     }
   ]
 }

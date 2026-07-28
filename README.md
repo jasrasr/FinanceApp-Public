@@ -11,14 +11,14 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Main-process-only SQLite access through better-sqlite3 and Drizzle ORM.
 - Generated Drizzle migrations and isolated file-backed temporary test databases.
 - Zod validation and pure accounting boundary helpers.
-- Manual debt maintenance: list, create, detail, descriptive update, archive, and
-  restore.
+- Manual debt maintenance for a single personal user: list, create, detail,
+  descriptive update, archive, and restore.
 - Initial and subsequent effective-dated debt-term periods with preserved history.
 - Manual posted activity entry for payments, draws, fees, penalties, interest,
-  principal adjustments, other transactions, reversals, and confirmed balance
-  snapshots.
+  principal adjustments, mortgage escrow activity, and reversals.
 - Statement-based balance reconciliation against the ledger balance calculated
-  through the statement date, including explicit approved adjustment postings.
+  through the reconciliation date, including a supporting confirmed balance
+  snapshot and explicit approved adjustment postings.
 - Basic dashboard with active-debt totals, year-to-date posted activity metrics,
   current-term payment and rate summaries, upcoming maturities, and open
   reconciliation attention items.
@@ -168,17 +168,29 @@ Electron user-data directory that it removes after the workflow.
 ## Debt Maintenance Rules
 
 - Original principal and origination date are opening facts.
-- Debt-level opening minimum payment and payment frequency are captured at
-  creation.
+- The user-facing workflow is single-user and does not ask for Owner/Entity.
+  Existing owner/entity data is preserved internally for database compatibility.
+- Effective-dated debt terms are authoritative for required payment and payment
+  frequency. Debt-level opening payment fields remain only for compatibility with
+  existing migrations and records.
+- Student, medical, and tax debt types are no longer offered for new manual
+  debts. Existing records using those legacy types remain readable and require
+  deliberate conversion.
 - Later rate, required-payment, frequency, day-count, or calculation changes
   require a new effective-dated term.
 - A new term is appended after the latest term; an open prior term is closed on
   the day before the new effective date.
 - Archive and restore preserve every term and create audit events.
-- Reconciliations calculate a ledger balance only as of the statement date. The
-  app still does not display a rolling authoritative current balance.
+- Reconciliations calculate a ledger balance only as of the reconciliation date.
+  The app still does not display a rolling authoritative current balance from
+  user-facing transaction screens.
 - Posted transactions and confirmed snapshots are recorded separately from future
   projected or scenario activity.
+- Manual transaction entry uses one user-facing Transaction Date for both posting
+  and accounting effect.
+- Principal allocation includes all principal paid, including additional
+  principal. Escrow deposits and disbursements are tracked separately and do not
+  change mortgage principal.
 - Reversal transactions preserve the original posted row and its allocations.
 - Statement balances, confirmed snapshots, ledger-calculated balances, and
   posted transactions are separate records.
@@ -192,7 +204,9 @@ Electron user-data directory that it removes after the workflow.
   displayed dashboard effective date.
 - Year-to-date metrics use posted non-superseded activity from January 1 through
   the dashboard effective date.
-- Principal reduction counts negative principal and extra-principal allocations.
+- Principal reduction counts negative principal allocations, including additional
+  principal paid through the principal category. Legacy extra-principal
+  allocations remain readable for existing records.
 - New borrowings count posted borrowing and draw transaction totals.
 - Interest activity is the net signed interest allocation total.
 - Required monthly payments use current effective debt terms, normalized to a
@@ -233,8 +247,8 @@ Electron user-data directory that it removes after the workflow.
 - Rollforward, trend, balance-history, maturity, sensitivity, variance, and
   exception reports state their date range, effective date, balance basis, and
   assumptions.
-- Filters support date range, debt, owner/entity, debt type, and status where
-  relevant.
+- Filters support date range, debt, debt type, and status where relevant.
+- Report sections are collapsed by default and can be expanded independently.
 - Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
   engine and inherit its unsupported-term warnings.
 - Actual-versus-plan variance uses saved payoff scenarios. Because saved

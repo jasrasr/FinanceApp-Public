@@ -38,7 +38,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.12.0')).toBeVisible();
+      await expect(window.getByText('Version 0.13.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();
@@ -138,12 +138,10 @@ const createGeneratedDebt = async (
   }
   await window.getByLabel('Debt name').fill(name);
   await window.getByLabel('Creditor').fill('Packaged Smoke Fictional Credit Union');
-  await window.getByLabel('Owner or entity').fill('Generated Packaging Entity');
   await window.getByLabel('Debt type').selectOption('business');
   await window.getByLabel('Original principal').fill(principal);
   await window.getByLabel('Origination date').fill('2026-01-15');
   await window.getByLabel(/Maturity date/).fill(maturity);
-  await window.getByLabel('Minimum payment').fill(payment);
   await window.getByLabel('Tax category').selectOption('business');
   await window.getByLabel('Deductible percentage').fill('0');
   await window.getByLabel('Purpose').fill('Generated packaging smoke workflow');

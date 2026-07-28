@@ -14,15 +14,14 @@ import type {
 } from '../../shared/debt-contracts';
 import { App } from './app';
 import { formatLastChanged } from './components/display-format';
-import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-form';
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 11,
+  bridgeVersion: 12,
   appMetadata: {
-    version: '0.12.0',
+    version: '0.13.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -594,6 +593,7 @@ const sampleDebtDetail: DebtDetailDto = {
       updatedAtUtc: '2026-07-27T13:00:00.000Z',
     },
   ],
+  calculatedEscrowBalance: '0.00',
   archivedAtUtc: null,
   createdAtUtc: '2026-07-27T13:00:00.000Z',
   updatedAtUtc: '2026-07-27T13:00:00.000Z',
@@ -660,7 +660,9 @@ describe('debt maintenance application', () => {
     render(<App bridge={bridge} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'View' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Open Fictional Equipment Note/ }),
+    );
     expect(
       await screen.findByRole('heading', { name: sampleDebtDetail.name }),
     ).toBeVisible();
@@ -675,8 +677,8 @@ describe('debt maintenance application', () => {
       screen.getByRole('heading', { name: 'Balance reconciliations' }),
     ).toBeVisible();
     expect(screen.getByRole('button', { name: 'Record transaction' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Record snapshot' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Record reconciliation' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Record snapshot' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Reconcile balance' })).toBeVisible();
   });
 
   it('renders dashboard metrics and empty dashboard sections', async () => {
@@ -696,7 +698,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.12.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.13.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -713,18 +715,20 @@ describe('debt maintenance application', () => {
     expect(
       await screen.findByRole('heading', { name: 'Debt reporting' }),
     ).toBeVisible();
-    expect(
-      screen.getByRole('heading', { name: 'Monthly debt rollforward' }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('heading', { name: 'Debt balance history by obligation' }),
-    ).toBeVisible();
+    expect(screen.getByText('Monthly debt rollforward')).toBeVisible();
+    expect(screen.getByText('Debt balance history by obligation')).toBeVisible();
+    const trendsSummary = screen.getByText(
+      'Principal, interest, borrowing, and payment trends',
+    );
+    const trendsReport = trendsSummary.closest('details');
+    expect(trendsReport).not.toHaveAttribute('open');
+    fireEvent.click(trendsSummary);
+    expect(trendsReport).toHaveAttribute('open');
     expect(
       screen.getAllByText(
         /Application-calculated ledger balances from posted actual activity/i,
       ).length,
     ).toBeGreaterThan(0);
-    expect(screen.getAllByText('Fictional Equipment Note').length).toBeGreaterThan(0);
     expect(
       screen.getByRole('img', { name: /principal reduction by period/i }),
     ).toBeVisible();
@@ -855,25 +859,12 @@ describe('debt maintenance application', () => {
     );
 
     expect(screen.getByLabelText(/Transaction type/)).toBeVisible();
-    expect(screen.getByLabelText(/Source type/)).toBeVisible();
+    expect(screen.getByLabelText(/Transaction date/)).toBeVisible();
+    expect(screen.queryByLabelText(/Source type/)).toBeNull();
     expect(screen.getByLabelText(/Total amount/)).toBeVisible();
     expect(screen.getByLabelText(/Principal/)).toBeVisible();
-  });
-
-  it('renders the record-balance-snapshot form controls', () => {
-    render(
-      <RecordBalanceSnapshotForm
-        busy={false}
-        debt={sampleDebtDetail}
-        fieldErrors={undefined}
-        onCancel={vi.fn()}
-        onSubmit={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByLabelText(/Effective date/)).toBeVisible();
-    expect(screen.getByLabelText(/Confirmed balance/)).toBeVisible();
-    expect(screen.getByLabelText(/Source type/)).toBeVisible();
+    expect(screen.queryByLabelText(/Extra principal/)).toBeNull();
+    expect(screen.queryByLabelText(/^Other/)).toBeNull();
   });
 
   it('renders the record-balance-reconciliation form controls', () => {
@@ -887,9 +878,10 @@ describe('debt maintenance application', () => {
       />,
     );
 
-    expect(screen.getByLabelText(/Statement date/)).toBeVisible();
-    expect(screen.getByLabelText(/Statement ending balance/)).toBeVisible();
+    expect(screen.getByLabelText(/Reconciliation date/)).toBeVisible();
+    expect(screen.getByLabelText(/Verified lender balance/)).toBeVisible();
     expect(screen.getByLabelText(/Reconciliation status/)).toBeVisible();
+    expect(screen.queryByLabelText(/Statement reference/)).toBeNull();
   });
 
   it('renders a recoverable failure state when the secure bridge fails', async () => {

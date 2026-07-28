@@ -421,6 +421,100 @@ describe('debt creation', () => {
     expect(eventTypes).toContain('transaction_recorded');
   });
 
+  it('accepts simplified transaction input without user-facing source or description fields', () => {
+    const created = service.createDebt(validRequest());
+    const updated = service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2026-02-01',
+        postingDate: '2026-02-01',
+        status: 'posted',
+        totalAmount: '-750.00',
+        description: null,
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '-600.00',
+          interest: '-150.00',
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    expect(updated.transactions[0]).toMatchObject({
+      effectiveDate: '2026-02-01',
+      postingDate: '2026-02-01',
+      sourceType: 'manual',
+      sourceReference: null,
+    });
+    expect(updated.transactions[0]?.description).toContain('Manual payment');
+  });
+
+  it('tracks mortgage escrow deposits and disbursements separately from principal debt balance', () => {
+    const request = validRequest('Fictional Mortgage With Escrow');
+    request.debt.debtType = 'mortgage';
+    request.debt.taxCategory = 'mortgage_interest';
+    const created = service.createDebt(request);
+
+    const afterPayment = service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2026-03-01',
+        postingDate: '2026-03-01',
+        status: 'posted',
+        totalAmount: '-1800.00',
+        description: null,
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '-1000.00',
+          interest: '-500.00',
+          escrow: '-300.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    const afterDisbursement = service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        transactionType: 'escrow_disbursement',
+        effectiveDate: '2026-04-01',
+        postingDate: '2026-04-01',
+        status: 'posted',
+        totalAmount: '125.00',
+        description: 'Generated real estate tax escrow disbursement.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: null,
+          interest: null,
+          escrow: '125.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    expect(afterPayment.calculatedEscrowBalance).toBe('300.00');
+    expect(afterDisbursement.calculatedEscrowBalance).toBe('175.00');
+    expect(
+      afterDisbursement.transactions
+        .flatMap((transaction) => transaction.allocations)
+        .filter((allocation) => allocation.allocationType === 'escrow'),
+    ).toHaveLength(2);
+  });
+
   it('records a confirmed balance snapshot without altering posted activity', () => {
     const created = service.createDebt(validRequest());
     const updated = service.createBalanceSnapshot(validSnapshotRequest(created.id));
@@ -455,6 +549,7 @@ describe('debt creation', () => {
       .map((event) => event.eventType);
 
     expect(updated.balanceReconciliations).toHaveLength(1);
+    expect(updated.balanceSnapshots).toHaveLength(1);
     expect(updated.balanceReconciliations[0]).toMatchObject({
       statementEndingBalance: '124500.13',
       applicationCalculatedBalance: '124500.13',
@@ -462,7 +557,9 @@ describe('debt creation', () => {
       reconciliationStatus: 'reconciled',
     });
     expect(reconciliations).toHaveLength(1);
+    expect(context.database.select().from(balanceSnapshots).all()).toHaveLength(1);
     expect(eventTypes).toContain('balance_reconciliation_recorded');
+    expect(eventTypes).toContain('balance_snapshot_recorded');
   });
 
   it('rejects reconciled status when the calculated difference is nonzero', () => {

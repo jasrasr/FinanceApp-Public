@@ -134,7 +134,7 @@ export const createDebtTransactionRequestSchema = z
         postingDate: financialDateInputSchema,
         status: z.literal('posted'),
         totalAmount: moneyInputSchema,
-        description: requiredTextSchema,
+        description: optionalTextSchema,
         sourceType: z.enum(MANUAL_ENTRY_SOURCE_TYPES),
         sourceReference: optionalTextSchema,
         allocations: transactionAllocationInputSchema,
@@ -187,7 +187,7 @@ export const createBalanceReconciliationRequestSchema = z
         approvedAdjustment: z
           .object({
             totalAmount: moneyInputSchema,
-            description: requiredTextSchema,
+            description: optionalTextSchema,
             allocations: transactionAllocationInputSchema,
           })
           .strict()
@@ -401,6 +401,9 @@ export const debtTransactionDtoSchema = z
       'penalty',
       'interest_charge',
       'principal_adjustment',
+      'escrow_disbursement',
+      'escrow_adjustment',
+      'escrow_refund',
       'approved_reconciliation_adjustment',
       'reversal',
       'other',
@@ -483,6 +486,7 @@ export const debtDetailDtoSchema = debtSummaryDtoSchema
     transactions: z.array(debtTransactionDtoSchema),
     balanceSnapshots: z.array(balanceSnapshotDtoSchema),
     balanceReconciliations: z.array(balanceReconciliationDtoSchema),
+    calculatedEscrowBalance: z.string(),
     createdAtUtc: utcTimestampSchema,
     updatedAtUtc: utcTimestampSchema,
   })

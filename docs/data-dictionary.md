@@ -16,32 +16,38 @@
 Identifies and classifies an obligation. It does not contain an authoritative
 mutable current-balance field.
 
-| Column                      |    Type | Required | Rule                                                                                    |
-| --------------------------- | ------: | :------: | --------------------------------------------------------------------------------------- |
-| `id`                        |    text |   Yes    | Primary key; UUID                                                                       |
-| `name`                      |    text |   Yes    | User-facing obligation name                                                             |
-| `creditor`                  |    text |   Yes    | Creditor or lender                                                                      |
-| `owner_entity`              |    text |   Yes    | Person, household, or entity responsible                                                |
-| `debt_type`                 |    text |   Yes    | Mortgage, HELOC, auto, student, personal, business, credit card, medical, tax, or other |
-| `purpose`                   |    text |   Yes    | Purpose of the obligation                                                               |
-| `status`                    |    text |   Yes    | Active, paid off, or closed                                                             |
-| `original_principal_cents`  | integer |   Yes    | Nonnegative safe-integer cents                                                          |
-| `origination_date`          |    text |   Yes    | Financial date                                                                          |
-| `maturity_date`             |    text |    No    | Financial date not before origination                                                   |
-| `minimum_payment_cents`     | integer |   Yes    | Opening debt-level minimum; later contractual changes use `debt_terms`                  |
-| `payment_frequency`         |    text |   Yes    | Opening debt-level frequency; later contractual changes use `debt_terms`                |
-| `credit_limit_cents`        | integer |    No    | Nonnegative safe-integer cents                                                          |
-| `collateral_description`    |    text |    No    | Non-sensitive collateral description                                                    |
-| `tax_category`              |    text |   Yes    | Controlled tax classification                                                           |
-| `deductible_percentage_bps` | integer |   Yes    | From 0 through 10,000                                                                   |
-| `notes`                     |    text |    No    | Supporting notes                                                                        |
-| `created_at_utc`            |    text |   Yes    | UTC timestamp                                                                           |
-| `updated_at_utc`            |    text |   Yes    | UTC timestamp                                                                           |
-| `archived_at_utc`           |    text |    No    | UTC timestamp                                                                           |
+| Column                      |    Type | Required | Rule                                                                                                      |
+| --------------------------- | ------: | :------: | --------------------------------------------------------------------------------------------------------- |
+| `id`                        |    text |   Yes    | Primary key; UUID                                                                                         |
+| `name`                      |    text |   Yes    | User-facing obligation name                                                                               |
+| `creditor`                  |    text |   Yes    | Creditor or lender                                                                                        |
+| `owner_entity`              |    text |   Yes    | Compatibility field; new personal-use records default to `Personal`                                       |
+| `debt_type`                 |    text |   Yes    | Mortgage, HELOC, auto, personal, business, credit card, other; legacy student/medical/tax remain readable |
+| `purpose`                   |    text |   Yes    | Purpose of the obligation                                                                                 |
+| `status`                    |    text |   Yes    | Active, paid off, or closed                                                                               |
+| `original_principal_cents`  | integer |   Yes    | Nonnegative safe-integer cents                                                                            |
+| `origination_date`          |    text |   Yes    | Financial date                                                                                            |
+| `maturity_date`             |    text |    No    | Financial date not before origination                                                                     |
+| `minimum_payment_cents`     | integer |   Yes    | Compatibility field populated from the initial term for new manual debts                                  |
+| `payment_frequency`         |    text |   Yes    | Compatibility field populated from the initial term for new manual debts                                  |
+| `credit_limit_cents`        | integer |    No    | Nonnegative safe-integer cents                                                                            |
+| `collateral_description`    |    text |    No    | Non-sensitive collateral description                                                                      |
+| `tax_category`              |    text |   Yes    | Controlled tax classification                                                                             |
+| `deductible_percentage_bps` | integer |   Yes    | From 0 through 10,000                                                                                     |
+| `notes`                     |    text |    No    | Supporting notes                                                                                          |
+| `created_at_utc`            |    text |   Yes    | UTC timestamp                                                                                             |
+| `updated_at_utc`            |    text |   Yes    | UTC timestamp                                                                                             |
+| `archived_at_utc`           |    text |    No    | UTC timestamp                                                                                             |
 
-Indexes cover creditor, owner/entity, and status. `archived_at_utc` is independent
-of obligation status: a null value includes the debt in the default list, while a
-timestamp preserves the record but hides it unless archived records are requested.
+Indexes cover creditor, owner/entity compatibility data, and status.
+`archived_at_utc` is independent of obligation status: a null value includes the
+debt in the default list, while a timestamp preserves the record but hides it
+unless archived records are requested.
+
+The application is single-user. Owner/entity is retained for existing database
+compatibility but is not shown in normal user-facing forms, debt cards, reports,
+or exports. Removed debt types remain valid for existing rows so records remain
+readable; the UI does not silently convert them.
 
 The manual-maintenance service treats original principal and origination date as
 opening facts. Descriptive and administrative fields use optimistic concurrency
@@ -78,48 +84,53 @@ overwritten.
 ## `debt_transactions`
 
 Unified posted transaction ledger for payments, draws, charges, adjustments,
-reversals, and other explicitly classified actual activity.
+reversals, mortgage escrow activity, and other explicitly classified actual
+activity.
 
-| Column                       |    Type | Required | Rule                                                 |
-| ---------------------------- | ------: | :------: | ---------------------------------------------------- |
-| `id`                         |    text |   Yes    | Primary key; UUID                                    |
-| `debt_id`                    |    text |   Yes    | Foreign key to `debts`                               |
-| `transaction_type`           |    text |   Yes    | Controlled posted transaction type                   |
-| `effective_date`             |    text |   Yes    | Economic financial date                              |
-| `posting_date`               |    text |   Yes    | Posting financial date                               |
-| `total_amount_cents`         | integer |   Yes    | Nonzero signed safe-integer cents                    |
-| `status`                     |    text |   Yes    | Posted, reversed, or superseded                      |
-| `description`                |    text |   Yes    | Human-readable explanation                           |
-| `source_type`                |    text |   Yes    | Manual, import, statement, system, or reconciliation |
-| `source_reference`           |    text |    No    | External or internal provenance reference            |
-| `reversal_of_transaction_id` |    text |    No    | Unique self-reference for a reversal                 |
-| `supersedes_transaction_id`  |    text |    No    | Unique self-reference for a correction               |
-| `created_at_utc`             |    text |   Yes    | UTC timestamp                                        |
-| `updated_at_utc`             |    text |   Yes    | UTC timestamp                                        |
+| Column                       |    Type | Required | Rule                                                            |
+| ---------------------------- | ------: | :------: | --------------------------------------------------------------- |
+| `id`                         |    text |   Yes    | Primary key; UUID                                               |
+| `debt_id`                    |    text |   Yes    | Foreign key to `debts`                                          |
+| `transaction_type`           |    text |   Yes    | Controlled posted transaction type                              |
+| `effective_date`             |    text |   Yes    | Economic financial date; manual entry uses the Transaction Date |
+| `posting_date`               |    text |   Yes    | Posting financial date; manual entry uses the Transaction Date  |
+| `total_amount_cents`         | integer |   Yes    | Nonzero signed safe-integer cents                               |
+| `status`                     |    text |   Yes    | Posted, reversed, or superseded                                 |
+| `description`                |    text |   Yes    | Human-readable explanation                                      |
+| `source_type`                |    text |   Yes    | Manual, import, statement, system, or reconciliation            |
+| `source_reference`           |    text |    No    | External or internal provenance reference                       |
+| `reversal_of_transaction_id` |    text |    No    | Unique self-reference for a reversal                            |
+| `supersedes_transaction_id`  |    text |    No    | Unique self-reference for a correction                          |
+| `created_at_utc`             |    text |   Yes    | UTC timestamp                                                   |
+| `updated_at_utc`             |    text |   Yes    | UTC timestamp                                                   |
 
 Indexes cover debt/effective date, debt/posting date, and status. A reversal must
 reference exactly one prior transaction and originals cannot be deleted. Approved
 reconciliation adjustments are explicit posted transactions with source type
 `reconciliation` and source reference pointing to the reconciliation record that
-approved them.
+approved them. Source fields remain internal provenance fields and are not shown
+on simplified manual-entry forms.
 
 ## `transaction_allocations`
 
 Breaks a posted transaction into accounting classifications.
 
-| Column            |    Type | Required | Rule                                                                 |
-| ----------------- | ------: | :------: | -------------------------------------------------------------------- |
-| `id`              |    text |   Yes    | Primary key; UUID                                                    |
-| `transaction_id`  |    text |   Yes    | Foreign key to `debt_transactions`                                   |
-| `allocation_type` |    text |   Yes    | Principal, interest, escrow, fee, penalty, extra principal, or other |
-| `amount_cents`    | integer |   Yes    | Nonzero signed safe-integer cents                                    |
-| `notes`           |    text |    No    | Allocation explanation                                               |
-| `created_at_utc`  |    text |   Yes    | UTC timestamp                                                        |
-| `updated_at_utc`  |    text |   Yes    | UTC timestamp                                                        |
+| Column            |    Type | Required | Rule                                                                                        |
+| ----------------- | ------: | :------: | ------------------------------------------------------------------------------------------- |
+| `id`              |    text |   Yes    | Primary key; UUID                                                                           |
+| `transaction_id`  |    text |   Yes    | Foreign key to `debt_transactions`                                                          |
+| `allocation_type` |    text |   Yes    | Principal, interest, escrow, fee, penalty; legacy extra principal and other remain readable |
+| `amount_cents`    | integer |   Yes    | Nonzero signed safe-integer cents                                                           |
+| `notes`           |    text |    No    | Allocation explanation                                                                      |
+| `created_at_utc`  |    text |   Yes    | UTC timestamp                                                                               |
+| `updated_at_utc`  |    text |   Yes    | UTC timestamp                                                                               |
 
 Each allocation type occurs at most once per transaction. Repository validation
 requires allocation signs to follow the transaction and their sum to equal the
-transaction total.
+transaction total. User-facing entry treats all principal paid, including
+additional principal, as principal. Escrow allocations are included in the posted
+transaction total but are excluded from debt-principal balance calculations and
+tracked in a separate calculated escrow balance.
 
 ## `balance_snapshots`
 
@@ -138,8 +149,10 @@ activity.
 | `created_at_utc`          |    text |   Yes    | UTC timestamp                  |
 | `updated_at_utc`          |    text |   Yes    | UTC timestamp                  |
 
-Debt, date, and source type are unique.
-These records preserve external evidence without overwriting the posted ledger.
+Debt, date, and source type are unique. These records preserve external evidence
+without overwriting the posted ledger. The normal user-facing path creates
+statement snapshots through the combined Reconcile Balance workflow rather than a
+separate Record Snapshot action.
 
 ## `balance_reconciliations`
 

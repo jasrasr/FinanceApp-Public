@@ -22,6 +22,8 @@ const POSITIVE_TRANSACTION_TYPES = new Set<TransactionType>([
   'fee',
   'penalty',
   'interest_charge',
+  'escrow_disbursement',
+  'escrow_refund',
 ]);
 
 export const calculateAllocationReconciliation = (

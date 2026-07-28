@@ -86,6 +86,7 @@ export interface PostedTransactionInput {
 export interface CreateBalanceReconciliationRecordInput {
   readonly reconciliation: BalanceReconciliationInput;
   readonly adjustment?: PostedTransactionInput;
+  readonly snapshot?: BalanceSnapshotInsert;
   readonly auditInputs: readonly AuditEventInsert[];
 }
 
@@ -291,11 +292,18 @@ export const calculateLedgerBalanceThroughDate = (
     throw new RepositoryNotFoundError('Debt was not found.');
   }
 
-  const transactions = database
+  const rows = database
     .select({
+      allocationType: transactionAllocations.allocationType,
+      amountCents: transactionAllocations.amountCents,
       totalAmountCents: debtTransactions.totalAmountCents,
+      transactionId: debtTransactions.id,
     })
-    .from(debtTransactions)
+    .from(transactionAllocations)
+    .innerJoin(
+      debtTransactions,
+      eq(transactionAllocations.transactionId, debtTransactions.id),
+    )
     .where(
       and(
         eq(debtTransactions.debtId, debtId),
@@ -305,10 +313,19 @@ export const calculateLedgerBalanceThroughDate = (
     )
     .all();
 
-  const transactionTotal = transactions.reduce(
-    (total, transaction) => total + transaction.totalAmountCents,
-    0,
-  );
+  const transactionTotals = new Map<string, number>();
+  let escrowAllocationTotal = 0;
+
+  for (const row of rows) {
+    transactionTotals.set(row.transactionId, row.totalAmountCents);
+    if (row.allocationType === 'escrow') {
+      escrowAllocationTotal += row.amountCents;
+    }
+  }
+
+  const transactionTotal =
+    [...transactionTotals.values()].reduce((total, amount) => total + amount, 0) -
+    escrowAllocationTotal;
 
   if (!Number.isSafeInteger(transactionTotal)) {
     throw new RangeError('Ledger transaction total exceeds the safe-integer range.');
@@ -320,6 +337,49 @@ export const calculateLedgerBalanceThroughDate = (
     throw new RangeError(
       'Application-calculated debt balance must be nonnegative safe-integer cents.',
     );
+  }
+
+  return balance;
+};
+
+export const calculateEscrowBalanceThroughDate = (
+  database: AppDatabase,
+  debtId: string,
+  effectiveDate: string,
+): number => {
+  const rows = database
+    .select({
+      transactionType: debtTransactions.transactionType,
+      amountCents: transactionAllocations.amountCents,
+    })
+    .from(transactionAllocations)
+    .innerJoin(
+      debtTransactions,
+      eq(transactionAllocations.transactionId, debtTransactions.id),
+    )
+    .where(
+      and(
+        eq(debtTransactions.debtId, debtId),
+        lte(debtTransactions.effectiveDate, effectiveDate),
+        ne(debtTransactions.status, 'superseded'),
+        eq(transactionAllocations.allocationType, 'escrow'),
+      ),
+    )
+    .all();
+
+  const balance = rows.reduce((total, row) => {
+    if (row.transactionType === 'payment') return total - row.amountCents;
+    if (
+      row.transactionType === 'escrow_disbursement' ||
+      row.transactionType === 'escrow_refund'
+    ) {
+      return total - row.amountCents;
+    }
+    return total + row.amountCents;
+  }, 0);
+
+  if (!Number.isSafeInteger(balance)) {
+    throw new RangeError('Escrow balance exceeds the safe-integer range.');
   }
 
   return balance;
@@ -406,6 +466,9 @@ export const createBalanceReconciliationRecord = (
         ),
       }
     : null;
+  const snapshot = input.snapshot
+    ? balanceSnapshotInsertSchema.parse(input.snapshot)
+    : null;
   const audit = input.auditInputs.map((event) => auditEventInsertSchema.parse(event));
 
   if (
@@ -462,6 +525,14 @@ export const createBalanceReconciliationRecord = (
     if (adjustment) {
       transactionDb.insert(debtTransactions).values(adjustment.transaction).run();
       transactionDb.insert(transactionAllocations).values(adjustment.allocations).run();
+    }
+
+    if (snapshot) {
+      transactionDb
+        .insert(balanceSnapshots)
+        .values(snapshot)
+        .onConflictDoNothing()
+        .run();
     }
 
     transactionDb.insert(balanceReconciliations).values(reconciliation).run();

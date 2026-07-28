@@ -67,15 +67,13 @@ export const DebtList = ({
       <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full border-collapse text-sm">
           <caption className="sr-only">
-            Debt records with original principal and initial effective terms
+            Debt records with original principal and initial effective terms. Select a
+            row to open debt detail.
           </caption>
           <thead className="bg-slate-50 text-left text-xs tracking-wide text-slate-600 uppercase">
             <tr>
               <th className="px-4 py-3 font-semibold" scope="col">
                 Debt
-              </th>
-              <th className="px-4 py-3 font-semibold" scope="col">
-                Owner / entity
               </th>
               <th className="px-4 py-3 font-semibold" scope="col">
                 Type
@@ -95,14 +93,24 @@ export const DebtList = ({
               <th className="px-4 py-3 text-right font-semibold" scope="col">
                 Initial required payment
               </th>
-              <th className="px-4 py-3 font-semibold" scope="col">
-                <span className="sr-only">Actions</span>
-              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {debts.map((debt) => (
-              <tr className="align-top hover:bg-slate-50" key={debt.id}>
+              <tr
+                aria-label={`Open ${debt.name}`}
+                className="cursor-pointer align-top hover:bg-slate-50 focus:bg-slate-50 focus:outline focus:outline-2 focus:outline-blue-500"
+                key={debt.id}
+                onClick={() => onSelect(debt.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelect(debt.id);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
                 <td className="px-4 py-4">
                   <span className="block font-semibold text-slate-950">
                     {debt.name}
@@ -114,7 +122,6 @@ export const DebtList = ({
                     </span>
                   ) : null}
                 </td>
-                <td className="px-4 py-4 text-slate-700">{debt.ownerEntity}</td>
                 <td className="px-4 py-4 text-slate-700">
                   {labelFromValue(debt.debtType)}
                 </td>
@@ -143,15 +150,6 @@ export const DebtList = ({
                   <span className="block text-xs text-slate-500">
                     {labelFromValue(debt.initialTerm.paymentFrequency)}
                   </span>
-                </td>
-                <td className="px-4 py-4 text-right">
-                  <button
-                    className="font-semibold text-blue-700 hover:text-blue-900 focus:underline focus:outline-none"
-                    onClick={() => onSelect(debt.id)}
-                    type="button"
-                  >
-                    View
-                  </button>
                 </td>
               </tr>
             ))}

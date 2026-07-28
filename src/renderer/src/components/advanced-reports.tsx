@@ -110,7 +110,6 @@ export const AdvancedReports = ({
 }: AdvancedReportsProps): React.JSX.Element => {
   const [startDate, setStartDate] = useState(defaultStart());
   const [endDate, setEndDate] = useState(today());
-  const [ownerEntity, setOwnerEntity] = useState('');
   const [debtType, setDebtType] = useState('');
   const [status, setStatus] = useState('');
 
@@ -120,7 +119,7 @@ export const AdvancedReports = ({
       startDate,
       endDate,
       debtId: null,
-      ownerEntity: ownerEntity.trim() || null,
+      ownerEntity: null,
       debtType:
         debtType === '' ? null : (debtType as GetDebtReportsRequest['debtType']),
       status: status === '' ? null : (status as GetDebtReportsRequest['status']),
@@ -167,15 +166,6 @@ export const AdvancedReports = ({
           />
         </label>
         <label className="text-sm font-medium text-slate-700">
-          Owner/entity
-          <input
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            onChange={(event) => setOwnerEntity(event.target.value)}
-            placeholder="Optional exact match"
-            value={ownerEntity}
-          />
-        </label>
-        <label className="text-sm font-medium text-slate-700">
           Debt type
           <select
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
@@ -186,12 +176,9 @@ export const AdvancedReports = ({
             <option value="mortgage">Mortgage</option>
             <option value="heloc">HELOC</option>
             <option value="auto">Auto</option>
-            <option value="student">Student</option>
             <option value="personal">Personal</option>
             <option value="business">Business</option>
             <option value="credit_card">Credit card</option>
-            <option value="medical">Medical</option>
-            <option value="tax">Tax</option>
             <option value="other">Other</option>
           </select>
         </label>
@@ -262,11 +249,11 @@ const ReportShell = ({
   readonly children: React.ReactNode;
   readonly title: string;
 }): React.JSX.Element => (
-  <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-    <h3 className="text-lg font-semibold">{title}</h3>
+  <details className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <summary className="cursor-pointer text-lg font-semibold">{title}</summary>
     <BasisNote basis={basis} />
     <div className="mt-4">{children}</div>
-  </section>
+  </details>
 );
 
 const ReportRollforward = ({
@@ -443,7 +430,6 @@ const ReportSchedule = ({
           <thead className="text-left text-xs text-slate-500 uppercase">
             <tr>
               <th className="px-3 py-2">Debt</th>
-              <th className="px-3 py-2">Owner</th>
               <th className="px-3 py-2">Maturity</th>
               <th className="px-3 py-2 text-right">Monthly payment</th>
               <th className="px-3 py-2 text-right">Rate</th>
@@ -460,7 +446,6 @@ const ReportSchedule = ({
                     onSelectDebt={onSelectDebt}
                   />
                 </td>
-                <td className="px-3 py-2">{row.ownerEntity}</td>
                 <td className="px-3 py-2">{row.maturityDate ?? 'No maturity'}</td>
                 <MoneyCell value={row.requiredMonthlyPayment} />
                 <td className="px-3 py-2 text-right font-mono tabular-nums">

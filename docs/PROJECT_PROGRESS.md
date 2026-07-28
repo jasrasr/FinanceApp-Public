@@ -5,9 +5,9 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.12.0`, aligned
-to the twelve completed feature phases. Earlier phase entries did not record an
-application version at the time they were completed.
+phase seven on 2026-07-28. The current application version is `0.13.0`, aligned
+to the thirteen completed feature phases. Earlier phase entries did not record
+an application version at the time they were completed.
 
 ## Phase 1: Application Foundation
 
@@ -548,3 +548,75 @@ application version at the time they were completed.
 - Recommended next phase:
   - Production hardening should focus on signing strategy, upgrade regression
     matrices, and release-process documentation only after explicit approval.
+
+## Phase 13: First User-Acceptance Corrections and Workflow Simplification
+
+- Completion date: 2026-07-28
+- Application version: 0.13.0
+- Features implemented:
+  - Removed Owner/Entity from normal user-facing forms, debt cards, debt detail,
+    report filters, and exports while preserving the underlying compatibility
+    field.
+  - Removed student, medical, and tax debt types from new manual-entry choices;
+    existing records using legacy types remain readable and require deliberate
+    conversion.
+  - Simplified debt creation so effective-dated terms are authoritative for
+    required payment and payment frequency.
+  - Simplified manual transaction entry to one Transaction Date, optional
+    description, internal manual source defaults, and principal/interest/escrow/
+    fee/penalty allocations.
+  - Added mortgage escrow tracking with escrow deposits, disbursements,
+    adjustments, refunds, and a separately displayed calculated escrow balance.
+  - Replaced the separate user-facing snapshot action with a combined Reconcile
+    Balance workflow that records a supporting confirmed snapshot and a
+    reconciliation record.
+  - Made debt-list rows clickable while preserving keyboard activation.
+  - Fixed navigation highlighting so only the active section is highlighted.
+  - Collapsed advanced report sections by default with independently expandable
+    detail.
+- Material architecture and accounting decisions:
+  - No destructive migration was used to remove Owner/Entity; compatibility data
+    remains in the database and service DTOs where needed.
+  - Debt-level payment/frequency columns remain for compatibility but are
+    populated from the initial effective-dated term for new manual debts.
+  - Escrow activity is posted in the unified ledger but excluded from
+    debt-principal balance calculations and tracked as a separate calculated
+    escrow balance.
+  - Principal allocation now includes all principal paid, including additional
+    principal, for user-facing entry. Legacy extra-principal rows remain
+    readable.
+  - Manual transaction date is used as both effective and posting date.
+  - Reconciliations create supporting snapshots transactionally and do not
+    overwrite ledger activity.
+- Database schema or migration changes:
+  - Added a migration updating the posted transaction type constraint to allow
+    `escrow_disbursement`, `escrow_adjustment`, and `escrow_refund`.
+  - No debt table columns were removed.
+- New or changed IPC operations:
+  - Bridge contract version increased to 12.
+  - Existing narrow debt-maintenance operations were retained; response DTOs now
+    include `calculatedEscrowBalance`.
+  - No generic IPC, raw SQL, filesystem, or database access was exposed to the
+    renderer.
+- New UI screens or workflows:
+  - Simplified create/edit debt workflow.
+  - Simplified transaction form.
+  - Combined Reconcile Balance workflow.
+  - Full-row debt-card opening.
+  - Collapsed advanced-report sections.
+- Validation and smoke-test results:
+  - Unit and integration tests were updated for simplified transaction entry,
+    escrow posting, combined reconciliation snapshots, clickable debt rows, and
+    collapsed report sections.
+  - Final full validation and Electron smoke-test results should be recorded in
+    the completion report for this phase.
+- Known limitations and technical debt:
+  - Legacy owner/entity and extra-principal/other fields remain in the database
+    for compatibility and import history.
+  - Existing records with removed debt types are readable but require deliberate
+    conversion through supported maintenance flows.
+  - The separate snapshot component remains in source only for compatibility
+    until unused code cleanup is explicitly approved.
+- Recommended next phase:
+  - Use the simplified workflows in user acceptance testing before deciding on
+    production hardening, release signing, or targeted cleanup.

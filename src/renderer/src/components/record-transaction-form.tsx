@@ -2,10 +2,7 @@ import type {
   CreateDebtTransactionRequest,
   DebtDetailDto,
 } from '../../../shared/debt-contracts';
-import {
-  MANUAL_ENTRY_SOURCE_TYPES,
-  POSTED_ACTIVITY_TRANSACTION_TYPES,
-} from '../../../shared/debt-options';
+import { POSTED_ACTIVITY_TRANSACTION_TYPES } from '../../../shared/debt-options';
 import { Field, FormActions } from './form-controls';
 import { inputClassName, labelFromValue } from './form-utils';
 
@@ -27,15 +24,12 @@ const nullableValue = (data: FormData, name: string): string | null => {
 };
 
 const transactionTypeOptions = POSTED_ACTIVITY_TRANSACTION_TYPES;
-const sourceTypeOptions = MANUAL_ENTRY_SOURCE_TYPES;
 const allocationFields = [
   ['principal', 'Principal'],
   ['interest', 'Interest'],
   ['escrow', 'Escrow'],
   ['fee', 'Fees'],
   ['penalty', 'Penalties'],
-  ['extraPrincipal', 'Extra principal'],
-  ['other', 'Other'],
 ] as const;
 
 export const RecordTransactionForm = ({
@@ -49,31 +43,31 @@ export const RecordTransactionForm = ({
     event.preventDefault();
     const data = new FormData(event.currentTarget);
 
+    const transactionDate = value(data, 'transaction.transactionDate');
+    const transactionType = value(
+      data,
+      'transaction.transactionType',
+    ) as CreateDebtTransactionRequest['transaction']['transactionType'];
+
     onSubmit({
       debtId: debt.id,
       transaction: {
-        transactionType: value(
-          data,
-          'transaction.transactionType',
-        ) as CreateDebtTransactionRequest['transaction']['transactionType'],
-        effectiveDate: value(data, 'transaction.effectiveDate'),
-        postingDate: value(data, 'transaction.postingDate'),
+        transactionType,
+        effectiveDate: transactionDate,
+        postingDate: transactionDate,
         status: 'posted',
         totalAmount: value(data, 'transaction.totalAmount'),
-        description: value(data, 'transaction.description'),
-        sourceType: value(
-          data,
-          'transaction.sourceType',
-        ) as CreateDebtTransactionRequest['transaction']['sourceType'],
-        sourceReference: nullableValue(data, 'transaction.sourceReference'),
+        description: nullableValue(data, 'transaction.description'),
+        sourceType: 'manual',
+        sourceReference: null,
         allocations: {
           principal: nullableValue(data, 'transaction.allocations.principal'),
           interest: nullableValue(data, 'transaction.allocations.interest'),
           escrow: nullableValue(data, 'transaction.allocations.escrow'),
           fee: nullableValue(data, 'transaction.allocations.fee'),
           penalty: nullableValue(data, 'transaction.allocations.penalty'),
-          extraPrincipal: nullableValue(data, 'transaction.allocations.extraPrincipal'),
-          other: nullableValue(data, 'transaction.allocations.other'),
+          extraPrincipal: null,
+          other: null,
         },
       },
     });
@@ -86,8 +80,9 @@ export const RecordTransactionForm = ({
       onSubmit={submit}
     >
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
-        Record a posted transaction only. Enter signed amounts: payments are usually
-        negative, while draws and charges are usually positive.
+        Record posted activity only. Use one transaction date for both posting and
+        accounting effect. Mortgage escrow deposits are tracked separately from
+        principal.
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -110,47 +105,15 @@ export const RecordTransactionForm = ({
           </select>
         </Field>
         <Field
-          error={fieldErrors?.['transaction.sourceType']}
-          label="Source type"
-          name="transaction.sourceType"
-        >
-          <select
-            className={inputClassName}
-            defaultValue="manual"
-            id="transaction.sourceType"
-            name="transaction.sourceType"
-          >
-            {sourceTypeOptions.map((option) => (
-              <option key={option} value={option}>
-                {labelFromValue(option)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field
           error={fieldErrors?.['transaction.effectiveDate']}
-          label="Effective date"
-          name="transaction.effectiveDate"
+          label="Transaction date"
+          name="transaction.transactionDate"
         >
           <input
             className={inputClassName}
             defaultValue={today()}
-            id="transaction.effectiveDate"
-            name="transaction.effectiveDate"
-            required
-            type="date"
-          />
-        </Field>
-        <Field
-          error={fieldErrors?.['transaction.postingDate']}
-          label="Posting date"
-          name="transaction.postingDate"
-        >
-          <input
-            className={inputClassName}
-            defaultValue={today()}
-            id="transaction.postingDate"
-            name="transaction.postingDate"
+            id="transaction.transactionDate"
+            name="transaction.transactionDate"
             required
             type="date"
           />
@@ -174,29 +137,17 @@ export const RecordTransactionForm = ({
             required
           />
         </Field>
-        <Field
-          error={fieldErrors?.['transaction.sourceReference']}
-          label="Source reference"
-          name="transaction.sourceReference"
-          optional
-        >
-          <input
-            className={inputClassName}
-            id="transaction.sourceReference"
-            name="transaction.sourceReference"
-          />
-        </Field>
         <div className="lg:col-span-2">
           <Field
             error={fieldErrors?.['transaction.description']}
             label="Description"
             name="transaction.description"
+            optional
           >
             <input
               className={inputClassName}
               id="transaction.description"
               name="transaction.description"
-              required
             />
           </Field>
         </div>

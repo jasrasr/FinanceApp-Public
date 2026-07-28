@@ -3,11 +3,11 @@ import type { CreateDebtRequest } from '../../../shared/debt-contracts';
 import {
   DAY_COUNT_CONVENTIONS,
   DEBT_STATUSES,
-  DEBT_TYPES,
   INTEREST_CALCULATION_CONVENTIONS,
   INTEREST_RATE_TYPES,
   PAYMENT_FREQUENCIES,
   TAX_CATEGORIES,
+  USER_SELECTABLE_DEBT_TYPES,
 } from '../../../shared/debt-options';
 import { Field, FormActions } from './form-controls';
 import { inputClassName, labelFromValue } from './form-utils';
@@ -54,17 +54,17 @@ export const CreateDebtForm = ({
       debt: {
         name: value(data, 'debt.name'),
         creditor: value(data, 'debt.creditor'),
-        ownerEntity: value(data, 'debt.ownerEntity'),
+        ownerEntity: 'Personal',
         debtType: value(data, 'debt.debtType') as CreateDebtRequest['debt']['debtType'],
         purpose: value(data, 'debt.purpose'),
         status: value(data, 'debt.status') as CreateDebtRequest['debt']['status'],
         originalPrincipal: value(data, 'debt.originalPrincipal'),
         originationDate: value(data, 'debt.originationDate'),
         maturityDate: nullableValue(data, 'debt.maturityDate'),
-        minimumPayment: value(data, 'debt.minimumPayment'),
+        minimumPayment: value(data, 'initialTerm.requiredPayment'),
         paymentFrequency: value(
           data,
-          'debt.paymentFrequency',
+          'initialTerm.paymentFrequency',
         ) as CreateDebtRequest['debt']['paymentFrequency'],
         creditLimit: nullableValue(data, 'debt.creditLimit'),
         collateralDescription: nullableValue(data, 'debt.collateralDescription'),
@@ -132,18 +132,6 @@ export const CreateDebtForm = ({
             />
           </Field>
           <Field
-            error={fieldErrors?.['debt.ownerEntity']}
-            label="Owner or entity"
-            name="debt.ownerEntity"
-          >
-            <input
-              className={inputClassName}
-              id="debt.ownerEntity"
-              name="debt.ownerEntity"
-              required
-            />
-          </Field>
-          <Field
             error={fieldErrors?.['debt.debtType']}
             label="Debt type"
             name="debt.debtType"
@@ -154,7 +142,7 @@ export const CreateDebtForm = ({
               id="debt.debtType"
               name="debt.debtType"
             >
-              <Options values={DEBT_TYPES} />
+              <Options values={USER_SELECTABLE_DEBT_TYPES} />
             </select>
           </Field>
           <Field error={fieldErrors?.['debt.status']} label="Status" name="debt.status">
@@ -212,34 +200,6 @@ export const CreateDebtForm = ({
               name="debt.maturityDate"
               type="date"
             />
-          </Field>
-          <Field
-            error={fieldErrors?.['debt.minimumPayment']}
-            hint="Opening debt-level minimum; later contractual changes require a new effective-dated term."
-            label="Minimum payment"
-            name="debt.minimumPayment"
-          >
-            <input
-              className={inputClassName}
-              id="debt.minimumPayment"
-              inputMode="decimal"
-              name="debt.minimumPayment"
-              required
-            />
-          </Field>
-          <Field
-            error={fieldErrors?.['debt.paymentFrequency']}
-            label="Payment frequency"
-            name="debt.paymentFrequency"
-          >
-            <select
-              className={inputClassName}
-              defaultValue="monthly"
-              id="debt.paymentFrequency"
-              name="debt.paymentFrequency"
-            >
-              <Options values={PAYMENT_FREQUENCIES} />
-            </select>
           </Field>
           <Field
             error={fieldErrors?.['debt.creditLimit']}

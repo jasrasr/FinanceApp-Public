@@ -11,6 +11,16 @@ export const DEBT_TYPES = [
   'other',
 ] as const;
 
+export const USER_SELECTABLE_DEBT_TYPES = [
+  'mortgage',
+  'heloc',
+  'auto',
+  'personal',
+  'business',
+  'credit_card',
+  'other',
+] as const;
+
 export const DEBT_STATUSES = ['active', 'paid_off', 'closed'] as const;
 
 export const PAYMENT_FREQUENCIES = [
@@ -73,6 +83,9 @@ export const POSTED_ACTIVITY_TRANSACTION_TYPES = [
   'penalty',
   'interest_charge',
   'principal_adjustment',
+  'escrow_disbursement',
+  'escrow_adjustment',
+  'escrow_refund',
   'other',
 ] as const;
 
@@ -98,6 +111,7 @@ export const PAYOFF_STRATEGIES = [
 export const PAYOFF_SCENARIO_STATUSES = ['active', 'archived'] as const;
 
 export type DebtType = (typeof DEBT_TYPES)[number];
+export type UserSelectableDebtType = (typeof USER_SELECTABLE_DEBT_TYPES)[number];
 export type DebtStatus = (typeof DEBT_STATUSES)[number];
 export type PaymentFrequency = (typeof PAYMENT_FREQUENCIES)[number];
 export type TaxCategory = (typeof TAX_CATEGORIES)[number];

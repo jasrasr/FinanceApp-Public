@@ -84,6 +84,7 @@ Implement the application in this order:
 10. Advanced reports.
 11. Backup, restore, and data export.
 12. Windows packaging and production readiness.
+13. First user-acceptance corrections and workflow simplification.
 
 Do not build the workbook importer before the core manual workflows are
 working. The database and accounting rules must first be proven through
@@ -169,8 +170,11 @@ specific item.
 - Store dates as ISO `YYYY-MM-DD` values.
 - Make day-count conventions explicit, including 360-day, 365-day, and
   monthly calculations.
-- Keep principal, interest, escrow, fees, penalties, and extra principal
-  separate.
+- Keep principal, interest, escrow, fees, and penalties separate. User-facing
+  transaction entry treats all principal paid, including additional principal,
+  as principal. Preserve legacy extra-principal rows for compatibility, but do
+  not add new user-facing extra-principal entry paths unless explicitly
+  approved.
 - Keep actual, projected, and scenario activity separate.
 - Display the effective date of every material balance and report.
 - Version material calculation rules when a change could alter historical or

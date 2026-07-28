@@ -570,6 +570,39 @@ const mapBalanceReconciliation = (
   updatedAtUtc: reconciliation.updatedAtUtc,
 });
 
+const calculateEscrowBalanceFromActivity = (record: DebtWithActivityRecord): number => {
+  const balance = record.transactions.reduce((total, entry) => {
+    if (entry.transaction.status === 'superseded') return total;
+
+    return (
+      total +
+      entry.allocations
+        .filter((allocation) => allocation.allocationType === 'escrow')
+        .reduce((allocationTotal, allocation) => {
+          if (entry.transaction.transactionType === 'payment') {
+            return allocationTotal - allocation.amountCents;
+          }
+          if (
+            entry.transaction.transactionType === 'escrow_disbursement' ||
+            entry.transaction.transactionType === 'escrow_refund'
+          ) {
+            return allocationTotal - allocation.amountCents;
+          }
+          return allocationTotal + allocation.amountCents;
+        }, 0)
+    );
+  }, 0);
+
+  if (!Number.isSafeInteger(balance)) {
+    throw new ApplicationServiceError(
+      'internal',
+      'Calculated escrow balance exceeds the safe-integer range.',
+    );
+  }
+
+  return balance;
+};
+
 const postedTransactionFieldErrors = (
   errors: readonly string[],
 ): Readonly<Record<string, readonly string[]>> => {
@@ -697,6 +730,7 @@ const mapDetail = (record: DebtWithActivityRecord): DebtDetailDto => {
     transactions: record.transactions.map(mapTransaction),
     balanceSnapshots: record.balanceSnapshots.map(mapBalanceSnapshot),
     balanceReconciliations: record.balanceReconciliations.map(mapBalanceReconciliation),
+    calculatedEscrowBalance: centsToDollars(calculateEscrowBalanceFromActivity(record)),
     archivedAtUtc: debt.archivedAtUtc,
     createdAtUtc: debt.createdAtUtc,
     updatedAtUtc: debt.updatedAtUtc,
@@ -2999,7 +3033,7 @@ export const createDebtMaintenanceService = ({
           id: debtId,
           name: parsed.debt.name,
           creditor: parsed.debt.creditor,
-          ownerEntity: parsed.debt.ownerEntity,
+          ownerEntity: parsed.debt.ownerEntity || 'Personal',
           debtType: parsed.debt.debtType,
           purpose: parsed.debt.purpose,
           status: parsed.debt.status,
@@ -3010,10 +3044,10 @@ export const createDebtMaintenanceService = ({
           originationDate,
           maturityDate,
           minimumPaymentCents: convertMoney(
-            'debt.minimumPayment',
-            parsed.debt.minimumPayment,
+            'initialTerm.requiredPayment',
+            parsed.initialTerm.requiredPayment,
           ),
-          paymentFrequency: parsed.debt.paymentFrequency,
+          paymentFrequency: parsed.initialTerm.paymentFrequency,
           creditLimitCents: validateCreditLimit(
             parsed.debt.debtType,
             parsed.debt.creditLimit,
@@ -3344,7 +3378,9 @@ export const createDebtMaintenanceService = ({
             parsed.transaction.totalAmount,
           ),
           status: 'posted',
-          description: parsed.transaction.description,
+          description:
+            nullableText(parsed.transaction.description) ??
+            `Manual ${parsed.transaction.transactionType.replaceAll('_', ' ')} recorded.`,
           sourceType: parsed.transaction.sourceType,
           sourceReference: nullableText(parsed.transaction.sourceReference),
           reversalOfTransactionId: null,
@@ -3581,7 +3617,9 @@ export const createDebtMaintenanceService = ({
               postingDate: statementDate,
               totalAmountCents: adjustmentTotalCents,
               status: 'posted',
-              description: approvedAdjustment.description,
+              description:
+                nullableText(approvedAdjustment.description) ??
+                'Approved reconciliation adjustment.',
               sourceType: 'reconciliation',
               sourceReference: reconciliationId,
               reversalOfTransactionId: null,
@@ -3627,9 +3665,21 @@ export const createDebtMaintenanceService = ({
           createdAtUtc: timestamp,
           updatedAtUtc: timestamp,
         };
+        const snapshotId = createId();
 
         createBalanceReconciliationRecord(database, {
           reconciliation,
+          snapshot: {
+            id: snapshotId,
+            debtId: parsed.debtId,
+            effectiveDate: statementDate,
+            confirmedBalanceCents: statementEndingBalanceCents,
+            sourceType: 'statement',
+            sourceReference: nullableText(parsed.reconciliation.sourceReference),
+            notes: nullableText(parsed.reconciliation.supportingNotes),
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          },
           adjustment: adjustment ?? undefined,
           auditInputs: [
             ...(adjustment
@@ -3660,6 +3710,18 @@ export const createDebtMaintenanceService = ({
               {
                 reconciliationStatus: status,
                 hasApprovedAdjustment: Boolean(adjustment),
+              },
+            ),
+            createSnapshotAudit(
+              createId(),
+              snapshotId,
+              'balance_snapshot_recorded',
+              'create',
+              timestamp,
+              'Confirmed balance snapshot was recorded from reconciliation support.',
+              {
+                sourceType: 'statement',
+                reconciliationId,
               },
             ),
           ],
