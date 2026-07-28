@@ -3,7 +3,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { DebtBridge } from '../../shared/app-bridge';
-import type { DebtDetailDto, DebtSummaryDto } from '../../shared/debt-contracts';
+import type {
+  DashboardDto,
+  DebtDetailDto,
+  DebtSummaryDto,
+} from '../../shared/debt-contracts';
 import { App } from './app';
 import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-form';
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
@@ -11,6 +15,7 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): DebtBridge => ({
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
+  getDashboard: vi.fn(async () => ({ ok: true as const, value: sampleDashboard })),
   getDebt: vi.fn(),
   createDebt: vi.fn(),
   updateDebt: vi.fn(),
@@ -22,6 +27,35 @@ const createBridge = (): DebtBridge => ({
   archiveDebt: vi.fn(),
   restoreDebt: vi.fn(),
 });
+
+const sampleDashboard: DashboardDto = {
+  effectiveDate: '2026-07-28',
+  yearToDateStartDate: '2026-01-01',
+  activeDebtCount: 1,
+  totals: {
+    activeDebt: '124500.00',
+    principalReductionYtd: '400.00',
+    newBorrowingsYtd: '0.00',
+    interestActivityYtd: '-100.00',
+    requiredMonthlyPayments: '2450.00',
+    weightedAverageInterestRate: '5.49',
+  },
+  metricBasis: {
+    activeDebt:
+      'Application-calculated ledger balances for active debts as of 2026-07-28.',
+    principalReductionYtd:
+      'Net principal allocations from posted activity dated 2026-01-01 through 2026-07-28.',
+    newBorrowingsYtd:
+      'Posted borrowing transaction totals dated 2026-01-01 through 2026-07-28.',
+    interestActivityYtd:
+      'Net interest allocations dated 2026-01-01 through 2026-07-28.',
+    requiredMonthlyPayments: 'Current effective debt terms as of 2026-07-28.',
+    weightedAverageInterestRate:
+      'Current annual rates weighted by calculated ledger balances.',
+  },
+  upcomingMaturities: [],
+  attentionItems: [],
+};
 
 const sampleDebtDetail: DebtDetailDto = {
   id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
@@ -149,6 +183,7 @@ describe('debt maintenance application', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Debt Tracker' }),
     ).toBeVisible();
+    fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
     expect(
       await screen.findByRole('heading', { name: 'No debts to display' }),
     ).toBeVisible();
@@ -160,6 +195,7 @@ describe('debt maintenance application', () => {
   it('renders the complete create-debt and initial-term form', async () => {
     render(<App bridge={createBridge()} />);
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Create first debt' }));
 
     expect(
@@ -186,6 +222,7 @@ describe('debt maintenance application', () => {
 
     render(<App bridge={bridge} />);
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
     fireEvent.click(await screen.findByRole('button', { name: 'View' }));
     expect(
       await screen.findByRole('heading', { name: sampleDebtDetail.name }),
@@ -203,6 +240,19 @@ describe('debt maintenance application', () => {
     expect(screen.getByRole('button', { name: 'Record transaction' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Record snapshot' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Record reconciliation' })).toBeVisible();
+  });
+
+  it('renders dashboard metrics and empty dashboard sections', async () => {
+    render(<App bridge={createBridge()} />);
+
+    expect(await screen.findByRole('heading', { name: 'Debt overview' })).toBeVisible();
+    expect(screen.getByText('$124,500.00')).toBeVisible();
+    expect(screen.getByText('Principal reduction YTD')).toBeVisible();
+    expect(
+      screen.getByText(
+        'No unreconciled, in-progress, or exception reconciliation items for active debts.',
+      ),
+    ).toBeVisible();
   });
 
   it('renders the record-transaction form controls', () => {
@@ -256,7 +306,7 @@ describe('debt maintenance application', () => {
 
   it('renders a recoverable failure state when the secure bridge fails', async () => {
     const bridge = createBridge();
-    bridge.listDebts = vi.fn(async () => {
+    bridge.getDashboard = vi.fn(async () => {
       throw new Error('Generated bridge failure.');
     });
 

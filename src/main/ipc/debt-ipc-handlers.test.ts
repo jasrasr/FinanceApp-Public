@@ -9,6 +9,7 @@ import { DEBT_IPC_CHANNELS } from '../../shared/debt-ipc';
 
 const createService = (): DebtMaintenanceService => ({
   listDebts: vi.fn(() => []),
+  getDashboard: vi.fn(),
   getDebt: vi.fn(),
   createDebt: vi.fn(),
   updateDebt: vi.fn(),

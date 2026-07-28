@@ -5,6 +5,7 @@ export const DEBT_IPC_CHANNELS = {
   createReconciliation: 'debt:create-reconciliation',
   createTransaction: 'debt:create-transaction',
   createSnapshot: 'debt:create-snapshot',
+  dashboard: 'debt:dashboard',
   get: 'debt:get',
   list: 'debt:list',
   reverseTransaction: 'debt:reverse-transaction',

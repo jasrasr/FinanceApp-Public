@@ -7,8 +7,10 @@ import {
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
   createDebtRequestSchema,
+  dashboardDtoSchema,
   debtDetailDtoSchema,
   debtSummaryListSchema,
+  getDashboardRequestSchema,
   getDebtRequestSchema,
   listDebtsRequestSchema,
   reverseDebtTransactionRequestSchema,
@@ -115,6 +117,14 @@ export const registerDebtIpcHandlers = (
     debtSummaryListSchema,
     isTrustedSender,
     (request) => service.listDebts(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.dashboard,
+    getDashboardRequestSchema,
+    dashboardDtoSchema,
+    isTrustedSender,
+    (request) => service.getDashboard(request),
   );
   registerHandler(
     ipcMain,

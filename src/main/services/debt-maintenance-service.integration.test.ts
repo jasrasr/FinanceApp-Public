@@ -98,6 +98,29 @@ const validSnapshotRequest = (debtId: string) => ({
   },
 });
 
+const validBorrowingRequest = (debtId: string) => ({
+  debtId,
+  transaction: {
+    transactionType: 'borrowing_draw' as const,
+    effectiveDate: '2026-02-01',
+    postingDate: '2026-02-01',
+    status: 'posted' as const,
+    totalAmount: '1000.00',
+    description: 'Generated borrowing draw.',
+    sourceType: 'manual' as const,
+    sourceReference: 'DRAW-1001',
+    allocations: {
+      principal: '1000.00',
+      interest: null,
+      escrow: null,
+      fee: null,
+      penalty: null,
+      extraPrincipal: null,
+      other: null,
+    },
+  },
+});
+
 const validReconciliationRequest = (debtId: string) => ({
   debtId,
   reconciliation: {
@@ -416,6 +439,81 @@ describe('debt creation', () => {
 });
 
 describe('debt maintenance', () => {
+  it('returns an empty dashboard without using archived debts', () => {
+    const dashboard = service.getDashboard({});
+
+    expect(dashboard).toMatchObject({
+      effectiveDate: '2026-07-27',
+      yearToDateStartDate: '2026-01-01',
+      activeDebtCount: 0,
+      totals: {
+        activeDebt: '0.00',
+        weightedAverageInterestRate: null,
+      },
+    });
+  });
+
+  it('calculates basic dashboard metrics from active posted activity and current terms', () => {
+    const created = service.createDebt(validRequest());
+    service.createDebtTransaction(validTransactionRequest(created.id));
+    service.createDebtTransaction(validBorrowingRequest(created.id));
+
+    const dashboard = service.getDashboard({});
+
+    expect(dashboard).toMatchObject({
+      effectiveDate: '2026-07-27',
+      activeDebtCount: 1,
+      totals: {
+        activeDebt: '125500.13',
+        principalReductionYtd: '400.00',
+        newBorrowingsYtd: '1000.00',
+        interestActivityYtd: '-100.00',
+        requiredMonthlyPayments: '2450.00',
+        weightedAverageInterestRate: '5.49',
+      },
+    });
+    expect(dashboard.metricBasis.activeDebt).toContain(
+      'Application-calculated ledger balances',
+    );
+  });
+
+  it('surfaces upcoming maturities and reconciliation attention items', () => {
+    const request = validRequest('Fictional Short Note');
+    request.debt.maturityDate = '2026-12-31';
+    const created = service.createDebt(request);
+    service.createDebtTransaction(validTransactionRequest(created.id));
+    service.createBalanceReconciliation({
+      debtId: created.id,
+      reconciliation: {
+        statementDate: '2026-01-31',
+        statementEndingBalance: '124600.13',
+        reconciliationStatus: 'exception',
+        explanation: 'Generated exception requiring follow-up.',
+        approvedAdjustment: null,
+        sourceReference: 'STAT-2026-01',
+        supportingNotes: null,
+      },
+    });
+
+    const dashboard = service.getDashboard({});
+
+    expect(dashboard.upcomingMaturities).toEqual([
+      expect.objectContaining({
+        debtId: created.id,
+        debtName: 'Fictional Short Note',
+        effectiveDate: '2026-12-31',
+        amount: '124500.13',
+      }),
+    ]);
+    expect(dashboard.attentionItems).toEqual([
+      expect.objectContaining({
+        debtId: created.id,
+        status: 'exception',
+        difference: '100.00',
+      }),
+    ]);
+  });
+
   it('retrieves a debt through the application service', () => {
     const created = service.createDebt(validRequest());
     expect(service.getDebt({ id: created.id })).toMatchObject({

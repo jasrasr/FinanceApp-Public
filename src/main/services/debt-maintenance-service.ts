@@ -7,8 +7,10 @@ import type {
   CreateDebtTransactionRequest,
   ArchiveDebtRequest,
   CreateDebtRequest,
+  DashboardDto,
   DebtDetailDto,
   DebtSummaryDto,
+  GetDashboardRequest,
   GetDebtRequest,
   ListDebtsRequest,
   ReverseDebtTransactionRequest,
@@ -22,6 +24,7 @@ import {
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
   createDebtRequestSchema,
+  getDashboardRequestSchema,
   getDebtRequestSchema,
   listDebtsRequestSchema,
   reverseDebtTransactionRequestSchema,
@@ -38,6 +41,7 @@ import {
   getDebtActivityRecord,
   getDebtTransactionRecord,
   createDebtAndInitialTerm,
+  listActiveDebtActivityRecords,
   listDebtRecords,
   RepositoryConflictError,
   RepositoryNotFoundError,
@@ -80,6 +84,7 @@ import { ApplicationServiceError } from './application-error';
 
 export interface DebtMaintenanceService {
   listDebts(request: ListDebtsRequest): readonly DebtSummaryDto[];
+  getDashboard(request: GetDashboardRequest): DashboardDto;
   getDebt(request: GetDebtRequest): DebtDetailDto;
   createDebt(request: CreateDebtRequest): DebtDetailDto;
   updateDebt(request: UpdateDebtRequest): DebtDetailDto;
@@ -561,6 +566,234 @@ const mapDetail = (record: DebtWithActivityRecord): DebtDetailDto => {
   };
 };
 
+const currentFinancialDate = (now: () => string): string =>
+  currentUtcTimestampSchema(now()).slice(0, 10);
+
+const yearStartDate = (effectiveDate: string): string =>
+  `${effectiveDate.slice(0, 4)}-01-01`;
+
+const addMonths = (financialDate: string, months: number): string => {
+  const [yearText, monthText, dayText] = financialDate.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+
+  const date = new Date(Date.UTC(year, month - 1 + months, day));
+  return date.toISOString().slice(0, 10);
+};
+
+const isWithinDateRange = (date: string, startDate: string, endDate: string): boolean =>
+  date >= startDate && date <= endDate;
+
+const currentTermForDate = (
+  terms: readonly DebtTermRecord[],
+  effectiveDate: string,
+): DebtTermRecord => {
+  const currentTerm = terms.find(
+    (term) =>
+      term.effectiveStartDate <= effectiveDate &&
+      (term.effectiveEndDate === null || term.effectiveEndDate >= effectiveDate),
+  );
+
+  if (currentTerm) return currentTerm;
+
+  const priorTerms = terms.filter((term) => term.effectiveStartDate <= effectiveDate);
+  const fallbackTerm = priorTerms.at(-1) ?? terms[0];
+
+  if (!fallbackTerm) {
+    throw new ApplicationServiceError(
+      'internal',
+      'This debt is missing its required initial terms record.',
+    );
+  }
+
+  return fallbackTerm;
+};
+
+const roundRatio = (numerator: bigint, denominator: bigint): number => {
+  if (denominator === 0n) return 0;
+
+  const sign = numerator < 0n ? -1n : 1n;
+  const absoluteNumerator = numerator < 0n ? -numerator : numerator;
+  const rounded = (absoluteNumerator * 2n + denominator) / (denominator * 2n);
+  return Number(rounded * sign);
+};
+
+const monthlyEquivalentCents = (
+  requiredPaymentCents: number,
+  paymentFrequency: DebtTermRecord['paymentFrequency'],
+): number => {
+  switch (paymentFrequency) {
+    case 'weekly':
+      return roundRatio(BigInt(requiredPaymentCents) * 52n, 12n);
+    case 'biweekly':
+      return roundRatio(BigInt(requiredPaymentCents) * 26n, 12n);
+    case 'semimonthly':
+      return requiredPaymentCents * 2;
+    case 'monthly':
+      return requiredPaymentCents;
+    case 'quarterly':
+      return roundRatio(BigInt(requiredPaymentCents), 3n);
+    case 'annually':
+      return roundRatio(BigInt(requiredPaymentCents), 12n);
+    case 'irregular':
+    case 'other':
+      return 0;
+  }
+};
+
+const postedActualTransactionsThrough = (
+  record: DebtWithActivityRecord,
+  startDate: string,
+  endDate: string,
+): readonly DebtTransactionWithAllocationsRecord[] =>
+  record.transactions.filter(
+    ({ transaction }) =>
+      transaction.status !== 'superseded' &&
+      isWithinDateRange(transaction.effectiveDate, startDate, endDate),
+  );
+
+const createDashboard = (
+  database: AppDatabase,
+  records: readonly DebtWithActivityRecord[],
+  effectiveDate: string,
+): DashboardDto => {
+  const ytdStart = yearStartDate(effectiveDate);
+  const upcomingMaturityEndDate = addMonths(effectiveDate, 12);
+  let activeDebtCents = 0;
+  let principalReductionYtdCents = 0;
+  let newBorrowingsYtdCents = 0;
+  let interestActivityYtdCents = 0;
+  let requiredMonthlyPaymentsCents = 0;
+  let weightedRateNumerator = 0n;
+  let weightedRateDenominator = 0n;
+
+  const upcomingMaturities: DashboardDto['upcomingMaturities'] = [];
+  const attentionItems: DashboardDto['attentionItems'] = [];
+
+  for (const record of records) {
+    const currentTerm = currentTermForDate(record.terms, effectiveDate);
+    const ledgerBalanceCents = calculateLedgerBalanceThroughDate(
+      database,
+      record.debt.id,
+      effectiveDate,
+    );
+
+    activeDebtCents += ledgerBalanceCents;
+    requiredMonthlyPaymentsCents += monthlyEquivalentCents(
+      currentTerm.requiredPaymentCents,
+      currentTerm.paymentFrequency,
+    );
+
+    if (ledgerBalanceCents > 0) {
+      weightedRateNumerator +=
+        BigInt(ledgerBalanceCents) * BigInt(currentTerm.interestRateMicros);
+      weightedRateDenominator += BigInt(ledgerBalanceCents);
+    }
+
+    for (const { transaction, allocations } of postedActualTransactionsThrough(
+      record,
+      ytdStart,
+      effectiveDate,
+    )) {
+      if (transaction.transactionType === 'borrowing_draw') {
+        newBorrowingsYtdCents += transaction.totalAmountCents;
+      }
+
+      for (const allocation of allocations) {
+        if (
+          (allocation.allocationType === 'principal' ||
+            allocation.allocationType === 'extra_principal') &&
+          allocation.amountCents < 0
+        ) {
+          principalReductionYtdCents -= allocation.amountCents;
+        }
+
+        if (allocation.allocationType === 'interest') {
+          interestActivityYtdCents += allocation.amountCents;
+        }
+      }
+    }
+
+    if (
+      record.debt.maturityDate &&
+      isWithinDateRange(
+        record.debt.maturityDate,
+        effectiveDate,
+        upcomingMaturityEndDate,
+      )
+    ) {
+      upcomingMaturities.push({
+        debtId: record.debt.id,
+        debtName: record.debt.name,
+        creditor: record.debt.creditor,
+        amount: centsToDollars(ledgerBalanceCents),
+        effectiveDate: record.debt.maturityDate,
+        basis: `Matures within 12 months of dashboard effective date ${effectiveDate}; amount is application-calculated ledger balance as of ${effectiveDate}.`,
+      });
+    }
+
+    for (const reconciliation of record.balanceReconciliations) {
+      if (
+        reconciliation.reconciliationStatus === 'unreconciled' ||
+        reconciliation.reconciliationStatus === 'in_progress' ||
+        reconciliation.reconciliationStatus === 'exception'
+      ) {
+        attentionItems.push({
+          debtId: record.debt.id,
+          debtName: record.debt.name,
+          creditor: record.debt.creditor,
+          statementDate: reconciliation.statementDate,
+          status: reconciliation.reconciliationStatus,
+          difference: centsToDollars(reconciliation.calculatedDifferenceCents),
+          sourceReference: reconciliation.sourceReference,
+          basis:
+            'Open reconciliation item; difference is statement ending balance less application-calculated ledger balance for the statement date.',
+        });
+      }
+    }
+  }
+
+  upcomingMaturities.sort((left, right) =>
+    left.effectiveDate.localeCompare(right.effectiveDate),
+  );
+  attentionItems.sort((left, right) =>
+    right.statementDate.localeCompare(left.statementDate),
+  );
+
+  const weightedAverageInterestRateMicros =
+    weightedRateDenominator === 0n
+      ? null
+      : roundRatio(weightedRateNumerator, weightedRateDenominator);
+
+  return {
+    effectiveDate,
+    yearToDateStartDate: ytdStart,
+    activeDebtCount: records.length,
+    totals: {
+      activeDebt: centsToDollars(activeDebtCents),
+      principalReductionYtd: centsToDollars(principalReductionYtdCents),
+      newBorrowingsYtd: centsToDollars(newBorrowingsYtdCents),
+      interestActivityYtd: centsToDollars(interestActivityYtdCents),
+      requiredMonthlyPayments: centsToDollars(requiredMonthlyPaymentsCents),
+      weightedAverageInterestRate:
+        weightedAverageInterestRateMicros === null
+          ? null
+          : rateMicrosToPercentString(weightedAverageInterestRateMicros),
+    },
+    metricBasis: {
+      activeDebt: `Application-calculated ledger balances for active debts as of ${effectiveDate}; not confirmed snapshots or original principal.`,
+      principalReductionYtd: `Net principal and extra-principal allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}.`,
+      newBorrowingsYtd: `Posted non-superseded borrowing or draw transaction totals dated ${ytdStart} through ${effectiveDate}.`,
+      interestActivityYtd: `Net interest allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}; negative amounts indicate interest paid through payments.`,
+      requiredMonthlyPayments: `Current effective debt terms as of ${effectiveDate}, normalized to monthly equivalents; irregular and other frequencies are excluded from the amount.`,
+      weightedAverageInterestRate: `Current effective annual rates as of ${effectiveDate}, weighted by application-calculated ledger balances for active debts.`,
+    },
+    upcomingMaturities: upcomingMaturities.slice(0, 10),
+    attentionItems: attentionItems.slice(0, 10),
+  };
+};
+
 const normalizeError = (error: unknown): never => {
   if (error instanceof ApplicationServiceError) {
     throw error;
@@ -612,6 +845,19 @@ export const createDebtMaintenanceService = ({
       try {
         const parsed = listDebtsRequestSchema.parse(request);
         return listDebtRecords(database, parsed.includeArchived).map(mapSummary);
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getDashboard: (request) => {
+      try {
+        getDashboardRequestSchema.parse(request);
+        return createDashboard(
+          database,
+          listActiveDebtActivityRecords(database),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }

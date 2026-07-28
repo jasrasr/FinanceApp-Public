@@ -20,6 +20,12 @@ test('completes the manual debt-maintenance workflow', async () => {
 
   try {
     const window = await application.firstWindow();
+    await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'No active debts to summarize' }),
+    ).toBeVisible();
+
+    await window.getByRole('button', { name: 'Debts' }).click();
     await expect(
       window.getByRole('heading', { name: 'No debts to display' }),
     ).toBeVisible();
@@ -47,6 +53,13 @@ test('completes the manual debt-maintenance workflow', async () => {
       window.getByText('Debt and initial effective-dated terms were created.'),
     ).toBeVisible();
     await expect(window.getByText('$125,000.00')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Dashboard' }).click();
+    await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
+    await expect(window.getByText('Total active debt')).toBeVisible();
+    await expect(window.getByText('$125,000.00')).toBeVisible();
+    await window.getByRole('button', { name: 'Debts' }).click();
+    await window.getByRole('button', { name: 'View' }).click();
 
     await window.getByRole('button', { name: 'Edit details' }).click();
     await window
@@ -82,7 +95,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.locator('[name="transaction.allocations.interest"]').fill('-100.00');
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
-    await expect(window.getByText('-500.00')).toBeVisible();
+    await expect(window.getByText('-$500.00')).toBeVisible();
 
     await window.getByRole('button', { name: 'Record snapshot' }).nth(0).click();
     await window.locator('[name="snapshot.effectiveDate"]').fill('2026-01-31');
@@ -117,6 +130,14 @@ test('completes the manual debt-maintenance workflow', async () => {
       window.getByText('Balance reconciliation was recorded.'),
     ).toBeVisible();
     await expect(window.getByText('Reconciled')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Dashboard' }).click();
+    await expect(window.getByText('Principal reduction YTD')).toBeVisible();
+    await expect(window.getByText('$400.00')).toBeVisible();
+    await expect(window.getByText('Interest activity YTD')).toBeVisible();
+    await expect(window.getByText('-$100.00')).toBeVisible();
+    await window.getByRole('button', { name: 'Debts' }).click();
+    await window.getByRole('button', { name: 'View' }).click();
 
     await window.getByRole('button', { name: 'Reverse' }).click();
     await expect(

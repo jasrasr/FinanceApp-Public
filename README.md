@@ -19,6 +19,9 @@ for maintaining debts and supporting future debt-paydown analysis.
   snapshots.
 - Statement-based balance reconciliation against the ledger balance calculated
   through the statement date, including explicit approved adjustment postings.
+- Basic dashboard with active-debt totals, year-to-date posted activity metrics,
+  current-term payment and rate summaries, upcoming maturities, and open
+  reconciliation attention items.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
 - Automatic development-database initialization and migration under Electron's
   user-data directory.
@@ -134,6 +137,22 @@ Electron user-data directory that it removes after the workflow.
   posted transactions are separate records.
 - Approved reconciliation adjustments are explicit posted transactions linked to
   the reconciliation that approved them.
+
+## Dashboard Rules
+
+- Dashboard metrics exclude archived debts.
+- Total active debt uses application-calculated ledger balances as of the
+  displayed dashboard effective date.
+- Year-to-date metrics use posted non-superseded activity from January 1 through
+  the dashboard effective date.
+- Principal reduction counts negative principal and extra-principal allocations.
+- New borrowings count posted borrowing and draw transaction totals.
+- Interest activity is the net signed interest allocation total.
+- Required monthly payments use current effective debt terms, normalized to a
+  monthly equivalent. Irregular and other frequencies are excluded from that
+  amount.
+- Weighted-average interest rate uses current effective rates weighted by
+  application-calculated ledger balances.
 
 ## Privacy
 

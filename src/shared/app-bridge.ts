@@ -6,8 +6,10 @@ import type {
   ApplicationResult,
   ArchiveDebtRequest,
   CreateDebtRequest,
+  DashboardDto,
   DebtDetailDto,
   DebtSummaryDto,
+  GetDashboardRequest,
   GetDebtRequest,
   ListDebtsRequest,
   ReverseDebtTransactionRequest,
@@ -19,6 +21,7 @@ export interface DebtBridge {
   listDebts(
     request: ListDebtsRequest,
   ): Promise<ApplicationResult<readonly DebtSummaryDto[]>>;
+  getDashboard(request: GetDashboardRequest): Promise<ApplicationResult<DashboardDto>>;
   getDebt(request: GetDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   createDebt(request: CreateDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   updateDebt(request: UpdateDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
@@ -41,5 +44,5 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 4;
+  readonly bridgeVersion: 5;
 }

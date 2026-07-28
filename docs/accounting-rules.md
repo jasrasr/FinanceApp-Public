@@ -167,6 +167,38 @@ The approved adjustment total must equal the calculated difference. Its effectiv
 and posting dates are the statement date, its source type is `reconciliation`,
 and its source reference is the reconciliation identifier.
 
+## Basic Dashboard Metrics
+
+Dashboard metrics exclude archived debts unless a metric explicitly states
+otherwise. Phase six does not create payoff projections, debt-free-date
+forecasts, refinance analysis, or advanced reporting.
+
+The default dashboard balance is the application-calculated ledger balance as of
+the dashboard effective date. It is not a confirmed snapshot, statement balance,
+projected balance, scenario balance, or original principal amount.
+
+Dashboard year-to-date metrics use posted non-superseded actual activity dated
+January 1 through the dashboard effective date:
+
+- Principal reduction is the positive display of negative principal and
+  extra-principal allocations.
+- New borrowings are borrowing and draw transaction totals.
+- Interest activity is the net signed interest allocation total. Negative values
+  generally indicate interest paid through payment allocations; positive values
+  generally indicate interest charged.
+
+Required monthly payments come from current effective debt terms as of the
+dashboard effective date. Weekly, biweekly, quarterly, and annual frequencies are
+normalized to monthly equivalents using annualized payment frequency divided by 12. Semimonthly payments are doubled. Irregular and other frequencies are
+excluded from the amount because no reliable monthly cadence is defined.
+
+Weighted-average interest rate uses current effective annual rates weighted by
+application-calculated ledger balances for active debts with positive balances.
+
+Upcoming maturities include active debts maturing within 12 months of the
+dashboard effective date. Attention items include unreconciled, in-progress, and
+exception reconciliations for active debts.
+
 ## Corrections and Reversals
 
 Posted activity is not silently deleted or overwritten.

@@ -216,6 +216,8 @@ export const listDebtsRequestSchema = z
   })
   .strict();
 
+export const getDashboardRequestSchema = z.object({}).strict();
+
 export const getDebtRequestSchema = z.object({ id: uuidSchema }).strict();
 
 export const archiveDebtRequestSchema = z
@@ -354,6 +356,60 @@ export const debtDetailDtoSchema = debtSummaryDtoSchema
   })
   .strict();
 
+export const dashboardDebtMetricDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    creditor: z.string(),
+    amount: z.string(),
+    effectiveDate: financialDateInputSchema,
+    basis: z.string(),
+  })
+  .strict();
+
+export const dashboardAttentionItemDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    creditor: z.string(),
+    statementDate: financialDateInputSchema,
+    status: reconciliationStatusSchema,
+    difference: z.string(),
+    sourceReference: z.string().nullable(),
+    basis: z.string(),
+  })
+  .strict();
+
+export const dashboardDtoSchema = z
+  .object({
+    effectiveDate: financialDateInputSchema,
+    yearToDateStartDate: financialDateInputSchema,
+    totals: z
+      .object({
+        activeDebt: z.string(),
+        principalReductionYtd: z.string(),
+        newBorrowingsYtd: z.string(),
+        interestActivityYtd: z.string(),
+        requiredMonthlyPayments: z.string(),
+        weightedAverageInterestRate: z.string().nullable(),
+      })
+      .strict(),
+    metricBasis: z
+      .object({
+        activeDebt: z.string(),
+        principalReductionYtd: z.string(),
+        newBorrowingsYtd: z.string(),
+        interestActivityYtd: z.string(),
+        requiredMonthlyPayments: z.string(),
+        weightedAverageInterestRate: z.string(),
+      })
+      .strict(),
+    upcomingMaturities: z.array(dashboardDebtMetricDtoSchema),
+    attentionItems: z.array(dashboardAttentionItemDtoSchema),
+    activeDebtCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const applicationErrorSchema = z
   .object({
     code: z.enum([
@@ -378,6 +434,7 @@ export const applicationResultSchema = <T extends z.ZodType>(valueSchema: T) =>
 export const debtSummaryListSchema = z.array(debtSummaryDtoSchema);
 export const debtListResultSchema = applicationResultSchema(debtSummaryListSchema);
 export const debtDetailResultSchema = applicationResultSchema(debtDetailDtoSchema);
+export const dashboardResultSchema = applicationResultSchema(dashboardDtoSchema);
 
 export type CreateDebtRequest = z.infer<typeof createDebtRequestSchema>;
 export type DebtCoreInput = z.infer<typeof debtCoreInputSchema>;
@@ -397,6 +454,7 @@ export type CreateBalanceReconciliationRequest = z.infer<
   typeof createBalanceReconciliationRequestSchema
 >;
 export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
+export type GetDashboardRequest = z.infer<typeof getDashboardRequestSchema>;
 export type GetDebtRequest = z.infer<typeof getDebtRequestSchema>;
 export type ArchiveDebtRequest = z.infer<typeof archiveDebtRequestSchema>;
 export type RestoreDebtRequest = z.infer<typeof restoreDebtRequestSchema>;
@@ -407,6 +465,7 @@ export type BalanceSnapshotDto = z.infer<typeof balanceSnapshotDtoSchema>;
 export type BalanceReconciliationDto = z.infer<typeof balanceReconciliationDtoSchema>;
 export type DebtSummaryDto = z.infer<typeof debtSummaryDtoSchema>;
 export type DebtDetailDto = z.infer<typeof debtDetailDtoSchema>;
+export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
 export type ApplicationError = z.infer<typeof applicationErrorSchema>;
 export type ApplicationResult<T> =
   | { readonly ok: true; readonly value: T }

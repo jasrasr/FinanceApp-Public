@@ -9,6 +9,7 @@ import type {
   ApplicationResult,
   ArchiveDebtRequest,
   CreateDebtRequest,
+  DashboardDto,
   DebtDetailDto,
   DebtSummaryDto,
   UpdateDebtRequest,
@@ -19,12 +20,13 @@ import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { ConfirmationDialog } from './components/confirmation-dialog';
 import { CreateDebtForm } from './components/create-debt-form';
+import { Dashboard } from './components/dashboard';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { EditDebtForm } from './components/edit-debt-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
 
-type View = 'list' | 'create' | 'detail' | 'edit' | 'add-term';
+type View = 'dashboard' | 'list' | 'create' | 'detail' | 'edit' | 'add-term';
 type DetailPanel = 'overview' | 'transaction' | 'snapshot' | 'reconciliation';
 type Confirmation = 'archive' | 'restore' | 'reverse' | null;
 type ReverseTarget = {
@@ -74,7 +76,8 @@ const ErrorNotice = ({
 );
 
 export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Element => {
-  const [view, setView] = useState<View>('list');
+  const [view, setView] = useState<View>('dashboard');
+  const [dashboard, setDashboard] = useState<DashboardDto | null>(null);
   const [debts, setDebts] = useState<readonly DebtSummaryDto[]>([]);
   const [selectedDebt, setSelectedDebt] = useState<DebtDetailDto | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -89,10 +92,12 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [reverseTarget, setReverseTarget] = useState<ReverseTarget>(null);
 
-  const loadDebts = async (): Promise<void> => {
+  const loadDebts = async (includeArchivedValue = includeArchived): Promise<void> => {
     setLoading(true);
     setError(null);
-    const result = await invokeBridge(() => bridge.listDebts({ includeArchived }));
+    const result = await invokeBridge(() =>
+      bridge.listDebts({ includeArchived: includeArchivedValue }),
+    );
 
     if (result.ok) {
       setDebts(result.value);
@@ -103,14 +108,28 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setLoading(false);
   };
 
+  const loadDashboard = async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() => bridge.getDashboard({}));
+
+    if (result.ok) {
+      setDashboard(result.value);
+    } else {
+      setError(result.error);
+    }
+
+    setLoading(false);
+  };
+
   useEffect(() => {
     let active = true;
 
-    void invokeBridge(() => bridge.listDebts({ includeArchived })).then((result) => {
+    void invokeBridge(() => bridge.getDashboard({})).then((result) => {
       if (!active) return;
 
       if (result.ok) {
-        setDebts(result.value);
+        setDashboard(result.value);
         setError(null);
       } else {
         setError(result.error);
@@ -122,7 +141,18 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     return () => {
       active = false;
     };
-  }, [bridge, includeArchived]);
+  }, [bridge]);
+
+  const showDashboard = (): void => {
+    setView('dashboard');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setConfirmation(null);
+    setReverseTarget(null);
+    setError(null);
+    setFieldErrors(undefined);
+    void loadDashboard();
+  };
 
   const showList = (): void => {
     setView('list');
@@ -146,6 +176,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setView('detail');
       setDetailPanel('overview');
       setReverseTarget(null);
+      setDashboard(null);
     } else {
       setError(result.error);
     }
@@ -170,6 +201,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setView('detail');
       setDetailPanel('overview');
       setReverseTarget(null);
+      await loadDashboard();
       await loadDebts();
     } else {
       handleFailure(result.error);
@@ -190,6 +222,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setView('detail');
       setDetailPanel('overview');
       await loadDebts();
+      await loadDashboard();
     } else {
       handleFailure(result.error);
     }
@@ -209,6 +242,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setView('detail');
       setDetailPanel('overview');
       await loadDebts();
+      await loadDashboard();
     } else {
       handleFailure(result.error);
     }
@@ -229,6 +263,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setSuccessMessage('Posted transaction was recorded.');
       setDetailPanel('overview');
       await loadDebts();
+      await loadDashboard();
     } else {
       handleFailure(result.error);
     }
@@ -249,6 +284,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setSuccessMessage('Confirmed balance snapshot was recorded.');
       setDetailPanel('overview');
       await loadDebts();
+      await loadDashboard();
     } else {
       handleFailure(result.error);
     }
@@ -271,6 +307,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setSuccessMessage('Balance reconciliation was recorded.');
       setDetailPanel('overview');
       await loadDebts();
+      await loadDashboard();
     } else {
       handleFailure(result.error);
     }
@@ -307,6 +344,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setDetailPanel('overview');
       setReverseTarget(null);
       await loadDebts();
+      await loadDashboard();
     } else {
       handleFailure(result.error);
     }
@@ -382,8 +420,18 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           <ul className="mt-3">
             <li>
               <button
-                aria-current={view === 'list' ? 'page' : undefined}
+                aria-current={view === 'dashboard' ? 'page' : undefined}
                 className="w-full rounded-md bg-slate-200 px-3 py-2 text-left text-sm font-semibold text-slate-900 hover:bg-slate-300"
+                onClick={showDashboard}
+                type="button"
+              >
+                Dashboard
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
+                aria-current={view === 'list' ? 'page' : undefined}
+                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
                 onClick={showList}
                 type="button"
               >
@@ -415,7 +463,13 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             <div className="mb-6">
               <ErrorNotice
                 error={error}
-                onRetry={view === 'list' ? () => void loadDebts() : undefined}
+                onRetry={
+                  view === 'list'
+                    ? () => void loadDebts()
+                    : view === 'dashboard'
+                      ? () => void loadDashboard()
+                      : undefined
+                }
               />
             </div>
           ) : null}
@@ -427,6 +481,22 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             >
               <p className="text-sm font-medium text-slate-600">Loading debts…</p>
             </section>
+          ) : null}
+
+          {loading && view === 'dashboard' ? (
+            <section
+              aria-label="Loading dashboard"
+              className="rounded-xl border border-slate-200 bg-white p-10"
+            >
+              <p className="text-sm font-medium text-slate-600">Loading dashboard…</p>
+            </section>
+          ) : null}
+
+          {!loading && view === 'dashboard' && dashboard ? (
+            <Dashboard
+              dashboard={dashboard}
+              onSelectDebt={(id) => void selectDebt(id)}
+            />
           ) : null}
 
           {!loading && view === 'list' ? (
@@ -443,6 +513,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 setLoading(true);
                 setError(null);
                 setIncludeArchived(nextValue);
+                void loadDebts(nextValue);
               }}
               onSelect={(id) => void selectDebt(id)}
             />

@@ -194,6 +194,25 @@ export const getDebtActivityRecord = (
     : undefined;
 };
 
+export const listActiveDebtActivityRecords = (
+  database: AppDatabase,
+): readonly DebtWithActivityRecord[] => {
+  const debtRows = database
+    .select()
+    .from(debts)
+    .where(isNull(debts.archivedAtUtc))
+    .orderBy(asc(debts.name))
+    .all();
+
+  return debtRows.map((debt) => ({
+    debt,
+    terms: getTerms(database, debt.id),
+    transactions: getTransactions(database, debt.id),
+    balanceSnapshots: getBalanceSnapshots(database, debt.id),
+    balanceReconciliations: getBalanceReconciliations(database, debt.id),
+  }));
+};
+
 export const calculateLedgerBalanceThroughDate = (
   database: AppDatabase,
   debtId: string,
