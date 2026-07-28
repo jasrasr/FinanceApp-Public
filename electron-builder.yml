@@ -1,0 +1,62 @@
+appId: com.local.debttracker
+productName: Debt Tracker
+copyright: Copyright © 2026 Debt Tracker
+
+directories:
+  buildResources: assets
+  output: dist
+
+files:
+  - out/**
+  - drizzle/**
+  - package.json
+  - node_modules/**
+  - '!**/*.ts'
+  - '!**/*.tsx'
+  - '!**/*.map'
+  - '!**/*.sqlite'
+  - '!**/*.sqlite3'
+  - '!**/*.db'
+  - '!**/*.db-journal'
+  - '!**/*.db-wal'
+  - '!**/*.db-shm'
+  - '!**/*.sqlite-journal'
+  - '!**/*.sqlite-wal'
+  - '!**/*.sqlite-shm'
+  - '!**/*.sqlite3-journal'
+  - '!**/*.sqlite3-wal'
+  - '!**/*.sqlite3-shm'
+  - '!**/*.xlsx'
+  - '!**/*.xlsm'
+  - '!**/*.xls'
+  - '!**/exports/**'
+  - '!**/backups/**'
+  - '!**/logs/**'
+  - '!**/test-results/**'
+  - '!**/playwright-report/**'
+  - '!**/e2e/**'
+  - '!**/docs/**'
+
+asar: true
+asarUnpack:
+  - node_modules/better-sqlite3/build/Release/*.node
+  - node_modules/better-sqlite3/prebuilds/**
+
+npmRebuild: false
+buildDependenciesFromSource: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.ico
+  artifactName: '${productName} Setup ${version}.${ext}'
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false

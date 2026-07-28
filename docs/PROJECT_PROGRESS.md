@@ -5,8 +5,8 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.11.0`, aligned
-to the eleven completed feature phases. Earlier phase entries did not record an
+phase seven on 2026-07-28. The current application version is `0.12.0`, aligned
+to the twelve completed feature phases. Earlier phase entries did not record an
 application version at the time they were completed.
 
 ## Phase 1: Application Foundation
@@ -502,3 +502,49 @@ application version at the time they were completed.
   - No cloud storage, encryption-key management, or installer packaging.
 - Recommended next phase:
   - Packaging and installer preparation when explicitly approved.
+
+## Phase 12: Windows Packaging and Production Readiness
+
+- Completion date: 2026-07-28
+- Application version: 0.12.0
+- Features implemented:
+  - Windows x64 NSIS installer configuration through electron-builder.
+  - Generated application icon asset and installer metadata.
+  - Electron-compatible better-sqlite3 native-module preparation before
+    packaging, with the native binary unpacked from ASAR.
+  - Packaged/installed application smoke workflow for launch, database
+    creation, manual debt entry, backup, restore, export, same-path
+    reinstall/upgrade preservation, and user-data survival after uninstall.
+  - Sanitized startup diagnostics written under the Windows user-data directory.
+- Material architecture and accounting decisions:
+  - The installed app remains local-only and does not depend on Node, npm, VS
+    Code, or the source repository at runtime.
+  - Production database, backups, diagnostics, and exports remain outside the
+    repository and installation directory.
+  - Uninstall does not silently remove financial data or backups.
+  - Packaging does not change accounting calculations, posting rules,
+    reconciliation rules, or backup/restore semantics.
+- Database schema or migration changes:
+  - No schema or migration changes.
+  - Existing migrations are packaged and applied at startup to preserve upgrade
+    behavior.
+- New or changed IPC operations:
+  - No new IPC operations.
+  - Existing data-management and debt-maintenance operations are exercised in
+    the packaged smoke workflow.
+- New UI screens or workflows:
+  - No new financial UI workflow.
+  - Installed application displays the existing version and last-changed footer.
+- Validation and smoke-test results:
+  - Added startup diagnostics tests.
+  - Added installed packaged-app smoke tests covering launch, database creation,
+    debt entry, backup, restore, export, same-path reinstall/upgrade
+    preservation, and uninstall user-data preservation.
+- Known limitations and technical debt:
+  - Installer is unsigned; Windows may show SmartScreen or unknown-publisher
+    warnings.
+  - Auto-update, code signing, Mac/Linux packaging, and cloud synchronization are
+    intentionally out of scope.
+- Recommended next phase:
+  - Production hardening should focus on signing strategy, upgrade regression
+    matrices, and release-process documentation only after explicit approval.

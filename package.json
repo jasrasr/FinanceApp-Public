@@ -1,12 +1,14 @@
 {
   "name": "debt-tracker",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "description": "A local desktop application for tracking debt paydown.",
+  "author": "Debt Tracker",
   "main": "./out/main/index.js",
   "scripts": {
     "postinstall": "install-electron --no",
     "app:metadata": "tsx scripts/run-with-app-metadata.ts",
+    "assets:icons": "tsx scripts/generate-icons.ts",
     "native:node": "npm rebuild better-sqlite3",
     "native:electron": "tsx scripts/install-electron-native.ts",
     "dev": "npm run native:electron && npm run app:metadata -- electron-vite --config ./electron.vite.config.cjs",
@@ -18,10 +20,14 @@
     "test": "npm run native:node && vitest run --config ./vitest.config.mjs --configLoader runner",
     "test:integration": "npm run native:node && vitest run --config ./vitest.config.mjs --configLoader runner src/main/database/database.integration.test.ts src/main/services/debt-maintenance-service.integration.test.ts",
     "test:e2e": "npm run build && npm run native:electron && playwright test",
+    "test:packaged": "playwright test e2e/packaged-app.spec.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "npm run native:node && tsx scripts/migrate-database.ts --temporary",
     "db:check": "npm run native:node && tsx scripts/check-database.ts",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run db:check && npm run test:e2e"
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run db:check && npm run test:e2e",
+    "package": "npm run assets:icons && npm run build && npm run native:electron && electron-builder --win nsis --x64",
+    "package:dir": "npm run assets:icons && npm run build && npm run native:electron && electron-builder --win dir --x64",
+    "package:smoke": "npm run package && tsx scripts/smoke-installed-app.ts"
   },
   "license": "UNLICENSED",
   "dependencies": {
@@ -44,6 +50,7 @@
     "@vitejs/plugin-react": "^5.2.0",
     "drizzle-kit": "^0.31.10",
     "electron": "^41.10.3",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",

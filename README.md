@@ -35,14 +35,14 @@ for maintaining debts and supporting future debt-paydown analysis.
   actual-versus-plan variance, and reconciliation/data-quality exceptions.
 - Data management screen for validated SQLite backups, restore from validated
   local backups with pre-restore safety backup, and CSV data exports.
+- Windows x64 NSIS installer packaging with Electron-compatible better-sqlite3
+  native module handling and packaged-app smoke tests.
 - Restrained in-app display of the current package version and automatically
   generated last-changed timestamp.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
 - Automatic development-database initialization and migration under Electron's
   user-data directory.
 - Playwright-controlled Electron testing against disposable user-data directories.
-
-Application installer and packaging workflows have not been implemented.
 
 ## Prerequisites
 
@@ -116,6 +116,33 @@ npm run check
 The verification gate includes formatting, linting, type checking, Vitest,
 database integrity checks, a production build, and the isolated Electron
 end-to-end workflow.
+
+Generate the application icon and create Windows packages:
+
+```powershell
+npm run assets:icons
+npm run package:dir
+npm run package
+```
+
+Run the installed-app packaging smoke test:
+
+```powershell
+npm run package:smoke
+```
+
+`package` creates an unsigned Windows x64 NSIS installer under `dist/`.
+`package:smoke` installs that generated installer into a temporary directory,
+launches the installed application without Node, npm, VS Code, or the source
+repository as runtime dependencies, verifies database creation, manual debt
+entry, backup, restore, export, same-path reinstall/upgrade preservation, and
+user-data survival after uninstall, then removes the generated temporary test
+data.
+
+Because code signing is not configured, Windows may show SmartScreen or unsigned
+publisher warnings. For local testing, review the installer filename and source,
+choose the Windows option to run anyway if appropriate, and install per user. Do
+not distribute the unsigned installer as a trusted production release.
 
 ## Development Database
 
@@ -231,6 +258,26 @@ Electron user-data directory that it removes after the workflow.
 - CSV exports are written to a user-selected directory outside the repository.
 - Export files label actual, confirmed, calculated, and scenario values
   separately and omit audit-event detail.
+
+## Windows Packaging Rules
+
+- Packaging is Windows x64 only.
+- The installer is generated with electron-builder and NSIS.
+- better-sqlite3 is prepared for the configured Electron runtime before
+  packaging and its native `.node` binary is unpacked from ASAR.
+- Packaged artifacts exclude development databases, workbooks, test results,
+  backups, exports, logs, and generated installers from application contents.
+- Installed live data is stored beneath the Windows Electron user-data location,
+  not under the source repository, OneDrive project directory, or installation
+  directory.
+- Backups are stored under the application user-data backup directory; exports
+  are written only to a user-selected directory outside the repository.
+- Uninstall does not delete user financial data or backups silently.
+- Upgrades use the same app identifier and user-data location, so the existing
+  database is preserved and migrated at startup.
+- Startup diagnostics are written under user data with sanitized status fields
+  only; raw database paths, financial values, and stack traces are not exposed
+  to the renderer.
 
 ## Workbook Import Rules
 

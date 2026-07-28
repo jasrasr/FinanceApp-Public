@@ -11,6 +11,7 @@ import {
 import { createTrustedSenderValidator } from './ipc/trusted-sender';
 import { createDataManagementService } from './services/data-management-service';
 import { createDebtMaintenanceService } from './services/debt-maintenance-service';
+import { writeStartupDiagnostics } from './startup-diagnostics';
 
 const rendererFile = join(__dirname, '../renderer/index.html');
 
@@ -33,6 +34,11 @@ const selectWorkbookPath = (): string | null => {
 };
 
 const selectExportDirectory = (): string | null => {
+  const testExportDirectory = process.env.DEBT_TRACKER_TEST_EXPORT_DIR;
+  if (testExportDirectory && process.env.DEBT_TRACKER_TEST_MODE === '1') {
+    return testExportDirectory;
+  }
+
   const result = dialog.showOpenDialogSync({
     title: 'Select folder for Debt Tracker export',
     properties: ['openDirectory', 'createDirectory'],
@@ -106,6 +112,7 @@ const startApplication = async (): Promise<void> => {
     userDataDirectory,
     applicationRootDirectory,
   );
+  const backupRootDirectory = join(userDataDirectory, 'backups');
 
   const reopenDatabaseContext = (): void => {
     databaseContext = initializeApplicationDatabase({
@@ -126,10 +133,27 @@ const startApplication = async (): Promise<void> => {
 
   try {
     reopenDatabaseContext();
+    writeStartupDiagnostics({
+      applicationRootDirectory,
+      backupRootDirectory,
+      databasePath,
+      isPackaged: app.isPackaged,
+      status: 'ok',
+      userDataDirectory,
+    });
   } catch (error) {
-    const detail =
-      error instanceof Error ? error.message : 'Unknown database startup error.';
-    console.error(`Debt Tracker database initialization failed: ${detail}`);
+    writeStartupDiagnostics({
+      applicationRootDirectory,
+      backupRootDirectory,
+      databasePath,
+      errorName: error instanceof Error ? error.name : 'UnknownError',
+      isPackaged: app.isPackaged,
+      status: 'database_initialization_failed',
+      userDataDirectory,
+    });
+    console.error(
+      'Debt Tracker database initialization failed. See startup diagnostics in the user-data directory.',
+    );
     dialog.showErrorBox(
       'Debt Tracker could not start',
       'The local database could not be initialized or migrated. No changes were made through the application.',
@@ -144,7 +168,7 @@ const startApplication = async (): Promise<void> => {
   }
   const dataManagementService = createDataManagementService({
     applicationRootDirectory,
-    backupRootDirectory: join(userDataDirectory, 'backups'),
+    backupRootDirectory,
     databasePath,
     getContext: () => {
       if (!databaseContext) throw new Error('Database context is not available.');

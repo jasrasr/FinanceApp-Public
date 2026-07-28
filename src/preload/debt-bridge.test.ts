@@ -44,7 +44,7 @@ describe('typed preload bridge', () => {
     ]);
     expect(bridge.bridgeVersion).toBe(11);
     expect(bridge.appMetadata).toEqual({
-      version: '0.11.0',
+      version: '0.12.0',
       lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);

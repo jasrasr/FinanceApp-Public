@@ -82,7 +82,8 @@ Implement the application in this order:
 8. Reviewed workbook import posting.
 9. Projection and payoff engine.
 10. Advanced reports.
-11. Backup, restore, export, and packaging.
+11. Backup, restore, and data export.
+12. Windows packaging and production readiness.
 
 Do not build the workbook importer before the core manual workflows are
 working. The database and accounting rules must first be proven through
@@ -505,12 +506,17 @@ The application foundation, core database, and manual debt-entry phases provide:
     npm run test
     npm run test:integration
     npm run test:e2e
+    npm run test:packaged
     npm run db:generate
     npm run db:migrate
     npm run db:check
     npm run check
     npm run native:node
     npm run native:electron
+    npm run assets:icons
+    npm run package
+    npm run package:dir
+    npm run package:smoke
 
 `npm run app:metadata -- <command>` is an internal helper used by `npm run dev`
 and `npm run build` to run a command with generated application metadata. Do not
@@ -520,15 +526,20 @@ After a lockfile exists, clean dependency installation should use:
 
     npm ci
 
-### Commands to Add When Their Supporting Workflows Exist
-
-Add these scripts when their related infrastructure is implemented:
-
-    npm run package
-
 `npm run check` runs formatting verification, linting, type checking, unit and
 integration tests, the isolated database check, a production build, and the
 isolated Electron end-to-end workflow.
+
+`npm run package` builds a Windows x64 NSIS installer. `npm run package:dir`
+creates an unpacked Windows application directory for packaging inspection.
+`npm run package:smoke` builds the installer, installs it into a temporary
+directory, runs the packaged-app smoke workflow, reinstalls over the same
+temporary user-data directory to verify upgrade preservation, verifies generated
+test user-data survives uninstall, and then removes generated temporary test
+data.
+`npm run test:packaged` requires `DEBT_TRACKER_PACKAGED_EXE` and is intended for
+packaged or installed application smoke testing, not the standard source-app
+validation gate.
 
 `native:node` restores the Node-compatible better-sqlite3 prebuild for Vitest and
 database scripts. `native:electron` installs the official prebuild for the
