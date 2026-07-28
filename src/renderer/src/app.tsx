@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { DebtBridge } from '../../shared/app-bridge';
+import type { AppBridge } from '../../shared/app-bridge';
 import type {
   CreateBalanceReconciliationRequest,
   CreateBalanceSnapshotRequest,
@@ -26,6 +26,7 @@ import { Dashboard } from './components/dashboard';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { EditDebtForm } from './components/edit-debt-form';
+import { formatLastChanged } from './components/display-format';
 import { RecordTransactionForm } from './components/record-transaction-form';
 import { WorkbookImport } from './components/workbook-import';
 
@@ -54,7 +55,7 @@ const invokeBridge = async <T,>(
 };
 
 export interface AppProps {
-  readonly bridge?: DebtBridge;
+  readonly bridge?: AppBridge;
 }
 
 const ErrorNotice = ({
@@ -577,6 +578,12 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               </button>
             </li>
           </ul>
+          <div className="mt-8 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
+            <p>Version {bridge.appMetadata.version}</p>
+            <p>
+              Last changed: {formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}
+            </p>
+          </div>
         </nav>
 
         <main className="min-w-0 p-6 lg:p-8">

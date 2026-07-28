@@ -466,6 +466,15 @@ export const dashboardDtoSchema = z
   })
   .strict();
 
+export const appMetadataDtoSchema = z
+  .object({
+    version: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/),
+    lastChangedAtUtc: utcTimestampSchema,
+  })
+  .strict();
+
 export const importSheetMappingDtoSchema = z
   .object({
     id: uuidSchema,
@@ -617,6 +626,7 @@ export type BalanceReconciliationDto = z.infer<typeof balanceReconciliationDtoSc
 export type DebtSummaryDto = z.infer<typeof debtSummaryDtoSchema>;
 export type DebtDetailDto = z.infer<typeof debtDetailDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
+export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
 export type ImportBatchSummaryDto = z.infer<typeof importBatchSummaryDtoSchema>;
 export type ImportBatchDto = z.infer<typeof importBatchDtoSchema>;
 export type ImportSheetMappingDto = z.infer<typeof importSheetMappingDtoSchema>;

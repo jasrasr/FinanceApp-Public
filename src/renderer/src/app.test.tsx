@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { DebtBridge } from '../../shared/app-bridge';
+import type { AppBridge } from '../../shared/app-bridge';
 import type {
   DashboardDto,
   DebtDetailDto,
@@ -10,11 +10,18 @@ import type {
   ImportBatchDto,
 } from '../../shared/debt-contracts';
 import { App } from './app';
+import { formatLastChanged } from './components/display-format';
 import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-form';
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
 
-const createBridge = (): DebtBridge => ({
+const createBridge = (): AppBridge => ({
+  appName: 'Debt Tracker',
+  bridgeVersion: 7,
+  appMetadata: {
+    version: '0.7.0',
+    lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
+  },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
   getDashboard: vi.fn(async () => ({ ok: true as const, value: sampleDashboard })),
   selectWorkbookForImport: vi.fn(async () => ({
@@ -339,6 +346,18 @@ describe('debt maintenance application', () => {
     expect(
       screen.getByText(
         'No unreconciled, in-progress, or exception reconciliation items for active debts.',
+      ),
+    ).toBeVisible();
+  });
+
+  it('renders application version and local last-changed metadata', async () => {
+    const bridge = createBridge();
+    render(<App bridge={bridge} />);
+
+    expect(await screen.findByText('Version 0.7.0')).toBeVisible();
+    expect(
+      screen.getByText(
+        `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
       ),
     ).toBeVisible();
   });

@@ -12,3 +12,9 @@ export const formatTimestamp = (value: string): string =>
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+
+export const formatLastChanged = (value: string): string =>
+  new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'long',
+    timeStyle: 'short',
+  }).format(new Date(value));

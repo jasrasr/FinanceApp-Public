@@ -10,6 +10,7 @@ describe('typed preload bridge', () => {
 
     expect(Object.keys(bridge).sort()).toEqual([
       'addDebtTerm',
+      'appMetadata',
       'appName',
       'archiveDebt',
       'bridgeVersion',
@@ -29,11 +30,18 @@ describe('typed preload bridge', () => {
       'updateImportSheetMapping',
       'updateStagedImportRowReview',
     ]);
-    expect(bridge.bridgeVersion).toBe(6);
+    expect(bridge.bridgeVersion).toBe(7);
+    expect(bridge.appMetadata).toEqual({
+      version: '0.7.0',
+      lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
+    });
     expect('invoke' in bridge).toBe(false);
     expect('query' in bridge).toBe(false);
     expect('database' in bridge).toBe(false);
     expect('filesystem' in bridge).toBe(false);
+    expect('git' in bridge).toBe(false);
+    expect('process' in bridge).toBe(false);
+    expect('environment' in bridge).toBe(false);
     expect('require' in bridge).toBe(false);
   });
 

@@ -1,5 +1,6 @@
 import type {
   AddDebtTermRequest,
+  AppMetadataDto,
   CreateBalanceReconciliationRequest,
   CreateBalanceSnapshotRequest,
   CreateDebtTransactionRequest,
@@ -63,5 +64,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 6;
+  readonly bridgeVersion: 7;
+  readonly appMetadata: AppMetadataDto;
 }

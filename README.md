@@ -25,6 +25,8 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Workbook import staging and mapping for Excel files, including source
   provenance, sheet and row review, formulas as source metadata, ambiguous-row
   flags, control totals, and review-only approve/reject/defer states.
+- Restrained in-app display of the current package version and automatically
+  generated last-changed timestamp.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
 - Automatic development-database initialization and migration under Electron's
   user-data directory.
@@ -54,8 +56,14 @@ npm run dev
 ```
 
 `dev` installs the official better-sqlite3 prebuilt binary for the configured
-Electron runtime before launch. Node-based database and Vitest commands restore
-the Node-compatible prebuild automatically.
+Electron runtime and runs Electron with generated application metadata. Node-based
+database and Vitest commands restore the Node-compatible prebuild automatically.
+
+The application version comes from `package.json`. The last-changed timestamp is
+generated automatically for `npm run dev` and `npm run build`, displayed in local
+time in the application UI, and is not edited manually. Validation commands such
+as type checking and tests use deterministic metadata and do not refresh the
+visible last-changed timestamp merely because they ran.
 
 Build the application:
 

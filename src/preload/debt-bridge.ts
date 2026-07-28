@@ -1,5 +1,6 @@
 import type { AppBridge } from '../shared/app-bridge';
 import {
+  appMetadataDtoSchema,
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
@@ -41,13 +42,15 @@ import {
   type UpdateDebtRequest,
 } from '../shared/debt-contracts';
 import { DEBT_IPC_CHANNELS } from '../shared/debt-ipc';
+import { appMetadata } from './app-metadata';
 
 export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 6,
+    bridgeVersion: 7,
+    appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
         await invoke(DEBT_IPC_CHANNELS.list, listDebtsRequestSchema.parse(request)),

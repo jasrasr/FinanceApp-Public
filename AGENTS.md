@@ -47,6 +47,27 @@ The application is local-only. Do not add login, cloud synchronization,
 telemetry, analytics, remote APIs, or network dependencies without explicit
 approval.
 
+## Application Version and Last-Changed Display
+
+- Maintain the authoritative application version in `package.json` using
+  semantic versioning.
+- Completed feature phases normally increase the minor version.
+- Fix-only releases normally increase the patch version.
+- Reserve version `1.0.0` for an explicitly approved production-ready
+  milestone.
+- The application UI must display the current application version and the date
+  and time the application was last changed.
+- The last-changed date and time must update automatically for `npm run dev`
+  and `npm run build` and must not require manual editing.
+- Validation commands, including type checking and tests, must not update the
+  visible last-changed timestamp merely because they ran.
+- Provide version and last-changed metadata through the existing narrow typed
+  application bridge.
+- Do not expose Git, shell, filesystem, process, environment-variable, or
+  generic IPC access to the renderer for version or last-changed display.
+- Tests must verify that the version and last-changed information are displayed
+  and formatted correctly.
+
 ## Implementation Sequence
 
 Implement the application in this order:
@@ -389,6 +410,7 @@ Each phase entry must include:
 - Validation and smoke-test results.
 - Known limitations and technical debt.
 - Recommended next phase.
+- Application version for phases completed after this requirement was added.
 
 Do not leave material database or accounting decisions documented only in
 source-code comments, commit messages, or conversation history.
@@ -466,6 +488,7 @@ Before running a command:
 The application foundation, core database, and manual debt-entry phases provide:
 
     npm run dev
+    npm run app:metadata
     npm run build
     npm run format
     npm run format:check
@@ -480,6 +503,10 @@ The application foundation, core database, and manual debt-entry phases provide:
     npm run check
     npm run native:node
     npm run native:electron
+
+`npm run app:metadata -- <command>` is an internal helper used by `npm run dev`
+and `npm run build` to run a command with generated application metadata. Do not
+use it as a validation step.
 
 After a lockfile exists, clean dependency installation should use:
 

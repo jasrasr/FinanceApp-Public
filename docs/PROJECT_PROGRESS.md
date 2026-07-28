@@ -4,6 +4,11 @@ This document is a concise chronological handoff log for future developers and
 AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
+Version tracking note: application-version progress tracking was added after
+phase seven on 2026-07-28. The current application version is `0.7.0`, aligned
+to the seven completed feature phases. Earlier phase entries did not record an
+application version at the time they were completed.
+
 ## Phase 1: Application Foundation
 
 - Completion date: 2026-07-27
