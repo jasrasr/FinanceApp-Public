@@ -285,6 +285,63 @@ actual debts, transactions, allocations, snapshots, and reconciliations.
   results remain reviewable and rerunnable.
 - Projected transactions are never written to the posted actual ledger.
 
+## Advanced Debt Reporting
+
+Advanced reports are read-only decision-support views. They reuse posted ledger,
+confirmed snapshot, reconciliation, effective-term, dashboard, and payoff
+scenario data without creating or editing financial records.
+
+Each report section states:
+
+- Date range.
+- Effective date.
+- Balance basis.
+- Material assumptions.
+- Warnings for unsupported or incomplete data.
+
+The default report balance basis is application-calculated ledger balance as of
+the report effective date or period end. That balance is not a confirmed
+snapshot, statement balance, original principal, projected balance, or scenario
+balance.
+
+Monthly and annual rollforwards use:
+
+- Beginning balance: application-calculated ledger balance as of the day before
+  the period start.
+- Ending balance: application-calculated ledger balance as of the period end.
+- Borrowings: posted borrowing/draw transaction totals.
+- Payments: positive display of posted payment transaction totals.
+- Principal reduction: positive display of negative principal and
+  extra-principal allocations.
+- Interest activity: net signed interest allocations.
+- Adjustments and other: residual posted activity not classified as borrowings
+  or payments.
+
+Balance-history reporting shows calculated ledger balances and latest confirmed
+snapshots separately. It does not treat the latest confirmed snapshot as the
+current balance unless a future reconciliation or reporting rule explicitly does
+so.
+
+Maturity and required-payment schedules use current effective terms as of the
+report effective date. Required payments are normalized to monthly equivalents
+using the same helper used by the dashboard.
+
+Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
+engine. Unsupported payment schedules, unsupported calculation conventions,
+variable-rate debts without explicit assumptions, and balloon maturity limits
+produce warnings from that engine rather than deceptively precise payoff dates or
+interest totals.
+
+Actual-versus-plan variance uses saved payoff scenarios as the plan source.
+Saved scenarios currently preserve scenario-level results and per-debt final
+results, but they do not persist monthly planned-balance schedules. When a
+period-by-period planned reduction cannot be determined, the report labels the
+variance as limited instead of inventing a plan amount.
+
+Reconciliation and data-quality exception reporting includes unreconciled,
+in-progress, exception, and unsupported-data items. It does not change
+reconciliation statuses, post adjustments, or edit ledger activity.
+
 ## Corrections and Reversals
 
 Posted activity is not silently deleted or overwritten.

@@ -30,6 +30,9 @@ for maintaining debts and supporting future debt-paydown analysis.
   previews, all-or-nothing posting, safe retry behavior, and source provenance.
 - Saved payoff scenarios using baseline, debt avalanche, debt snowball, and
   custom-priority strategies, with rerun and archive support.
+- Advanced read-only debt reports for rollforwards, balance history, activity
+  trends, maturity and required-payment schedules, sensitivity analysis,
+  actual-versus-plan variance, and reconciliation/data-quality exceptions.
 - Restrained in-app display of the current package version and automatically
   generated last-changed timestamp.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
@@ -37,8 +40,7 @@ for maintaining debts and supporting future debt-paydown analysis.
   user-data directory.
 - Playwright-controlled Electron testing against disposable user-data directories.
 
-Advanced reporting, backup, export, and packaging workflows have not been
-implemented.
+Backup, export, and packaging workflows have not been implemented.
 
 ## Prerequisites
 
@@ -190,6 +192,26 @@ Electron user-data directory that it removes after the workflow.
   monthly amortizing debts.
 - Saved scenarios preserve assumptions, results, and calculation-engine version
   for review and rerun.
+
+## Advanced Reporting Rules
+
+- Reports are read-only and do not edit debts, posted activity, snapshots,
+  reconciliations, or scenarios.
+- Report balances default to application-calculated ledger balances as of the
+  stated effective date.
+- Confirmed snapshots and saved scenario results are shown separately from
+  calculated ledger balances.
+- Rollforward, trend, balance-history, maturity, sensitivity, variance, and
+  exception reports state their date range, effective date, balance basis, and
+  assumptions.
+- Filters support date range, debt, owner/entity, debt type, and status where
+  relevant.
+- Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
+  engine and inherit its unsupported-term warnings.
+- Actual-versus-plan variance uses saved payoff scenarios. Because saved
+  scenarios currently do not persist period-by-period planned balances, variance
+  detail is labeled as limited when planned reduction cannot be determined.
+- Charts are restrained and paired with tabular detail.
 
 ## Workbook Import Rules
 

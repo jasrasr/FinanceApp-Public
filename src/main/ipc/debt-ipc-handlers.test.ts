@@ -10,6 +10,7 @@ import { DEBT_IPC_CHANNELS } from '../../shared/debt-ipc';
 const createService = (): DebtMaintenanceService => ({
   listDebts: vi.fn(() => []),
   getDashboard: vi.fn(),
+  getDebtReports: vi.fn(),
   selectWorkbookForImport: vi.fn(() => null),
   listImportBatches: vi.fn(() => []),
   getImportBatch: vi.fn(),
@@ -224,5 +225,26 @@ describe('debt IPC handlers', () => {
       error: { code: 'validation' },
     });
     expect(service.createPayoffScenario).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid advanced report filters on the report channel', () => {
+    const service = createService();
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(registrar, service, () => true);
+
+    const result = handlers.get(DEBT_IPC_CHANNELS.reports)?.(event, {
+      startDate: '2026-12-31',
+      endDate: '2026-01-01',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(service.getDebtReports).not.toHaveBeenCalled();
   });
 });

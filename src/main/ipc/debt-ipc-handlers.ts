@@ -10,9 +10,11 @@ import {
   archivePayoffScenarioRequestSchema,
   createDebtRequestSchema,
   dashboardDtoSchema,
+  debtReportsDtoSchema,
   debtDetailDtoSchema,
   debtSummaryListSchema,
   getDashboardRequestSchema,
+  getDebtReportsRequestSchema,
   getDebtRequestSchema,
   getImportBatchRequestSchema,
   getPayoffScenarioRequestSchema,
@@ -142,6 +144,14 @@ export const registerDebtIpcHandlers = (
     dashboardDtoSchema,
     isTrustedSender,
     (request) => service.getDashboard(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.reports,
+    getDebtReportsRequestSchema,
+    debtReportsDtoSchema,
+    isTrustedSender,
+    (request) => service.getDebtReports(request),
   );
   registerHandler(
     ipcMain,

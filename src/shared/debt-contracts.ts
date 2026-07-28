@@ -234,6 +234,26 @@ export const listDebtsRequestSchema = z
 
 export const getDashboardRequestSchema = z.object({}).strict();
 
+export const getDebtReportsRequestSchema = z
+  .object({
+    startDate: financialDateInputSchema.nullable(),
+    endDate: financialDateInputSchema.nullable(),
+    debtId: uuidSchema.nullable(),
+    ownerEntity: z.string().trim().max(500).nullable(),
+    debtType: z.enum(DEBT_TYPES).nullable(),
+    status: z.enum(DEBT_STATUSES).nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.startDate && value.endDate && value.startDate > value.endDate) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Start date cannot be after end date.',
+        path: ['startDate'],
+      });
+    }
+  });
+
 export const selectWorkbookForImportRequestSchema = z.object({}).strict();
 
 export const listImportBatchesRequestSchema = z.object({}).strict();
@@ -504,6 +524,153 @@ export const dashboardDtoSchema = z
   })
   .strict();
 
+const debtReportFilterDtoSchema = z
+  .object({
+    startDate: financialDateInputSchema,
+    endDate: financialDateInputSchema,
+    effectiveDate: financialDateInputSchema,
+    debtId: uuidSchema.nullable(),
+    ownerEntity: z.string().nullable(),
+    debtType: z.enum(DEBT_TYPES).nullable(),
+    status: z.enum(DEBT_STATUSES).nullable(),
+  })
+  .strict();
+
+const reportBasisDtoSchema = z
+  .object({
+    title: z.string(),
+    dateRange: z.string(),
+    effectiveDate: financialDateInputSchema,
+    balanceBasis: z.string(),
+    assumptions: z.array(z.string()),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
+const rollforwardRowDtoSchema = z
+  .object({
+    period: z.string(),
+    beginningBalance: z.string(),
+    borrowings: z.string(),
+    payments: z.string(),
+    principalReduction: z.string(),
+    interestActivity: z.string(),
+    adjustmentsAndOther: z.string(),
+    endingBalance: z.string(),
+  })
+  .strict();
+
+const balanceHistoryRowDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    creditor: z.string(),
+    effectiveDate: financialDateInputSchema,
+    calculatedBalance: z.string(),
+    confirmedBalance: z.string().nullable(),
+    basis: z.string(),
+  })
+  .strict();
+
+const trendRowDtoSchema = z
+  .object({
+    period: z.string(),
+    principalReduction: z.string(),
+    interestActivity: z.string(),
+    borrowings: z.string(),
+    payments: z.string(),
+  })
+  .strict();
+
+const scheduleRowDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    creditor: z.string(),
+    ownerEntity: z.string(),
+    debtType: z.enum(DEBT_TYPES),
+    status: z.enum(DEBT_STATUSES),
+    maturityDate: financialDateInputSchema.nullable(),
+    requiredMonthlyPayment: z.string(),
+    currentInterestRate: z.string(),
+    calculatedBalance: z.string(),
+    basis: z.string(),
+  })
+  .strict();
+
+const sensitivityRowDtoSchema = z
+  .object({
+    scenarioLabel: z.string(),
+    assumption: z.string(),
+    projectedPayoffDate: financialDateInputSchema.nullable(),
+    totalProjectedInterest: z.string(),
+    monthlyCashRequirement: z.string(),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
+const varianceRowDtoSchema = z
+  .object({
+    scenarioId: uuidSchema,
+    scenarioName: z.string(),
+    debtId: uuidSchema,
+    debtName: z.string(),
+    actualPrincipalReduction: z.string(),
+    plannedPrincipalReduction: z.string().nullable(),
+    variance: z.string().nullable(),
+    basis: z.string(),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
+const exceptionRowDtoSchema = z
+  .object({
+    severity: z.enum(['info', 'warning', 'exception']),
+    category: z.string(),
+    debtId: uuidSchema.nullable(),
+    debtName: z.string().nullable(),
+    effectiveDate: financialDateInputSchema.nullable(),
+    message: z.string(),
+    sourceId: z.string().nullable(),
+  })
+  .strict();
+
+export const debtReportsDtoSchema = z
+  .object({
+    filters: debtReportFilterDtoSchema,
+    monthlyRollforward: z
+      .object({ basis: reportBasisDtoSchema, rows: z.array(rollforwardRowDtoSchema) })
+      .strict(),
+    annualRollforward: z
+      .object({ basis: reportBasisDtoSchema, rows: z.array(rollforwardRowDtoSchema) })
+      .strict(),
+    balanceHistory: z
+      .object({
+        basis: reportBasisDtoSchema,
+        rows: z.array(balanceHistoryRowDtoSchema),
+      })
+      .strict(),
+    activityTrends: z
+      .object({ basis: reportBasisDtoSchema, rows: z.array(trendRowDtoSchema) })
+      .strict(),
+    maturitySchedule: z
+      .object({ basis: reportBasisDtoSchema, rows: z.array(scheduleRowDtoSchema) })
+      .strict(),
+    interestRateSensitivity: z
+      .object({ basis: reportBasisDtoSchema, rows: z.array(sensitivityRowDtoSchema) })
+      .strict(),
+    extraPaymentSensitivity: z
+      .object({ basis: reportBasisDtoSchema, rows: z.array(sensitivityRowDtoSchema) })
+      .strict(),
+    actualVersusPlanVariance: z
+      .object({ basis: reportBasisDtoSchema, rows: z.array(varianceRowDtoSchema) })
+      .strict(),
+    reconciliationAndDataQuality: z
+      .object({ basis: reportBasisDtoSchema, rows: z.array(exceptionRowDtoSchema) })
+      .strict(),
+  })
+  .strict();
+
 export const appMetadataDtoSchema = z
   .object({
     version: z
@@ -713,6 +880,7 @@ export const debtSummaryListSchema = z.array(debtSummaryDtoSchema);
 export const debtListResultSchema = applicationResultSchema(debtSummaryListSchema);
 export const debtDetailResultSchema = applicationResultSchema(debtDetailDtoSchema);
 export const dashboardResultSchema = applicationResultSchema(dashboardDtoSchema);
+export const debtReportsResultSchema = applicationResultSchema(debtReportsDtoSchema);
 export const importBatchResultSchema = applicationResultSchema(importBatchDtoSchema);
 export const importBatchOrNullResultSchema = applicationResultSchema(
   importBatchDtoSchema.nullable(),
@@ -752,6 +920,7 @@ export type CreateBalanceReconciliationRequest = z.infer<
 >;
 export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
 export type GetDashboardRequest = z.infer<typeof getDashboardRequestSchema>;
+export type GetDebtReportsRequest = z.infer<typeof getDebtReportsRequestSchema>;
 export type SelectWorkbookForImportRequest = z.infer<
   typeof selectWorkbookForImportRequestSchema
 >;
@@ -791,6 +960,7 @@ export type BalanceReconciliationDto = z.infer<typeof balanceReconciliationDtoSc
 export type DebtSummaryDto = z.infer<typeof debtSummaryDtoSchema>;
 export type DebtDetailDto = z.infer<typeof debtDetailDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
+export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;
 export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
 export type ImportBatchSummaryDto = z.infer<typeof importBatchSummaryDtoSchema>;
 export type ImportBatchDto = z.infer<typeof importBatchDtoSchema>;

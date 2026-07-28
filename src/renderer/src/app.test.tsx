@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AppBridge } from '../../shared/app-bridge';
 import type {
   DashboardDto,
+  DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
   ImportBatchDto,
@@ -19,13 +20,14 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 9,
+  bridgeVersion: 10,
   appMetadata: {
-    version: '0.9.0',
+    version: '0.10.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
   getDashboard: vi.fn(async () => ({ ok: true as const, value: sampleDashboard })),
+  getDebtReports: vi.fn(async () => ({ ok: true as const, value: sampleReports })),
   selectWorkbookForImport: vi.fn(async () => ({
     ok: true as const,
     value: sampleImportBatch,
@@ -104,6 +106,160 @@ const sampleDashboard: DashboardDto = {
   },
   upcomingMaturities: [],
   attentionItems: [],
+};
+
+const sampleReportBasis = {
+  title: 'Generated report section',
+  effectiveDate: '2026-07-28',
+  dateRange: '2026-01-01 through 2026-07-28',
+  balanceBasis:
+    'Application-calculated ledger balances from posted actual activity; confirmed snapshots and scenario results are labeled separately.',
+  assumptions: ['Generated report assumptions for testing.'],
+  warnings: [],
+};
+
+const sampleReports: DebtReportsDto = {
+  filters: {
+    startDate: '2026-01-01',
+    endDate: '2026-07-28',
+    effectiveDate: '2026-07-28',
+    debtId: null,
+    ownerEntity: null,
+    debtType: null,
+    status: null,
+  },
+  monthlyRollforward: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        period: '2026-01',
+        beginningBalance: '125000.13',
+        borrowings: '0.00',
+        payments: '500.00',
+        principalReduction: '400.00',
+        interestActivity: '-100.00',
+        adjustmentsAndOther: '0.00',
+        endingBalance: '124500.13',
+      },
+    ],
+  },
+  annualRollforward: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        period: '2026',
+        beginningBalance: '125000.13',
+        borrowings: '0.00',
+        payments: '500.00',
+        principalReduction: '400.00',
+        interestActivity: '-100.00',
+        adjustmentsAndOther: '0.00',
+        endingBalance: '124500.13',
+      },
+    ],
+  },
+  balanceHistory: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+        debtName: 'Fictional Equipment Note',
+        creditor: 'Harbor Ridge Cooperative',
+        effectiveDate: '2026-07-28',
+        calculatedBalance: '124500.13',
+        confirmedBalance: '124500.00',
+        basis:
+          'Calculated ledger balance and latest confirmed snapshot are shown separately.',
+      },
+    ],
+  },
+  activityTrends: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        period: '2026-01',
+        principalReduction: '400.00',
+        interestActivity: '-100.00',
+        borrowings: '0.00',
+        payments: '500.00',
+      },
+    ],
+  },
+  maturitySchedule: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+        debtName: 'Fictional Equipment Note',
+        creditor: 'Harbor Ridge Cooperative',
+        ownerEntity: 'Generated Example Entity',
+        debtType: 'business',
+        status: 'active',
+        maturityDate: '2030-01-15',
+        requiredMonthlyPayment: '2450.00',
+        currentInterestRate: '5.49',
+        calculatedBalance: '124500.13',
+        basis: 'Current effective term and application-calculated ledger balance.',
+      },
+    ],
+  },
+  interestRateSensitivity: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        scenarioLabel: 'Current rates',
+        assumption: 'Saved terms as of report effective date.',
+        projectedPayoffDate: '2030-06-28',
+        totalProjectedInterest: '11250.00',
+        monthlyCashRequirement: '2450.00',
+        warnings: [],
+      },
+    ],
+  },
+  extraPaymentSensitivity: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        scenarioLabel: 'Extra $250/month',
+        assumption: 'Debt avalanche strategy with generated extra payment.',
+        projectedPayoffDate: '2029-12-28',
+        totalProjectedInterest: '10000.00',
+        monthlyCashRequirement: '2700.00',
+        warnings: [],
+      },
+    ],
+  },
+  actualVersusPlanVariance: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        scenarioId: '77777777-7777-4777-8777-777777777777',
+        scenarioName: 'Generated avalanche scenario',
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+        debtName: 'Fictional Equipment Note',
+        actualPrincipalReduction: '400.00',
+        plannedPrincipalReduction: null,
+        variance: null,
+        basis:
+          'Saved payoff scenarios do not yet persist period-by-period planned balances.',
+        warnings: ['Variance is limited until monthly plan snapshots are saved.'],
+      },
+    ],
+  },
+  reconciliationAndDataQuality: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        severity: 'warning',
+        category: 'reconciliation',
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+        debtName: 'Fictional Equipment Note',
+        effectiveDate: '2026-01-31',
+        message: 'Generated reconciliation item requiring review.',
+        sourceId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c051',
+      },
+    ],
+  },
 };
 
 const sampleImportBatch: ImportBatchDto = {
@@ -474,12 +630,46 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.9.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.10.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
       ),
     ).toBeVisible();
+  });
+
+  it('renders advanced debt reports with labeled basis and accessible detail', async () => {
+    const bridge = createBridge();
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reports' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Debt reporting' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: 'Monthly debt rollforward' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: 'Debt balance history by obligation' }),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        /Application-calculated ledger balances from posted actual activity/i,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText('Fictional Equipment Note').length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole('img', { name: /principal reduction by period/i }),
+    ).toBeVisible();
+    expect(bridge.getDebtReports).toHaveBeenCalledWith({
+      startDate: null,
+      endDate: null,
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
   });
 
   it('renders the workbook import empty state', async () => {

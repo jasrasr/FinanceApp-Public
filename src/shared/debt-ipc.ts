@@ -6,6 +6,7 @@ export const DEBT_IPC_CHANNELS = {
   createTransaction: 'debt:create-transaction',
   createSnapshot: 'debt:create-snapshot',
   dashboard: 'debt:dashboard',
+  reports: 'debt:reports',
   selectWorkbookForImport: 'debt:import:select-workbook',
   listImportBatches: 'debt:import:list-batches',
   getImportBatch: 'debt:import:get-batch',

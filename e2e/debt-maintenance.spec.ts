@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.9.0')).toBeVisible();
+    await expect(window.getByText('Version 0.10.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -157,6 +157,23 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(window.getByText('Payoff scenario was saved.')).toBeVisible();
     await expect(window.getByText('Generated E2E Avalanche')).toBeVisible();
     await expect(window.getByText('Savings vs baseline')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Reports' }).click();
+    await expect(window.getByRole('heading', { name: 'Debt reporting' })).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'Monthly debt rollforward' }),
+    ).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'Debt balance history by obligation' }),
+    ).toBeVisible();
+    await expect(
+      window.getByText(/Application-calculated ledger balances/).first(),
+    ).toBeVisible();
+    await expect(
+      window.getByRole('heading', {
+        name: 'Actual-versus-plan variance using saved payoff scenarios',
+      }),
+    ).toBeVisible();
 
     await window.getByRole('button', { name: 'Debts' }).click();
     await window.getByRole('button', { name: 'View' }).click();

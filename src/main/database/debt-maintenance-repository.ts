@@ -252,6 +252,28 @@ export const listActiveDebtActivityRecords = (
   }));
 };
 
+export const listDebtActivityRecords = (
+  database: AppDatabase,
+  includeArchived: boolean,
+): readonly DebtWithActivityRecord[] => {
+  const debtRows = includeArchived
+    ? database.select().from(debts).orderBy(asc(debts.name)).all()
+    : database
+        .select()
+        .from(debts)
+        .where(isNull(debts.archivedAtUtc))
+        .orderBy(asc(debts.name))
+        .all();
+
+  return debtRows.map((debt) => ({
+    debt,
+    terms: getTerms(database, debt.id),
+    transactions: getTransactions(database, debt.id),
+    balanceSnapshots: getBalanceSnapshots(database, debt.id),
+    balanceReconciliations: getBalanceReconciliations(database, debt.id),
+  }));
+};
+
 export const calculateLedgerBalanceThroughDate = (
   database: AppDatabase,
   debtId: string,

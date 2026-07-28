@@ -22,6 +22,7 @@ describe('typed preload bridge', () => {
       'createPayoffScenario',
       'getDashboard',
       'getDebt',
+      'getDebtReports',
       'getImportBatch',
       'getPayoffScenario',
       'listDebts',
@@ -37,9 +38,9 @@ describe('typed preload bridge', () => {
       'updateImportSheetMapping',
       'updateStagedImportRowReview',
     ]);
-    expect(bridge.bridgeVersion).toBe(9);
+    expect(bridge.bridgeVersion).toBe(10);
     expect(bridge.appMetadata).toEqual({
-      version: '0.9.0',
+      version: '0.10.0',
       lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);

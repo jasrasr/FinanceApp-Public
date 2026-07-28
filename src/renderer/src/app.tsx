@@ -12,8 +12,10 @@ import type {
   CreateDebtRequest,
   CreatePayoffScenarioRequest,
   DashboardDto,
+  DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
+  GetDebtReportsRequest,
   ImportBatchDto,
   ImportBatchSummaryDto,
   ImportPostingPreviewDto,
@@ -23,6 +25,7 @@ import type {
   ReverseDebtTransactionRequest,
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
+import { AdvancedReports } from './components/advanced-reports';
 import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-form';
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { ConfirmationDialog } from './components/confirmation-dialog';
@@ -44,7 +47,8 @@ type View =
   | 'edit'
   | 'add-term'
   | 'import'
-  | 'payoff';
+  | 'payoff'
+  | 'reports';
 type DetailPanel = 'overview' | 'transaction' | 'snapshot' | 'reconciliation';
 type Confirmation = 'archive' | 'restore' | 'reverse' | null;
 type ReverseTarget = {
@@ -96,6 +100,7 @@ const ErrorNotice = ({
 export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Element => {
   const [view, setView] = useState<View>('dashboard');
   const [dashboard, setDashboard] = useState<DashboardDto | null>(null);
+  const [reports, setReports] = useState<DebtReportsDto | null>(null);
   const [importBatches, setImportBatches] = useState<readonly ImportBatchSummaryDto[]>(
     [],
   );
@@ -146,6 +151,29 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setDashboard(result.value);
+    } else {
+      setError(result.error);
+    }
+
+    setLoading(false);
+  };
+
+  const loadReports = async (
+    request: GetDebtReportsRequest = {
+      startDate: null,
+      endDate: null,
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    },
+  ): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() => bridge.getDebtReports(request));
+
+    if (result.ok) {
+      setReports(result.value);
     } else {
       setError(result.error);
     }
@@ -269,6 +297,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setError(null);
     setFieldErrors(undefined);
     void loadPayoffScenarios();
+  };
+
+  const showReports = (): void => {
+    setView('reports');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setConfirmation(null);
+    setReverseTarget(null);
+    setError(null);
+    setFieldErrors(undefined);
+    void loadReports();
   };
 
   const selectWorkbookForImport = async (): Promise<void> => {
@@ -739,6 +778,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 Payoff scenarios
               </button>
             </li>
+            <li className="mt-1">
+              <button
+                aria-current={view === 'reports' ? 'page' : undefined}
+                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                onClick={showReports}
+                type="button"
+              >
+                Reports
+              </button>
+            </li>
           </ul>
           <div className="mt-8 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
             <p>Version {bridge.appMetadata.version}</p>
@@ -779,7 +828,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                         ? () => void loadImportBatches()
                         : view === 'payoff'
                           ? () => void loadPayoffScenarios()
-                          : undefined
+                          : view === 'reports'
+                            ? () => void loadReports()
+                            : undefined
                 }
               />
             </div>
@@ -860,6 +911,15 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onRerun={(scenario) => void rerunPayoffScenario(scenario)}
               saving={saving}
               scenarios={payoffScenarios}
+            />
+          ) : null}
+
+          {view === 'reports' ? (
+            <AdvancedReports
+              loading={loading}
+              onApplyFilters={(request) => void loadReports(request)}
+              onSelectDebt={(id) => void selectDebt(id)}
+              reports={reports}
             />
           ) : null}
 

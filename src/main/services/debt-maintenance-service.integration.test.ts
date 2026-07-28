@@ -782,6 +782,106 @@ describe('debt maintenance', () => {
     ]);
   });
 
+  it('builds advanced reports from posted activity with explicit balance labels', () => {
+    const created = service.createDebt(validRequest());
+    service.createDebtTransaction(validTransactionRequest(created.id));
+    service.createBalanceSnapshot(validSnapshotRequest(created.id));
+    service.createBalanceReconciliation({
+      debtId: created.id,
+      reconciliation: {
+        statementDate: '2026-01-31',
+        statementEndingBalance: '124600.13',
+        reconciliationStatus: 'exception',
+        explanation: 'Generated exception requiring follow-up.',
+        approvedAdjustment: null,
+        sourceReference: 'STAT-2026-01',
+        supportingNotes: null,
+      },
+    });
+
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-07-28',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(reports.filters).toMatchObject({
+      startDate: '2026-01-01',
+      endDate: '2026-07-28',
+      effectiveDate: '2026-07-28',
+    });
+    expect(reports.monthlyRollforward.basis.balanceBasis).toContain(
+      'Application-calculated ledger balances',
+    );
+    expect(reports.monthlyRollforward.rows[0]).toMatchObject({
+      period: '2026-01',
+      beginningBalance: '125000.13',
+      payments: '500.00',
+      principalReduction: '400.00',
+      interestActivity: '-100.00',
+      endingBalance: '124500.13',
+    });
+    expect(
+      reports.balanceHistory.rows.find((row) => row.effectiveDate === '2026-07-28'),
+    ).toMatchObject({
+      debtId: created.id,
+      calculatedBalance: '124500.13',
+      confirmedBalance: '124500.00',
+    });
+    expect(reports.maturitySchedule.rows[0]).toMatchObject({
+      debtId: created.id,
+      requiredMonthlyPayment: '2450.00',
+      currentInterestRate: '5.49',
+      calculatedBalance: '124500.13',
+    });
+    expect(reports.reconciliationAndDataQuality.rows).toEqual([
+      expect.objectContaining({
+        category: 'Reconciliation',
+        severity: 'exception',
+        debtId: created.id,
+      }),
+    ]);
+  });
+
+  it('reports saved-scenario variance as limited when monthly plan balances are unavailable', () => {
+    const debt = service.createDebt(validRequest('Generated Variance Report Note'));
+    service.createDebtTransaction(validTransactionRequest(debt.id));
+    service.createPayoffScenario({
+      name: 'Generated report variance scenario',
+      scenarioStartDate: '2026-07-28',
+      strategy: 'avalanche',
+      extraMonthlyPayment: '250.00',
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 360,
+    });
+
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-07-28',
+      debtId: debt.id,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(reports.interestRateSensitivity.rows).toHaveLength(3);
+    expect(reports.extraPaymentSensitivity.rows).toHaveLength(3);
+    expect(reports.actualVersusPlanVariance.rows[0]).toMatchObject({
+      scenarioName: 'Generated report variance scenario',
+      debtId: debt.id,
+      actualPrincipalReduction: '0.00',
+      plannedPrincipalReduction: null,
+      variance: null,
+    });
+    expect(reports.actualVersusPlanVariance.rows[0]?.warnings.join(' ')).toContain(
+      'monthly plan balances',
+    );
+  });
+
   it('retrieves a debt through the application service', () => {
     const created = service.createDebt(validRequest());
     expect(service.getDebt({ id: created.id })).toMatchObject({

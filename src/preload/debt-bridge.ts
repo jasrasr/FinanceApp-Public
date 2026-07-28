@@ -10,9 +10,11 @@ import {
   archivePayoffScenarioRequestSchema,
   createDebtRequestSchema,
   dashboardResultSchema,
+  debtReportsResultSchema,
   debtDetailResultSchema,
   debtListResultSchema,
   getDashboardRequestSchema,
+  getDebtReportsRequestSchema,
   getDebtRequestSchema,
   getImportBatchRequestSchema,
   getPayoffScenarioRequestSchema,
@@ -44,6 +46,7 @@ import {
   type ArchivePayoffScenarioRequest,
   type CreateDebtRequest,
   type GetDashboardRequest,
+  type GetDebtReportsRequest,
   type GetDebtRequest,
   type GetImportBatchRequest,
   type GetPayoffScenarioRequest,
@@ -67,7 +70,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 9,
+    bridgeVersion: 10,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -78,6 +81,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.dashboard,
           getDashboardRequestSchema.parse(request),
+        ),
+      ),
+    getDebtReports: async (request: GetDebtReportsRequest) =>
+      debtReportsResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.reports,
+          getDebtReportsRequestSchema.parse(request),
         ),
       ),
     selectWorkbookForImport: async (request: SelectWorkbookForImportRequest) =>

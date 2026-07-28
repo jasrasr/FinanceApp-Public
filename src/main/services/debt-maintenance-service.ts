@@ -10,9 +10,11 @@ import type {
   CreateDebtRequest,
   CreatePayoffScenarioRequest,
   DashboardDto,
+  DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
   GetDashboardRequest,
+  GetDebtReportsRequest,
   GetDebtRequest,
   GetImportBatchRequest,
   GetPayoffScenarioRequest,
@@ -43,6 +45,7 @@ import {
   createDebtRequestSchema,
   createPayoffScenarioRequestSchema,
   getDashboardRequestSchema,
+  getDebtReportsRequestSchema,
   getDebtRequestSchema,
   getImportBatchRequestSchema,
   getPayoffScenarioRequestSchema,
@@ -86,6 +89,7 @@ import {
   createDebtAndInitialTerm,
   listImportBatchRecords,
   listActiveDebtActivityRecords,
+  listDebtActivityRecords,
   listDebtRecords,
   listPayoffScenarioRecords,
   postImportBatchRecord,
@@ -154,6 +158,7 @@ import { parseWorkbookForImport } from './workbook-import-parser';
 export interface DebtMaintenanceService {
   listDebts(request: ListDebtsRequest): readonly DebtSummaryDto[];
   getDashboard(request: GetDashboardRequest): DashboardDto;
+  getDebtReports(request: GetDebtReportsRequest): DebtReportsDto;
   selectWorkbookForImport(
     request: SelectWorkbookForImportRequest,
   ): ImportBatchDto | null;
@@ -1052,6 +1057,544 @@ const buildPayoffAssumptions = (
   ),
   maxProjectionMonths: request.maxProjectionMonths,
 });
+
+const monthKey = (financialDate: string): string => financialDate.slice(0, 7);
+
+const yearKey = (financialDate: string): string => financialDate.slice(0, 4);
+
+const lastDayOfMonth = (year: number, month: number): string =>
+  new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+
+const periodKeys = (
+  startDate: string,
+  endDate: string,
+  frequency: 'monthly' | 'annual',
+): readonly string[] => {
+  const keys: string[] = [];
+  let cursor =
+    frequency === 'monthly'
+      ? `${startDate.slice(0, 7)}-01`
+      : `${startDate.slice(0, 4)}-01-01`;
+
+  while (cursor <= endDate) {
+    keys.push(frequency === 'monthly' ? monthKey(cursor) : yearKey(cursor));
+    cursor =
+      frequency === 'monthly'
+        ? addMonths(cursor, 1)
+        : `${Number(cursor.slice(0, 4)) + 1}-01-01`;
+  }
+
+  return keys;
+};
+
+const periodStart = (period: string, frequency: 'monthly' | 'annual'): string =>
+  frequency === 'monthly' ? `${period}-01` : `${period}-01-01`;
+
+const periodEnd = (period: string, frequency: 'monthly' | 'annual'): string => {
+  if (frequency === 'annual') return `${period}-12-31`;
+  const [yearText, monthText] = period.split('-');
+  return lastDayOfMonth(Number(yearText), Number(monthText));
+};
+
+const clampDate = (date: string, minimum: string, maximum: string): string =>
+  date < minimum ? minimum : date > maximum ? maximum : date;
+
+const reportBasis = (
+  title: string,
+  startDate: string,
+  endDate: string,
+  effectiveDate: string,
+  assumptions: readonly string[] = [],
+  warnings: readonly string[] = [],
+): DebtReportsDto['monthlyRollforward']['basis'] => ({
+  title,
+  dateRange: `${startDate} through ${endDate}`,
+  effectiveDate,
+  balanceBasis:
+    'Application-calculated ledger balances use original principal plus posted non-superseded actual activity through the stated date. Confirmed snapshots and scenario balances are labeled separately.',
+  assumptions: [...assumptions],
+  warnings: [...warnings],
+});
+
+const filterReportRecords = (
+  records: readonly DebtWithActivityRecord[],
+  filters: DebtReportsDto['filters'],
+): readonly DebtWithActivityRecord[] =>
+  records.filter(({ debt }) => {
+    if (filters.debtId && debt.id !== filters.debtId) return false;
+    if (filters.ownerEntity && debt.ownerEntity !== filters.ownerEntity) return false;
+    if (filters.debtType && debt.debtType !== filters.debtType) return false;
+    if (filters.status && debt.status !== filters.status) return false;
+    return true;
+  });
+
+const calculateReportBalanceThroughDate = (
+  database: AppDatabase,
+  record: DebtWithActivityRecord,
+  date: string,
+): number =>
+  date < record.debt.originationDate
+    ? 0
+    : calculateLedgerBalanceThroughDate(database, record.debt.id, date);
+
+const allocationTotal = (
+  allocations: readonly DebtTransactionWithAllocationsRecord['allocations'][number][],
+  types: readonly string[],
+): number =>
+  allocations
+    .filter((allocation) => types.includes(allocation.allocationType))
+    .reduce((total, allocation) => total + allocation.amountCents, 0);
+
+const createRollforward = (
+  database: AppDatabase,
+  records: readonly DebtWithActivityRecord[],
+  startDate: string,
+  endDate: string,
+  frequency: 'monthly' | 'annual',
+): DebtReportsDto['monthlyRollforward']['rows'] =>
+  periodKeys(startDate, endDate, frequency).map((period) => {
+    const start = clampDate(periodStart(period, frequency), startDate, endDate);
+    const end = clampDate(periodEnd(period, frequency), startDate, endDate);
+    const beginningDate = previousFinancialDate(start);
+    let borrowings = 0;
+    let payments = 0;
+    let principalReduction = 0;
+    let interestActivity = 0;
+    let periodTransactionTotal = 0;
+
+    for (const record of records) {
+      for (const { transaction, allocations } of postedActualTransactionsThrough(
+        record,
+        start,
+        end,
+      )) {
+        periodTransactionTotal += transaction.totalAmountCents;
+        if (transaction.transactionType === 'borrowing_draw')
+          borrowings += transaction.totalAmountCents;
+        if (transaction.transactionType === 'payment')
+          payments -= transaction.totalAmountCents;
+        const principal = allocationTotal(allocations, [
+          'principal',
+          'extra_principal',
+        ]);
+        if (principal < 0) principalReduction -= principal;
+        interestActivity += allocationTotal(allocations, ['interest']);
+      }
+    }
+
+    const beginningBalance = records.reduce(
+      (total, record) =>
+        total + calculateReportBalanceThroughDate(database, record, beginningDate),
+      0,
+    );
+    const endingBalance = records.reduce(
+      (total, record) =>
+        total + calculateReportBalanceThroughDate(database, record, end),
+      0,
+    );
+    const adjustmentsAndOther = periodTransactionTotal - borrowings + payments;
+
+    return {
+      period,
+      beginningBalance: centsToDollars(beginningBalance),
+      borrowings: centsToDollars(borrowings),
+      payments: centsToDollars(payments),
+      principalReduction: centsToDollars(principalReduction),
+      interestActivity: centsToDollars(interestActivity),
+      adjustmentsAndOther: centsToDollars(adjustmentsAndOther),
+      endingBalance: centsToDollars(endingBalance),
+    };
+  });
+
+const createReportPayoffInputs = (
+  database: AppDatabase,
+  records: readonly DebtWithActivityRecord[],
+  startDate: string,
+): readonly PayoffDebtInput[] =>
+  records
+    .map((record): PayoffDebtInput => ({
+      debtId: record.debt.id,
+      debtName: record.debt.name,
+      creditor: record.debt.creditor,
+      debtType: record.debt.debtType,
+      startingBalanceCents: calculateReportBalanceThroughDate(
+        database,
+        record,
+        startDate,
+      ),
+      maturityDate: record.debt.maturityDate,
+      terms: record.terms.map((term) => ({
+        effectiveStartDate: term.effectiveStartDate,
+        effectiveEndDate: term.effectiveEndDate,
+        interestRateType: term.interestRateType,
+        interestRateMicros: term.interestRateMicros,
+        requiredPaymentCents: term.requiredPaymentCents,
+        paymentFrequency: term.paymentFrequency,
+        dayCountConvention: term.dayCountConvention,
+        calculationConvention: term.calculationConvention,
+      })),
+    }))
+    .filter((debt) => debt.startingBalanceCents > 0);
+
+const reportVariableRateOverrides = (
+  records: readonly DebtWithActivityRecord[],
+  effectiveDate: string,
+  rateAdjustmentMicros: number,
+): Readonly<Record<string, number>> =>
+  Object.fromEntries(
+    records.flatMap((record) => {
+      const term = currentTermForDate(record.terms, effectiveDate);
+      if (term.interestRateType !== 'variable') return [];
+      return [
+        [record.debt.id, Math.max(0, term.interestRateMicros + rateAdjustmentMicros)],
+      ];
+    }),
+  );
+
+const createSensitivityRows = (
+  inputs: readonly PayoffDebtInput[],
+  records: readonly DebtWithActivityRecord[],
+  startDate: string,
+  kind: 'rate' | 'extra',
+): DebtReportsDto['interestRateSensitivity']['rows'] => {
+  if (inputs.length === 0) return [];
+
+  const cases =
+    kind === 'rate'
+      ? [
+          { label: 'Rates -1.00%', rateChange: -10_000, extra: 0 },
+          { label: 'Current rates', rateChange: 0, extra: 0 },
+          { label: 'Rates +1.00%', rateChange: 10_000, extra: 0 },
+        ]
+      : [
+          { label: 'No extra payment', rateChange: 0, extra: 0 },
+          { label: 'Extra $250/month', rateChange: 0, extra: 25_000 },
+          { label: 'Extra $500/month', rateChange: 0, extra: 50_000 },
+        ];
+
+  return cases.map((item) => {
+    const adjustedInputs = inputs.map((debt) => ({
+      ...debt,
+      terms: debt.terms.map((term) => ({
+        ...term,
+        interestRateMicros:
+          term.interestRateType === 'variable'
+            ? term.interestRateMicros
+            : Math.max(0, term.interestRateMicros + item.rateChange),
+      })),
+    }));
+    const result = projectPayoffScenario(adjustedInputs, {
+      scenarioStartDate: startDate,
+      strategy: 'avalanche',
+      extraMonthlyPaymentCents: item.extra,
+      customPriority: [],
+      variableRateOverrides: reportVariableRateOverrides(
+        records,
+        startDate,
+        item.rateChange,
+      ),
+      maxProjectionMonths: 360,
+    });
+
+    return {
+      scenarioLabel: item.label,
+      assumption:
+        kind === 'rate'
+          ? 'Rate sensitivity adjusts supported fixed/promotional rates and supplies explicit current-rate assumptions for variable-rate debts.'
+          : 'Extra-payment sensitivity reuses the payoff engine with avalanche priority and the stated extra monthly payment.',
+      projectedPayoffDate: result.projectedPayoffDate,
+      totalProjectedInterest: centsToDollars(result.totalProjectedInterestCents),
+      monthlyCashRequirement: centsToDollars(result.monthlyCashRequirementCents),
+      warnings: [...result.warnings],
+    };
+  });
+};
+
+const createDebtReports = (
+  database: AppDatabase,
+  request: GetDebtReportsRequest,
+  now: () => string,
+): DebtReportsDto => {
+  const parsed = getDebtReportsRequestSchema.parse(request);
+  const effectiveDate = parsed.endDate ?? currentFinancialDate(now);
+  const startDate = parsed.startDate ?? `${effectiveDate.slice(0, 4)}-01-01`;
+  const endDate = parsed.endDate ?? effectiveDate;
+  const filters: DebtReportsDto['filters'] = {
+    startDate,
+    endDate,
+    effectiveDate,
+    debtId: parsed.debtId,
+    ownerEntity: nullableText(parsed.ownerEntity),
+    debtType: parsed.debtType,
+    status: parsed.status,
+  };
+  const records = filterReportRecords(listDebtActivityRecords(database, true), filters);
+  const reportInputs = createReportPayoffInputs(database, records, effectiveDate);
+  const baseAssumptions = [
+    'Reports are read-only and do not edit posted financial records.',
+    'Posted activity excludes superseded transactions.',
+    'Projected and scenario data is labeled separately from actual ledger data.',
+  ];
+
+  const balanceHistoryRows = records.flatMap((record) => {
+    const dates = [
+      ...new Set([
+        startDate,
+        endDate,
+        ...record.transactions
+          .filter(({ transaction }) =>
+            isWithinDateRange(transaction.effectiveDate, startDate, endDate),
+          )
+          .map(({ transaction }) => transaction.effectiveDate),
+        ...record.balanceSnapshots
+          .filter((snapshot) =>
+            isWithinDateRange(snapshot.effectiveDate, startDate, endDate),
+          )
+          .map((snapshot) => snapshot.effectiveDate),
+      ]),
+    ].sort();
+
+    return dates.map((date) => {
+      const snapshot = record.balanceSnapshots
+        .filter((candidate) => candidate.effectiveDate <= date)
+        .at(-1);
+      return {
+        debtId: record.debt.id,
+        debtName: record.debt.name,
+        creditor: record.debt.creditor,
+        effectiveDate: date,
+        calculatedBalance: centsToDollars(
+          calculateReportBalanceThroughDate(database, record, date),
+        ),
+        confirmedBalance: snapshot
+          ? centsToDollars(snapshot.confirmedBalanceCents)
+          : null,
+        basis: `Calculated balance is ledger-based as of ${date}; confirmed balance is latest snapshot on or before ${date}, when available.`,
+      };
+    });
+  });
+
+  const monthlyRows = createRollforward(
+    database,
+    records,
+    startDate,
+    endDate,
+    'monthly',
+  );
+  const trendRows = monthlyRows.map((row) => ({
+    period: row.period,
+    principalReduction: row.principalReduction,
+    interestActivity: row.interestActivity,
+    borrowings: row.borrowings,
+    payments: row.payments,
+  }));
+  const scheduleRows = records.map((record) => {
+    const term = currentTermForDate(record.terms, effectiveDate);
+    return {
+      debtId: record.debt.id,
+      debtName: record.debt.name,
+      creditor: record.debt.creditor,
+      ownerEntity: record.debt.ownerEntity,
+      debtType: record.debt.debtType,
+      status: record.debt.status,
+      maturityDate: record.debt.maturityDate,
+      requiredMonthlyPayment: centsToDollars(
+        monthlyEquivalentCents(term.requiredPaymentCents, term.paymentFrequency),
+      ),
+      currentInterestRate: rateMicrosToPercentString(term.interestRateMicros),
+      calculatedBalance: centsToDollars(
+        calculateLedgerBalanceThroughDate(database, record.debt.id, effectiveDate),
+      ),
+      basis: `Current effective term as of ${effectiveDate}; balance is application-calculated ledger balance.`,
+    };
+  });
+
+  const scenarioRows = listPayoffScenarioRecords(database, true).flatMap((scenario) => {
+    const result = parsePayoffResult(scenario.resultJson);
+    return result.debts.map((debtResult) => {
+      const record = records.find(
+        (candidate) => candidate.debt.id === debtResult.debtId,
+      );
+      const currentBalance = record
+        ? calculateLedgerBalanceThroughDate(database, record.debt.id, endDate)
+        : debtResult.startingBalanceCents;
+      const actualPrincipalReduction = Math.max(
+        0,
+        debtResult.startingBalanceCents - currentBalance,
+      );
+      const plannedPrincipalReduction =
+        debtResult.projectedPayoffDate && debtResult.projectedPayoffDate <= endDate
+          ? debtResult.startingBalanceCents
+          : null;
+      return {
+        scenarioId: scenario.id,
+        scenarioName: scenario.name,
+        debtId: debtResult.debtId,
+        debtName: debtResult.debtName,
+        actualPrincipalReduction: centsToDollars(actualPrincipalReduction),
+        plannedPrincipalReduction:
+          plannedPrincipalReduction === null
+            ? null
+            : centsToDollars(plannedPrincipalReduction),
+        variance:
+          plannedPrincipalReduction === null
+            ? null
+            : centsToDollars(actualPrincipalReduction - plannedPrincipalReduction),
+        basis:
+          'Actual reduction compares scenario starting balance to current calculated ledger balance. Planned reduction is available only when saved scenario payoff date falls within the report range.',
+        warnings: [
+          ...result.warnings,
+          ...(plannedPrincipalReduction === null
+            ? [
+                'Saved scenario does not persist monthly plan balances, so planned principal reduction is unavailable for this date range.',
+              ]
+            : []),
+        ],
+      };
+    });
+  });
+
+  const exceptionRows: DebtReportsDto['reconciliationAndDataQuality']['rows'] =
+    records.flatMap((record) => [
+      ...record.balanceReconciliations
+        .filter(
+          (reconciliation) => reconciliation.reconciliationStatus !== 'reconciled',
+        )
+        .map((reconciliation) => ({
+          severity:
+            reconciliation.reconciliationStatus === 'exception'
+              ? ('exception' as const)
+              : ('warning' as const),
+          category: 'Reconciliation',
+          debtId: record.debt.id,
+          debtName: record.debt.name,
+          effectiveDate: reconciliation.statementDate,
+          message: `${reconciliation.reconciliationStatus} reconciliation; difference ${centsToDollars(reconciliation.calculatedDifferenceCents)}.`,
+          sourceId: reconciliation.id,
+        })),
+      ...record.terms
+        .filter(
+          (term) =>
+            term.paymentFrequency === 'irregular' || term.paymentFrequency === 'other',
+        )
+        .map((term) => ({
+          severity: 'warning' as const,
+          category: 'Projection support',
+          debtId: record.debt.id,
+          debtName: record.debt.name,
+          effectiveDate: term.effectiveStartDate,
+          message:
+            'Irregular or other payment frequency is not supported for reliable payoff projection.',
+          sourceId: term.id,
+        })),
+    ]);
+
+  return {
+    filters,
+    monthlyRollforward: {
+      basis: reportBasis(
+        'Monthly debt rollforward',
+        startDate,
+        endDate,
+        effectiveDate,
+        baseAssumptions,
+      ),
+      rows: monthlyRows,
+    },
+    annualRollforward: {
+      basis: reportBasis(
+        'Annual debt rollforward',
+        startDate,
+        endDate,
+        effectiveDate,
+        baseAssumptions,
+      ),
+      rows: createRollforward(database, records, startDate, endDate, 'annual'),
+    },
+    balanceHistory: {
+      basis: reportBasis(
+        'Debt balance history by obligation',
+        startDate,
+        endDate,
+        effectiveDate,
+        baseAssumptions,
+      ),
+      rows: balanceHistoryRows,
+    },
+    activityTrends: {
+      basis: reportBasis(
+        'Principal, interest, borrowing, and payment trends',
+        startDate,
+        endDate,
+        effectiveDate,
+        baseAssumptions,
+      ),
+      rows: trendRows,
+    },
+    maturitySchedule: {
+      basis: reportBasis(
+        'Maturity and required-payment schedule',
+        startDate,
+        endDate,
+        effectiveDate,
+        [
+          ...baseAssumptions,
+          'Required payments are normalized to monthly equivalents using current effective terms.',
+        ],
+      ),
+      rows: scheduleRows,
+    },
+    interestRateSensitivity: {
+      basis: reportBasis(
+        'Interest-rate sensitivity',
+        startDate,
+        endDate,
+        effectiveDate,
+        [
+          ...baseAssumptions,
+          'Sensitivity reuses the payoff projection engine and does not post projected transactions.',
+        ],
+      ),
+      rows: createSensitivityRows(reportInputs, records, effectiveDate, 'rate'),
+    },
+    extraPaymentSensitivity: {
+      basis: reportBasis(
+        'Extra-payment sensitivity',
+        startDate,
+        endDate,
+        effectiveDate,
+        [
+          ...baseAssumptions,
+          'Sensitivity reuses the payoff projection engine and does not post projected transactions.',
+        ],
+      ),
+      rows: createSensitivityRows(reportInputs, records, effectiveDate, 'extra'),
+    },
+    actualVersusPlanVariance: {
+      basis: reportBasis(
+        'Actual-versus-plan variance using saved payoff scenarios',
+        startDate,
+        endDate,
+        effectiveDate,
+        [
+          ...baseAssumptions,
+          'Saved scenarios do not currently persist monthly projected balances; variance is limited to payoff-date-based planned reduction where available.',
+        ],
+      ),
+      rows: scenarioRows,
+    },
+    reconciliationAndDataQuality: {
+      basis: reportBasis(
+        'Reconciliation and data-quality exceptions',
+        startDate,
+        endDate,
+        effectiveDate,
+        baseAssumptions,
+      ),
+      rows: exceptionRows,
+    },
+  };
+};
 
 const parseJsonRecord = (
   text: string,
@@ -1971,6 +2514,14 @@ export const createDebtMaintenanceService = ({
           listActiveDebtActivityRecords(database),
           currentFinancialDate(now),
         );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getDebtReports: (request) => {
+      try {
+        return createDebtReports(database, request, now);
       } catch (error) {
         return normalizeError(error);
       }

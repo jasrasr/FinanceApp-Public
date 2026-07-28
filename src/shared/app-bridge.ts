@@ -8,9 +8,11 @@ import type {
   ArchiveDebtRequest,
   CreateDebtRequest,
   DashboardDto,
+  DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
   GetDashboardRequest,
+  GetDebtReportsRequest,
   GetDebtRequest,
   GetImportBatchRequest,
   ImportBatchDto,
@@ -39,6 +41,9 @@ export interface DebtBridge {
     request: ListDebtsRequest,
   ): Promise<ApplicationResult<readonly DebtSummaryDto[]>>;
   getDashboard(request: GetDashboardRequest): Promise<ApplicationResult<DashboardDto>>;
+  getDebtReports(
+    request: GetDebtReportsRequest,
+  ): Promise<ApplicationResult<DebtReportsDto>>;
   selectWorkbookForImport(
     request: SelectWorkbookForImportRequest,
   ): Promise<ApplicationResult<ImportBatchDto | null>>;
@@ -95,6 +100,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 9;
+  readonly bridgeVersion: 10;
   readonly appMetadata: AppMetadataDto;
 }

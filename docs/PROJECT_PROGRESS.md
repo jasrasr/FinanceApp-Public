@@ -5,8 +5,8 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.9.0`, aligned
-to the nine completed feature phases. Earlier phase entries did not record an
+phase seven on 2026-07-28. The current application version is `0.10.0`, aligned
+to the ten completed feature phases. Earlier phase entries did not record an
 application version at the time they were completed.
 
 ## Phase 1: Application Foundation
@@ -405,3 +405,49 @@ application version at the time they were completed.
     effects, refinance analysis, and advanced reports are not implemented.
 - Recommended next phase:
   - Phase 10: Advanced reports.
+
+## Phase 10: Advanced Debt Reporting
+
+- Completion date: 2026-07-28
+- Application version: 0.10.0
+- Features implemented:
+  - Advanced read-only reports for monthly and annual debt rollforwards, debt
+    balance history, posted activity trends, maturity and required-payment
+    schedules, interest-rate sensitivity, extra-payment sensitivity,
+    actual-versus-plan variance, and reconciliation/data-quality exceptions.
+  - Report filters for date range, debt, owner/entity, debt type, and status
+    where relevant.
+  - Drill-through from report debt rows to debt detail where practical.
+  - Restrained principal-reduction chart paired with accessible tabular detail.
+- Material architecture and accounting decisions:
+  - Reports are computed in the Electron main process and exposed through a
+    single narrow typed bridge operation.
+  - Report balances use application-calculated ledger balances by default and
+    label confirmed snapshots and scenario results separately.
+  - Sensitivity reports reuse the payoff scenario engine rather than duplicating
+    projection logic.
+  - Actual-versus-plan variance is labeled as limited when saved scenarios do
+    not contain period-by-period planned balances.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - Added typed `getDebtReports` operation on fixed `debt:reports` channel.
+  - Preload bridge advanced to version 10.
+- New UI screens or workflows:
+  - Added Reports navigation item and advanced debt reporting screen.
+  - Added report filter controls, report basis labels, report tables, exception
+    section, and drill-through buttons.
+- Validation and smoke-test results:
+  - Added service integration coverage for report calculations, labeled
+    balances, reconciliation exceptions, sensitivity rows, and limited
+    actual-versus-plan variance.
+  - Added renderer, preload bridge, and IPC tests for report display and
+    contract validation.
+  - Manual smoke-test status is recorded in the phase-ten completion report.
+- Known limitations and technical debt:
+  - Reports are computed live and are not persisted report snapshots.
+  - Actual-versus-plan reporting remains limited until scenarios persist
+    period-by-period plan balances.
+  - Charts remain intentionally minimal.
+- Recommended next phase:
+  - Phase 11: Backup, restore, export, and packaging.
