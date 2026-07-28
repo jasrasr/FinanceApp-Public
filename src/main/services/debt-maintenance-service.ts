@@ -75,6 +75,7 @@ import {
 } from '../../shared/debt-options';
 import type { AppDatabase } from '../database/connection';
 import {
+  calculateEscrowBalanceThroughDate,
   calculateLedgerBalanceThroughDate,
   createPayoffScenarioRecord,
   createBalanceReconciliationRecord,
@@ -631,6 +632,33 @@ const mapBalanceReconciliation = (
 });
 
 const calculateEscrowBalanceFromActivity = (record: DebtWithActivityRecord): number => {
+  const transactionTypes = new Map(
+    record.transactions.map((entry) => [
+      entry.transaction.id,
+      entry.transaction.transactionType,
+    ]),
+  );
+  const escrowImpact = (
+    transaction: DebtWithActivityRecord['transactions'][number]['transaction'],
+    amountCents: number,
+  ): number => {
+    const effectiveTransactionType =
+      transaction.transactionType === 'reversal' && transaction.reversalOfTransactionId
+        ? (transactionTypes.get(transaction.reversalOfTransactionId) ??
+          transaction.transactionType)
+        : transaction.transactionType;
+
+    if (
+      effectiveTransactionType === 'payment' ||
+      effectiveTransactionType === 'escrow_disbursement' ||
+      effectiveTransactionType === 'escrow_refund'
+    ) {
+      return -amountCents;
+    }
+
+    return amountCents;
+  };
+
   const balance = record.transactions.reduce((total, entry) => {
     if (entry.transaction.status === 'superseded') return total;
 
@@ -638,18 +666,11 @@ const calculateEscrowBalanceFromActivity = (record: DebtWithActivityRecord): num
       total +
       entry.allocations
         .filter((allocation) => allocation.allocationType === 'escrow')
-        .reduce((allocationTotal, allocation) => {
-          if (entry.transaction.transactionType === 'payment') {
-            return allocationTotal - allocation.amountCents;
-          }
-          if (
-            entry.transaction.transactionType === 'escrow_disbursement' ||
-            entry.transaction.transactionType === 'escrow_refund'
-          ) {
-            return allocationTotal - allocation.amountCents;
-          }
-          return allocationTotal + allocation.amountCents;
-        }, 0)
+        .reduce(
+          (allocationTotal, allocation) =>
+            allocationTotal + escrowImpact(entry.transaction, allocation.amountCents),
+          0,
+        )
     );
   }, 0);
 
@@ -744,7 +765,11 @@ const requireInitialTerm = (record: DebtWithTermsRecord): DebtTermRecord => {
   return initialTerm;
 };
 
-const mapSummary = (record: DebtWithTermsRecord): DebtSummaryDto => {
+const mapSummary = (
+  database: AppDatabase,
+  record: DebtWithActivityRecord,
+  effectiveDate: string,
+): DebtSummaryDto => {
   const debt = record.debt;
 
   return {
@@ -755,6 +780,11 @@ const mapSummary = (record: DebtWithTermsRecord): DebtSummaryDto => {
     debtType: debt.debtType,
     status: debt.status,
     originalPrincipal: centsToDollars(debt.originalPrincipalCents),
+    currentBalance: centsToDollars(
+      calculateLedgerBalanceThroughDate(database, debt.id, effectiveDate),
+    ),
+    currentBalanceEffectiveDate: effectiveDate,
+    calculatedEscrowBalance: centsToDollars(calculateEscrowBalanceFromActivity(record)),
     originationDate: debt.originationDate,
     maturityDate: debt.maturityDate,
     initialTerm: mapTerm(requireInitialTerm(record)),
@@ -762,7 +792,11 @@ const mapSummary = (record: DebtWithTermsRecord): DebtSummaryDto => {
   };
 };
 
-const mapDetail = (record: DebtWithActivityRecord): DebtDetailDto => {
+const mapDetail = (
+  database: AppDatabase,
+  record: DebtWithActivityRecord,
+  effectiveDate: string,
+): DebtDetailDto => {
   const debt = record.debt;
 
   requireInitialTerm(record);
@@ -776,6 +810,10 @@ const mapDetail = (record: DebtWithActivityRecord): DebtDetailDto => {
     purpose: debt.purpose,
     status: debt.status,
     originalPrincipal: centsToDollars(debt.originalPrincipalCents),
+    currentBalance: centsToDollars(
+      calculateLedgerBalanceThroughDate(database, debt.id, effectiveDate),
+    ),
+    currentBalanceEffectiveDate: effectiveDate,
     originationDate: debt.originationDate,
     maturityDate: debt.maturityDate,
     minimumPayment: centsToDollars(debt.minimumPaymentCents),
@@ -892,6 +930,7 @@ const createDashboard = (
   const ytdStart = yearStartDate(effectiveDate);
   const upcomingMaturityEndDate = addMonths(effectiveDate, 12);
   let activeDebtCents = 0;
+  let escrowBalanceCents = 0;
   let principalReductionYtdCents = 0;
   let newBorrowingsYtdCents = 0;
   let interestActivityYtdCents = 0;
@@ -900,6 +939,7 @@ const createDashboard = (
   let weightedRateDenominator = 0n;
 
   const upcomingMaturities: DashboardDto['upcomingMaturities'] = [];
+  const escrowBalances: DashboardDto['escrowBalances'] = [];
   const attentionItems: DashboardDto['attentionItems'] = [];
 
   for (const record of records) {
@@ -911,6 +951,22 @@ const createDashboard = (
     );
 
     activeDebtCents += ledgerBalanceCents;
+    const debtEscrowBalanceCents = calculateEscrowBalanceThroughDate(
+      database,
+      record.debt.id,
+      effectiveDate,
+    );
+    escrowBalanceCents += debtEscrowBalanceCents;
+    if (debtEscrowBalanceCents !== 0) {
+      escrowBalances.push({
+        debtId: record.debt.id,
+        debtName: record.debt.name,
+        creditor: record.debt.creditor,
+        amount: centsToDollars(debtEscrowBalanceCents),
+        effectiveDate,
+        basis: `Application-calculated escrow balance from posted escrow allocations as of ${effectiveDate}; excluded from debt principal balance.`,
+      });
+    }
     requiredMonthlyPaymentsCents += monthlyEquivalentCents(
       currentTerm.requiredPaymentCents,
       currentTerm.paymentFrequency,
@@ -941,7 +997,7 @@ const createDashboard = (
         }
 
         if (allocation.allocationType === 'interest') {
-          interestActivityYtdCents += allocation.amountCents;
+          interestActivityYtdCents += Math.abs(allocation.amountCents);
         }
       }
     }
@@ -991,6 +1047,7 @@ const createDashboard = (
   attentionItems.sort((left, right) =>
     right.statementDate.localeCompare(left.statementDate),
   );
+  escrowBalances.sort((left, right) => right.amount.localeCompare(left.amount));
 
   const weightedAverageInterestRateMicros =
     weightedRateDenominator === 0n
@@ -1006,6 +1063,7 @@ const createDashboard = (
       principalReductionYtd: centsToDollars(principalReductionYtdCents),
       newBorrowingsYtd: centsToDollars(newBorrowingsYtdCents),
       interestActivityYtd: centsToDollars(interestActivityYtdCents),
+      escrowBalance: centsToDollars(escrowBalanceCents),
       requiredMonthlyPayments: centsToDollars(requiredMonthlyPaymentsCents),
       weightedAverageInterestRate:
         weightedAverageInterestRateMicros === null
@@ -1016,11 +1074,13 @@ const createDashboard = (
       activeDebt: `Application-calculated ledger balances for active debts as of ${effectiveDate}; not confirmed snapshots or original principal.`,
       principalReductionYtd: `Net principal and extra-principal allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}.`,
       newBorrowingsYtd: `Posted non-superseded borrowing or draw transaction totals dated ${ytdStart} through ${effectiveDate}.`,
-      interestActivityYtd: `Net interest allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}; negative amounts indicate interest paid through payments.`,
+      interestActivityYtd: `Positive display of interest allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}; internal payment allocations are stored as negative values.`,
+      escrowBalance: `Application-calculated escrow balances for active debts as of ${effectiveDate}; excluded from debt principal balance.`,
       requiredMonthlyPayments: `Current effective debt terms as of ${effectiveDate}, normalized to monthly equivalents; irregular and other frequencies are excluded from the amount.`,
       weightedAverageInterestRate: `Current effective annual rates as of ${effectiveDate}, weighted by application-calculated ledger balances for active debts.`,
     },
     upcomingMaturities: upcomingMaturities.slice(0, 10),
+    escrowBalances: escrowBalances.slice(0, 10),
     attentionItems: attentionItems.slice(0, 10),
   };
 };
@@ -1272,7 +1332,7 @@ const createRollforward = (
           'extra_principal',
         ]);
         if (principal < 0) principalReduction -= principal;
-        interestActivity += allocationTotal(allocations, ['interest']);
+        interestActivity += Math.abs(allocationTotal(allocations, ['interest']));
       }
     }
 
@@ -2594,7 +2654,10 @@ export const createDebtMaintenanceService = ({
     listDebts: (request) => {
       try {
         const parsed = listDebtsRequestSchema.parse(request);
-        return listDebtRecords(database, parsed.includeArchived).map(mapSummary);
+        const effectiveDate = currentFinancialDate(now);
+        return listDebtActivityRecords(database, parsed.includeArchived).map((record) =>
+          mapSummary(database, record, effectiveDate),
+        );
       } catch (error) {
         return normalizeError(error);
       }
@@ -3041,7 +3104,11 @@ export const createDebtMaintenanceService = ({
     getDebt: (request) => {
       try {
         const parsed = getDebtRequestSchema.parse(request);
-        return mapDetail(getRecordOrThrow(parsed.id));
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.id),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }
@@ -3182,7 +3249,7 @@ export const createDebtMaintenanceService = ({
           ),
         ]);
 
-        return mapDetail(getRecordOrThrow(debtId));
+        return mapDetail(database, getRecordOrThrow(debtId), currentFinancialDate(now));
       } catch (error) {
         return normalizeError(error);
       }
@@ -3247,7 +3314,7 @@ export const createDebtMaintenanceService = ({
           .map(([field]) => field);
 
         if (changedFields.length === 0) {
-          return mapDetail(existing);
+          return mapDetail(database, existing, currentFinancialDate(now));
         }
 
         updateDebtDescriptiveRecord(
@@ -3266,7 +3333,11 @@ export const createDebtMaintenanceService = ({
           ),
         );
 
-        return mapDetail(getRecordOrThrow(parsed.id));
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.id),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }
@@ -3381,7 +3452,11 @@ export const createDebtMaintenanceService = ({
           ),
         });
 
-        return mapDetail(getRecordOrThrow(parsed.debtId));
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.debtId),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }
@@ -3489,7 +3564,11 @@ export const createDebtMaintenanceService = ({
           ),
         ]);
 
-        return mapDetail(getRecordOrThrow(parsed.debtId));
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.debtId),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }
@@ -3524,7 +3603,11 @@ export const createDebtMaintenanceService = ({
           occurredAtUtc: timestamp,
         });
 
-        return mapDetail(getRecordOrThrow(original.debtId));
+        return mapDetail(
+          database,
+          getRecordOrThrow(original.debtId),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }
@@ -3579,7 +3662,11 @@ export const createDebtMaintenanceService = ({
           ),
         );
 
-        return mapDetail(getRecordOrThrow(parsed.debtId));
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.debtId),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }
@@ -3616,38 +3703,12 @@ export const createDebtMaintenanceService = ({
         );
         const calculatedDifferenceCents =
           statementEndingBalanceCents - applicationCalculatedBalanceCents;
-        const status = parsed.reconciliation.reconciliationStatus;
-
-        if (status === 'reconciled' && calculatedDifferenceCents !== 0) {
-          throw new ApplicationServiceError(
-            'validation',
-            'Review the highlighted fields.',
-            {
-              'reconciliation.reconciliationStatus': [
-                'A reconciliation can be marked reconciled only when the calculated difference is zero.',
-              ],
-            },
-          );
-        }
-
-        if (
-          status === 'reconciled_with_adjustment' &&
-          calculatedDifferenceCents === 0
-        ) {
-          throw new ApplicationServiceError(
-            'validation',
-            'Review the highlighted fields.',
-            {
-              'reconciliation.reconciliationStatus': [
-                'Use reconciled status when no approved adjustment is needed.',
-              ],
-            },
-          );
-        }
 
         const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
         const reconciliationId = createId();
         const approvedAdjustment = parsed.reconciliation.approvedAdjustment ?? null;
+        let status: BalanceReconciliationInput['reconciliationStatus'] =
+          calculatedDifferenceCents === 0 ? 'reconciled' : 'exception';
         let adjustment: {
           readonly transaction: DebtTransactionInsert;
           readonly allocations: readonly TransactionAllocationInsert[];
@@ -3655,6 +3716,17 @@ export const createDebtMaintenanceService = ({
         let approvedAdjustmentTransactionId: string | null = null;
 
         if (approvedAdjustment) {
+          if (calculatedDifferenceCents === 0) {
+            throw new ApplicationServiceError(
+              'validation',
+              'Review the highlighted fields.',
+              {
+                'reconciliation.approvedAdjustment.totalAmount': [
+                  'An approved adjustment is not needed when the calculated difference is zero.',
+                ],
+              },
+            );
+          }
           const adjustmentTransactionId = createId();
           const adjustmentTotalCents = convertSignedMoney(
             'reconciliation.approvedAdjustment.totalAmount',
@@ -3701,6 +3773,7 @@ export const createDebtMaintenanceService = ({
             ),
           };
           approvedAdjustmentTransactionId = adjustmentTransactionId;
+          status = 'reconciled_with_adjustment';
 
           const signErrors = validateTransactionSignConvention(
             adjustment.transaction,
@@ -3723,10 +3796,10 @@ export const createDebtMaintenanceService = ({
           statementEndingBalanceCents,
           applicationCalculatedBalanceCents,
           reconciliationStatus: status,
-          explanation: nullableText(parsed.reconciliation.explanation),
+          explanation: nullableText(parsed.reconciliation.explanation ?? null),
           approvedAdjustmentTransactionId,
-          sourceReference: nullableText(parsed.reconciliation.sourceReference),
-          supportingNotes: nullableText(parsed.reconciliation.supportingNotes),
+          sourceReference: nullableText(parsed.reconciliation.sourceReference ?? null),
+          supportingNotes: nullableText(parsed.reconciliation.supportingNotes ?? null),
           createdAtUtc: timestamp,
           updatedAtUtc: timestamp,
         };
@@ -3740,8 +3813,10 @@ export const createDebtMaintenanceService = ({
             effectiveDate: statementDate,
             confirmedBalanceCents: statementEndingBalanceCents,
             sourceType: 'statement',
-            sourceReference: nullableText(parsed.reconciliation.sourceReference),
-            notes: nullableText(parsed.reconciliation.supportingNotes),
+            sourceReference: nullableText(
+              parsed.reconciliation.sourceReference ?? null,
+            ),
+            notes: nullableText(parsed.reconciliation.supportingNotes ?? null),
             createdAtUtc: timestamp,
             updatedAtUtc: timestamp,
           },
@@ -3792,7 +3867,11 @@ export const createDebtMaintenanceService = ({
           ],
         });
 
-        return mapDetail(getRecordOrThrow(parsed.debtId));
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.debtId),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }
@@ -3819,7 +3898,11 @@ export const createDebtMaintenanceService = ({
           ),
         );
 
-        return mapDetail(getRecordOrThrow(parsed.id));
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.id),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }
@@ -3846,7 +3929,11 @@ export const createDebtMaintenanceService = ({
           ),
         );
 
-        return mapDetail(getRecordOrThrow(parsed.id));
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.id),
+          currentFinancialDate(now),
+        );
       } catch (error) {
         return normalizeError(error);
       }

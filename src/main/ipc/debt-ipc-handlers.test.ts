@@ -196,7 +196,7 @@ describe('debt IPC handlers', () => {
     const result = handlers.get(DEBT_IPC_CHANNELS.createReconciliation)?.(event, {
       debtId: randomUUID(),
       reconciliation: {
-        statementDate: '2026-01-31',
+        statementDate: '2026-1-31',
         statementEndingBalance: '124500.00',
         reconciliationStatus: 'reconciled_with_adjustment',
         explanation: null,

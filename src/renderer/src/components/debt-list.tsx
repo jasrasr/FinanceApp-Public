@@ -82,7 +82,7 @@ export const DebtList = ({
                 Status
               </th>
               <th className="px-4 py-3 text-right font-semibold" scope="col">
-                Original principal
+                Current balance
               </th>
               <th className="px-4 py-3 font-semibold" scope="col">
                 Dates
@@ -129,7 +129,15 @@ export const DebtList = ({
                   {labelFromValue(debt.status)}
                 </td>
                 <td className="px-4 py-4 text-right font-variant-numeric tabular-nums">
-                  {formatDollarString(debt.originalPrincipal)}
+                  {formatDollarString(debt.currentBalance)}
+                  <span className="block text-xs text-slate-500">
+                    as of {debt.currentBalanceEffectiveDate}
+                  </span>
+                  {debt.calculatedEscrowBalance !== '0.00' ? (
+                    <span className="mt-1 block text-xs text-slate-500">
+                      Escrow {formatDollarString(debt.calculatedEscrowBalance)}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-4 py-4 text-slate-700">
                   <span className="block">Originated {debt.originationDate}</span>

@@ -100,6 +100,15 @@ export const DebtDetail = ({
             >
               Record transaction
             </button>
+            {debt.debtType === 'mortgage' ? (
+              <button
+                className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+                onClick={onRecordTransaction}
+                type="button"
+              >
+                Record escrow activity
+              </button>
+            ) : null}
             <button
               className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
               onClick={onRecordReconciliation}
@@ -362,8 +371,9 @@ export const DebtDetail = ({
             Posted transactions
           </h3>
           <p className="mt-1 text-sm text-slate-600">
-            This ledger stores posted activity only. No authoritative current balance is
-            calculated or displayed in this phase.
+            This ledger stores posted activity only. The current balance shown above is
+            calculated from balance-affecting allocations and is not a confirmed lender
+            balance.
           </p>
         </div>
       </div>
@@ -531,6 +541,94 @@ export const DebtDetail = ({
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    <section
+      className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+      aria-labelledby="escrow-activity-heading"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold" id="escrow-activity-heading">
+            Escrow activity
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Escrow deposits, disbursements, refunds, and adjustments are tracked
+            separately from mortgage principal.
+          </p>
+        </div>
+      </div>
+
+      {debt.transactions.filter((transaction) =>
+        transaction.allocations.some(
+          (allocation) => allocation.allocationType === 'escrow',
+        ),
+      ).length === 0 ? (
+        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-8 py-10 text-center">
+          <h4 className="text-base font-semibold text-slate-900">
+            No escrow activity recorded
+          </h4>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
+            Mortgage escrow deposits and disbursements will appear here when they are
+            posted.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-5 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+              <tr>
+                <th className="py-3 pr-4 font-semibold" scope="col">
+                  Transaction date
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Activity
+                </th>
+                <th className="px-4 py-3 text-right font-semibold" scope="col">
+                  Escrow amount
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Notes
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {debt.transactions
+                .filter((transaction) =>
+                  transaction.allocations.some(
+                    (allocation) => allocation.allocationType === 'escrow',
+                  ),
+                )
+                .map((transaction: DebtTransactionDto) => {
+                  const escrowAllocation = transaction.allocations.find(
+                    (allocation) => allocation.allocationType === 'escrow',
+                  );
+
+                  return (
+                    <tr key={`escrow-${transaction.id}`}>
+                      <td className="py-4 pr-4 align-top">
+                        <span className="block font-medium text-slate-900">
+                          {transaction.effectiveDate}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 align-top text-slate-700">
+                        {labelFromValue(transaction.transactionType)}
+                      </td>
+                      <td className="px-4 py-4 align-top text-right tabular-nums">
+                        {escrowAllocation
+                          ? formatAbsoluteDollarString(escrowAllocation.amount)
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-4 align-top text-slate-700">
+                        {transaction.description}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>

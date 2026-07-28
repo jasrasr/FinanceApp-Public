@@ -18,10 +18,11 @@ for maintaining debts and supporting future debt-paydown analysis.
   principal adjustments, mortgage escrow activity, and reversals.
 - Statement-based balance reconciliation against the ledger balance calculated
   through the reconciliation date, including a supporting confirmed balance
-  snapshot and explicit approved adjustment postings.
+  snapshot, automatic reconciliation status assignment, and explicit approved
+  adjustment postings.
 - Basic dashboard with active-debt totals, year-to-date posted activity metrics,
-  current-term payment and rate summaries, upcoming maturities, and open
-  reconciliation attention items.
+  current escrow balance, current-term payment and rate summaries, upcoming
+  maturities, and open reconciliation attention items.
 - Workbook import staging and mapping for Excel files, including source
   provenance, sheet and row review, formulas as source metadata, ambiguous-row
   flags, control totals, and review-only approve/reject/defer states.
@@ -181,9 +182,11 @@ Electron user-data directory that it removes after the workflow.
 - A new term is appended after the latest term; an open prior term is closed on
   the day before the new effective date.
 - Archive and restore preserve every term and create audit events.
-- Reconciliations calculate a ledger balance only as of the reconciliation date.
-  The app still does not display a rolling authoritative current balance from
-  user-facing transaction screens.
+- Debt cards show the application-calculated current balance as of the displayed
+  effective date. Debt detail still shows original principal separately.
+- Calculated debt balances use principal-related allocations and explicitly
+  balance-affecting charges. Payment interest and escrow allocations do not
+  reduce debt principal.
 - Posted transactions and confirmed snapshots are recorded separately from future
   projected or scenario activity.
 - Manual transaction entry uses one user-facing Transaction Date for both posting
@@ -205,13 +208,16 @@ Electron user-data directory that it removes after the workflow.
 - Dashboard metrics exclude archived debts.
 - Total active debt uses application-calculated ledger balances as of the
   displayed dashboard effective date.
+- Current escrow balance is displayed separately from debt principal balance.
 - Year-to-date metrics use posted non-superseded activity from January 1 through
   the dashboard effective date.
 - Principal reduction counts negative principal allocations, including additional
   principal paid through the principal category. Legacy extra-principal
   allocations remain readable for existing records.
 - New borrowings count posted borrowing and draw transaction totals.
-- Interest activity is the net signed interest allocation total.
+- Interest activity is displayed as a positive expense amount. Internally,
+  payment interest allocations are stored with the payment's negative sign and
+  are converted for user-facing activity metrics.
 - Required monthly payments use current effective debt terms, normalized to a
   monthly equivalent. Irregular and other frequencies are excluded from that
   amount.
@@ -251,6 +257,8 @@ Electron user-data directory that it removes after the workflow.
   exception reports state their date range, effective date, balance basis, and
   assumptions.
 - Filters support date range, debt, debt type, and status where relevant.
+- Date-range presets support current year, prior year, current month, prior
+  month, year to date, last 12 months, all activity, and custom date ranges.
 - Report sections are collapsed by default and can be expanded independently.
 - Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
   engine and inherit its unsupported-term warnings.

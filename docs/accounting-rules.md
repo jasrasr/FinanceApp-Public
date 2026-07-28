@@ -11,8 +11,8 @@ are distinct concepts.
 - Posted transactions contain actual activity only.
 - Confirmed balance snapshots are evidence as of an effective date.
 - A calculated balance is not confirmed until reconciled.
-- A reconciliation calculated balance is computed for a statement date only and
-  is not displayed as a rolling current balance.
+- A calculated current balance may be displayed as of an explicit effective date,
+  but it is not a confirmed lender balance.
 - Projected and scenario activity must use future separate models and cannot be
   inserted into the posted ledger.
 
@@ -90,11 +90,27 @@ The ledger permits only posted, reversed, and superseded statuses. Draft,
 projected, and scenario statuses are prohibited by validation and database
 constraints.
 
-For statement reconciliation, the application-calculated balance equals original
-principal plus non-superseded ledger transaction totals, excluding escrow
-allocations, with effective dates on or before the statement date. Reversed
-originals remain in the historical calculation; their linked reversal rows offset
-them when the reversal effective date is also on or before the statement date.
+For statement reconciliation, dashboard balances, reports, payoff scenario
+starting balances, and debt-card current balances, the application-calculated
+debt balance equals original principal plus non-superseded balance-affecting
+allocation activity with effective dates on or before the calculation date.
+
+Balance-affecting allocation rules are:
+
+- Principal and legacy extra-principal allocations reduce or increase debt
+  principal according to their persisted sign.
+- Payment interest allocations do not reduce debt principal.
+- Payment escrow allocations do not reduce debt principal.
+- Escrow disbursements, escrow refunds, and escrow adjustments affect only the
+  calculated escrow balance.
+- Fees and penalties affect debt balance when posted under their documented
+  charge treatment.
+- Interest allocations affect debt balance only when posted as an interest-charge
+  transaction, not when included in a payment.
+- Reversals offset the same principal, interest-charge, fee, penalty, or escrow
+  component as the original transaction.
+
+The full payment transaction total must not be used as principal reduction.
 
 ## Mortgage Escrow Tracking
 
@@ -207,6 +223,15 @@ The approved adjustment total must equal the calculated difference. Its effectiv
 and posting dates are the statement date, its source type is `reconciliation`,
 and its source reference is the reconciliation identifier.
 
+The normal user-facing reconciliation workflow assigns status automatically:
+
+- A zero difference is `reconciled`.
+- A nonzero difference is `exception`.
+- A nonzero difference resolved by an explicit approved adjustment is
+  `reconciled_with_adjustment`.
+
+Users do not manually select reconciliation status in the normal workflow.
+
 ## Basic Dashboard Metrics
 
 Dashboard metrics exclude archived debts unless a metric explicitly states
@@ -223,9 +248,13 @@ January 1 through the dashboard effective date:
 - Principal reduction is the positive display of negative principal and
   legacy extra-principal allocations.
 - New borrowings are borrowing and draw transaction totals.
-- Interest activity is the net signed interest allocation total. Negative values
-  generally indicate interest paid through payment allocations; positive values
-  generally indicate interest charged.
+- Interest activity is displayed as a positive expense amount from interest
+  allocations dated in the current calendar year. Internally, interest paid as
+  part of a payment is stored with the payment's negative sign and converted to a
+  positive display value for activity metrics.
+- Current escrow balance is calculated from escrow deposits, disbursements,
+  refunds, adjustments, and reversals for active debts, and is displayed
+  separately from debt principal.
 
 Required monthly payments come from current effective debt terms as of the
 dashboard effective date. Weekly, biweekly, quarterly, and annual frequencies are
@@ -353,7 +382,8 @@ Monthly and annual rollforwards use:
 - Payments: positive display of posted payment transaction totals.
 - Principal reduction: positive display of negative principal and
   extra-principal allocations.
-- Interest activity: net signed interest allocations.
+- Interest activity: positive display of interest allocations for the report
+  date range.
 - Adjustments and other: residual posted activity not classified as borrowings
   or payments.
 

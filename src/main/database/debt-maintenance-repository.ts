@@ -296,8 +296,9 @@ export const calculateLedgerBalanceThroughDate = (
     .select({
       allocationType: transactionAllocations.allocationType,
       amountCents: transactionAllocations.amountCents,
-      totalAmountCents: debtTransactions.totalAmountCents,
       transactionId: debtTransactions.id,
+      transactionType: debtTransactions.transactionType,
+      reversalOfTransactionId: debtTransactions.reversalOfTransactionId,
     })
     .from(transactionAllocations)
     .innerJoin(
@@ -313,25 +314,52 @@ export const calculateLedgerBalanceThroughDate = (
     )
     .all();
 
-  const transactionTotals = new Map<string, number>();
-  let escrowAllocationTotal = 0;
+  const reversedTransactionIds = rows
+    .map((row) => row.reversalOfTransactionId)
+    .filter((id): id is string => id !== null);
+  const originalTypes =
+    reversedTransactionIds.length === 0
+      ? new Map<string, DebtTransactionRecord['transactionType']>()
+      : new Map(
+          database
+            .select({
+              id: debtTransactions.id,
+              transactionType: debtTransactions.transactionType,
+            })
+            .from(debtTransactions)
+            .all()
+            .filter((transaction) => reversedTransactionIds.includes(transaction.id))
+            .map((transaction) => [transaction.id, transaction.transactionType]),
+        );
 
+  let balanceActivity = 0;
   for (const row of rows) {
-    transactionTotals.set(row.transactionId, row.totalAmountCents);
-    if (row.allocationType === 'escrow') {
-      escrowAllocationTotal += row.amountCents;
+    const effectiveTransactionType =
+      row.transactionType === 'reversal' && row.reversalOfTransactionId
+        ? (originalTypes.get(row.reversalOfTransactionId) ?? row.transactionType)
+        : row.transactionType;
+
+    if (
+      row.allocationType === 'principal' ||
+      row.allocationType === 'extra_principal' ||
+      row.allocationType === 'fee' ||
+      row.allocationType === 'penalty' ||
+      (row.allocationType === 'interest' &&
+        effectiveTransactionType === 'interest_charge')
+    ) {
+      balanceActivity += row.amountCents;
+    }
+
+    if (!Number.isSafeInteger(balanceActivity)) {
+      throw new RangeError('Ledger balance activity exceeds the safe-integer range.');
     }
   }
 
-  const transactionTotal =
-    [...transactionTotals.values()].reduce((total, amount) => total + amount, 0) -
-    escrowAllocationTotal;
-
-  if (!Number.isSafeInteger(transactionTotal)) {
+  if (!Number.isSafeInteger(balanceActivity)) {
     throw new RangeError('Ledger transaction total exceeds the safe-integer range.');
   }
 
-  const balance = debt.originalPrincipalCents + transactionTotal;
+  const balance = debt.originalPrincipalCents + balanceActivity;
 
   if (!Number.isSafeInteger(balance) || balance < 0) {
     throw new RangeError(

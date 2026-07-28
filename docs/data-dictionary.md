@@ -113,6 +113,12 @@ on simplified manual-entry forms. Manual user entry accepts positive amount
 strings; the application service converts them to these signed stored values
 according to transaction type.
 
+Application-calculated debt balances are derived from balance-affecting
+allocations rather than full transaction totals. Payment interest and escrow
+allocations do not reduce debt principal. Interest allocations increase debt
+balance only when posted as interest-charge transactions. Reversals offset the
+same affected components as the original transaction.
+
 ## `transaction_allocations`
 
 Breaks a posted transaction into accounting classifications.
@@ -135,6 +141,10 @@ transaction total but are excluded from debt-principal balance calculations and
 tracked in a separate calculated escrow balance. Manual user entry accepts
 positive allocation strings and converts them to signed stored allocation rows
 before repository validation.
+
+Dashboard, debt-list, report, reconciliation, and payoff-starting-balance
+services use allocation-level balance logic when calculating debt principal
+balances.
 
 ## `balance_snapshots`
 
@@ -181,9 +191,11 @@ date.
 
 Debt and statement date are unique. Adjustment-reference presence must agree with
 the reconciliation status. The application-calculated balance is computed from
-original principal plus non-superseded posted-ledger activity through the
-statement date. The stored difference is calculated by the application and also
-checked by the database constraint.
+original principal plus non-superseded balance-affecting allocation activity
+through the statement date. The stored difference is calculated by the
+application and also checked by the database constraint. The normal user-facing
+workflow assigns `reconciled`, `exception`, or `reconciled_with_adjustment`
+automatically from the calculated difference and any approved linked adjustment.
 
 ## `audit_events`
 

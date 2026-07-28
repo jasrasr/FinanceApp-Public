@@ -182,8 +182,8 @@ export const createBalanceReconciliationRequestSchema = z
       .object({
         statementDate: financialDateInputSchema,
         statementEndingBalance: moneyInputSchema,
-        reconciliationStatus: reconciliationStatusSchema,
-        explanation: optionalTextSchema,
+        reconciliationStatus: reconciliationStatusSchema.optional(),
+        explanation: optionalTextSchema.optional(),
         approvedAdjustment: z
           .object({
             totalAmount: moneyInputSchema,
@@ -193,38 +193,12 @@ export const createBalanceReconciliationRequestSchema = z
           .strict()
           .nullable()
           .optional(),
-        sourceReference: optionalTextSchema,
-        supportingNotes: optionalTextSchema,
+        sourceReference: optionalTextSchema.optional(),
+        supportingNotes: optionalTextSchema.optional(),
       })
       .strict(),
   })
-  .strict()
-  .superRefine((value, context) => {
-    const hasAdjustment = Boolean(value.reconciliation.approvedAdjustment);
-
-    if (
-      value.reconciliation.reconciliationStatus === 'reconciled_with_adjustment' &&
-      !hasAdjustment
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'An approved adjustment is required for this status.',
-        path: ['reconciliation', 'approvedAdjustment'],
-      });
-    }
-
-    if (
-      value.reconciliation.reconciliationStatus !== 'reconciled_with_adjustment' &&
-      hasAdjustment
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message:
-          'Approved adjustments are allowed only for reconciled-with-adjustment status.',
-        path: ['reconciliation', 'approvedAdjustment'],
-      });
-    }
-  });
+  .strict();
 
 export const listDebtsRequestSchema = z
   .object({
@@ -464,6 +438,9 @@ export const debtSummaryDtoSchema = z
     debtType: z.enum(DEBT_TYPES),
     status: z.enum(DEBT_STATUSES),
     originalPrincipal: z.string(),
+    currentBalance: z.string(),
+    currentBalanceEffectiveDate: financialDateInputSchema,
+    calculatedEscrowBalance: z.string(),
     originationDate: financialDateInputSchema,
     maturityDate: financialDateInputSchema.nullable(),
     initialTerm: debtTermDtoSchema,
@@ -526,6 +503,7 @@ export const dashboardDtoSchema = z
         principalReductionYtd: z.string(),
         newBorrowingsYtd: z.string(),
         interestActivityYtd: z.string(),
+        escrowBalance: z.string(),
         requiredMonthlyPayments: z.string(),
         weightedAverageInterestRate: z.string().nullable(),
       })
@@ -536,11 +514,13 @@ export const dashboardDtoSchema = z
         principalReductionYtd: z.string(),
         newBorrowingsYtd: z.string(),
         interestActivityYtd: z.string(),
+        escrowBalance: z.string(),
         requiredMonthlyPayments: z.string(),
         weightedAverageInterestRate: z.string(),
       })
       .strict(),
     upcomingMaturities: z.array(dashboardDebtMetricDtoSchema),
+    escrowBalances: z.array(dashboardDebtMetricDtoSchema),
     attentionItems: z.array(dashboardAttentionItemDtoSchema),
     activeDebtCount: z.number().int().nonnegative(),
   })

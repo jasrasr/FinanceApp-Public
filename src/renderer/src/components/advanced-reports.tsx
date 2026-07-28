@@ -16,6 +16,52 @@ const today = (): string => new Date().toISOString().slice(0, 10);
 
 const defaultStart = (): string => `${today().slice(0, 4)}-01-01`;
 
+type DatePreset =
+  | 'current_year'
+  | 'prior_year'
+  | 'current_month'
+  | 'prior_month'
+  | 'year_to_date'
+  | 'last_12_months'
+  | 'all_activity'
+  | 'custom';
+
+const isoFromDate = (date: Date): string => date.toISOString().slice(0, 10);
+const monthStart = (date: Date): string =>
+  isoFromDate(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)));
+const monthEnd = (date: Date): string =>
+  isoFromDate(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)));
+
+const dateRangeForPreset = (
+  preset: DatePreset,
+): { readonly startDate: string; readonly endDate: string } | null => {
+  const now = new Date(`${today()}T00:00:00.000Z`);
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+
+  switch (preset) {
+    case 'current_year':
+    case 'year_to_date':
+      return { startDate: `${year}-01-01`, endDate: today() };
+    case 'prior_year':
+      return { startDate: `${year - 1}-01-01`, endDate: `${year - 1}-12-31` };
+    case 'current_month':
+      return { startDate: monthStart(now), endDate: today() };
+    case 'prior_month': {
+      const prior = new Date(Date.UTC(year, month - 1, 1));
+      return { startDate: monthStart(prior), endDate: monthEnd(prior) };
+    }
+    case 'last_12_months': {
+      const start = new Date(Date.UTC(year, month - 11, 1));
+      return { startDate: monthStart(start), endDate: today() };
+    }
+    case 'all_activity':
+      return { startDate: '1900-01-01', endDate: today() };
+    case 'custom':
+      return null;
+  }
+};
+
 const BasisNote = ({
   basis,
 }: {
@@ -110,6 +156,7 @@ export const AdvancedReports = ({
 }: AdvancedReportsProps): React.JSX.Element => {
   const [startDate, setStartDate] = useState(defaultStart());
   const [endDate, setEndDate] = useState(today());
+  const [datePreset, setDatePreset] = useState<DatePreset>('current_year');
   const [debtType, setDebtType] = useState('');
   const [status, setStatus] = useState('');
 
@@ -148,10 +195,38 @@ export const AdvancedReports = ({
         onSubmit={apply}
       >
         <label className="text-sm font-medium text-slate-700">
+          Date preset
+          <select
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            onChange={(event) => {
+              const preset = event.target.value as DatePreset;
+              setDatePreset(preset);
+              const range = dateRangeForPreset(preset);
+              if (range) {
+                setStartDate(range.startDate);
+                setEndDate(range.endDate);
+              }
+            }}
+            value={datePreset}
+          >
+            <option value="current_year">Current year</option>
+            <option value="prior_year">Prior year</option>
+            <option value="current_month">Current month</option>
+            <option value="prior_month">Prior month</option>
+            <option value="year_to_date">Year to date</option>
+            <option value="last_12_months">Last 12 months</option>
+            <option value="all_activity">All activity</option>
+            <option value="custom">Custom date range</option>
+          </select>
+        </label>
+        <label className="text-sm font-medium text-slate-700">
           Start date
           <input
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            onChange={(event) => setStartDate(event.target.value)}
+            onChange={(event) => {
+              setDatePreset('custom');
+              setStartDate(event.target.value);
+            }}
             type="date"
             value={startDate}
           />
@@ -160,7 +235,10 @@ export const AdvancedReports = ({
           End date
           <input
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            onChange={(event) => setEndDate(event.target.value)}
+            onChange={(event) => {
+              setDatePreset('custom');
+              setEndDate(event.target.value);
+            }}
             type="date"
             value={endDate}
           />

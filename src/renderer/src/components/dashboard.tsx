@@ -67,6 +67,11 @@ export const Dashboard = ({
       basis: dashboard.metricBasis.interestActivityYtd,
     },
     {
+      label: 'Current escrow balance',
+      value: formatDollarString(dashboard.totals.escrowBalance),
+      basis: dashboard.metricBasis.escrowBalance,
+    },
+    {
       label: 'Required monthly payments',
       value: formatDollarString(dashboard.totals.requiredMonthlyPayments),
       basis: dashboard.metricBasis.requiredMonthlyPayments,
@@ -118,6 +123,62 @@ export const Dashboard = ({
               />
             ))}
           </div>
+
+          <section
+            className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+            aria-labelledby="dashboard-escrow-heading"
+          >
+            <h3 className="text-lg font-semibold" id="dashboard-escrow-heading">
+              Escrow balances
+            </h3>
+            {dashboard.escrowBalances.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-600">
+                No active debts have posted escrow activity as of the dashboard
+                effective date.
+              </p>
+            ) : (
+              <div className="mt-5 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+                    <tr>
+                      <th className="py-3 pr-4 font-semibold" scope="col">
+                        Debt
+                      </th>
+                      <th className="px-4 py-3 text-right font-semibold" scope="col">
+                        Escrow balance
+                      </th>
+                      <th className="px-4 py-3 font-semibold" scope="col">
+                        Basis
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {dashboard.escrowBalances.map((item) => (
+                      <tr key={`${item.debtId}-${item.effectiveDate}-escrow`}>
+                        <td className="py-4 pr-4 align-top">
+                          <DebtLinkButton
+                            debtId={item.debtId}
+                            onSelectDebt={onSelectDebt}
+                          >
+                            {item.debtName}
+                          </DebtLinkButton>
+                          <span className="mt-1 block text-slate-500">
+                            {item.creditor}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-right align-top tabular-nums">
+                          {formatDollarString(item.amount)}
+                        </td>
+                        <td className="px-4 py-4 align-top text-slate-600">
+                          {item.basis}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
           <section
             className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"

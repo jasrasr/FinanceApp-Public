@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.13.1')).toBeVisible();
+    await expect(window.getByText('Version 0.14.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -44,7 +44,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByLabel('Creditor').fill('Harbor Ridge Cooperative');
     await window.getByLabel('Debt type').selectOption('mortgage');
     await window.getByLabel('Original principal').fill('125000.00');
-    await window.getByLabel('Origination date').fill('2025-01-15');
+    await window.getByLabel('Origination date').fill('2020-01-15');
     await window.getByLabel(/Maturity date/).fill('2030-01-15');
     await window.getByLabel('Tax category').selectOption('mortgage_interest');
     await window.getByLabel('Deductible percentage').fill('37.25');
@@ -92,6 +92,16 @@ test('completes the manual debt-maintenance workflow', async () => {
 
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await window.getByLabel('Transaction type').selectOption('payment');
+    await window.getByLabel('Transaction date').fill('2021-06-01');
+    await window.getByRole('textbox', { name: 'Amount' }).fill('1500.00');
+    await window.locator('[name="transaction.allocations.principal"]').fill('1000.00');
+    await window.locator('[name="transaction.allocations.interest"]').fill('200.00');
+    await window.locator('[name="transaction.allocations.escrow"]').fill('300.00');
+    await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
+    await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
+    await window.getByLabel('Transaction type').selectOption('payment');
     await window.getByLabel('Transaction date').fill('2026-01-15');
     await window.getByRole('textbox', { name: 'Amount' }).fill('500.00');
     await window.locator('[name="transaction.allocations.principal"]').fill('400.00');
@@ -104,13 +114,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.locator('[name="reconciliation.statementDate"]').fill('2026-01-31');
     await window
       .locator('[name="reconciliation.statementEndingBalance"]')
-      .fill('124500.00');
-    await window
-      .locator('[name="reconciliation.reconciliationStatus"]')
-      .selectOption('reconciled');
-    await window
-      .locator('[name="reconciliation.explanation"]')
-      .fill('Generated statement agrees to the ledger.');
+      .fill('123600.00');
     await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
     await expect(
       window.getByText('Balance reconciliation was recorded.'),
@@ -119,14 +123,27 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(
       window
         .getByLabel('Confirmed balance snapshots')
-        .getByRole('cell', { name: '$124,500.00' }),
+        .getByRole('cell', { name: '$123,600.00' }),
     ).toBeVisible();
+
+    await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
+    await window.locator('[name="reconciliation.statementDate"]').fill('2026-02-01');
+    await window
+      .locator('[name="reconciliation.statementEndingBalance"]')
+      .fill('123500.00');
+    await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
+    await expect(
+      window.getByText('Balance reconciliation was recorded.'),
+    ).toBeVisible();
+    await expect(window.getByText('Exception')).toBeVisible();
 
     await window.getByRole('button', { name: 'Dashboard' }).click();
     await expect(window.getByText('Principal reduction YTD')).toBeVisible();
     await expect(window.getByText('$400.00')).toBeVisible();
     await expect(window.getByText('Interest activity YTD')).toBeVisible();
-    await expect(window.getByText('-$100.00')).toBeVisible();
+    await expect(window.getByText('$100.00', { exact: true })).toBeVisible();
+    await expect(window.getByText('Current escrow balance')).toBeVisible();
+    await expect(window.getByRole('cell', { name: '$300.00' })).toBeVisible();
 
     await window.getByRole('button', { name: 'Debts' }).click();
     await window
@@ -134,7 +151,7 @@ test('completes the manual debt-maintenance workflow', async () => {
         name: /Open Updated Fictional Harbor Mortgage Note/,
       })
       .click();
-    await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
+    await window.getByRole('button', { name: 'Record escrow activity' }).click();
     await window.getByLabel('Transaction type').selectOption('payment');
     await window.getByLabel('Transaction date').fill('2026-02-01');
     await window.getByRole('textbox', { name: 'Amount' }).fill('1800.00');
@@ -144,10 +161,10 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
     await expect(
-      window.getByLabel('Core debt information').getByText('$300.00'),
+      window.getByLabel('Core debt information').getByText('$600.00'),
     ).toBeVisible();
 
-    await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
+    await window.getByRole('button', { name: 'Record escrow activity' }).click();
     await window.getByLabel('Transaction type').selectOption('escrow_disbursement');
     await window.getByLabel('Transaction date').fill('2026-02-15');
     await window.getByRole('textbox', { name: 'Amount' }).fill('125.00');
@@ -158,7 +175,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
     await expect(
-      window.getByLabel('Core debt information').getByText('$175.00'),
+      window.getByLabel('Core debt information').getByText('$475.00'),
     ).toBeVisible();
 
     await window.getByRole('button', { name: 'Payoff scenarios' }).click();
@@ -175,6 +192,10 @@ test('completes the manual debt-maintenance workflow', async () => {
 
     await window.getByRole('button', { name: 'Reports' }).click();
     await expect(window.getByRole('heading', { name: 'Debt reporting' })).toBeVisible();
+    await expect(window.getByLabel('Date preset')).toBeVisible();
+    await window.getByLabel('Date preset').selectOption('prior_year');
+    await expect(window.getByLabel('Start date')).toHaveValue('2025-01-01');
+    await window.getByLabel('Date preset').selectOption('last_12_months');
     await expect(window.getByText('Monthly debt rollforward')).toBeVisible();
     await expect(window.getByText('Debt balance history by obligation')).toBeVisible();
     await window.getByText('Monthly debt rollforward').click();

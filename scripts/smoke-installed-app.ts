@@ -27,6 +27,15 @@ const backupDirectory = join(userDataDirectory, 'backups');
 
 let uninstallVerified = false;
 
+const removeTemporaryDirectory = (directory: string): void => {
+  rmSync(directory, {
+    force: true,
+    maxRetries: 10,
+    recursive: true,
+    retryDelay: 500,
+  });
+};
+
 const run = (
   command: string,
   args: readonly string[],
@@ -120,7 +129,7 @@ try {
       );
     }
   }
-  rmSync(installDirectory, { force: true, recursive: true });
-  rmSync(userDataDirectory, { force: true, recursive: true });
-  rmSync(exportDirectory, { force: true, recursive: true });
+  removeTemporaryDirectory(installDirectory);
+  removeTemporaryDirectory(userDataDirectory);
+  removeTemporaryDirectory(exportDirectory);
 }

@@ -19,9 +19,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 13,
+  bridgeVersion: 14,
   appMetadata: {
-    version: '0.13.1',
+    version: '0.14.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -125,7 +125,8 @@ const sampleDashboard: DashboardDto = {
     activeDebt: '124500.00',
     principalReductionYtd: '400.00',
     newBorrowingsYtd: '0.00',
-    interestActivityYtd: '-100.00',
+    interestActivityYtd: '100.00',
+    escrowBalance: '300.00',
     requiredMonthlyPayments: '2450.00',
     weightedAverageInterestRate: '5.49',
   },
@@ -137,12 +138,23 @@ const sampleDashboard: DashboardDto = {
     newBorrowingsYtd:
       'Posted borrowing transaction totals dated 2026-01-01 through 2026-07-28.',
     interestActivityYtd:
-      'Net interest allocations dated 2026-01-01 through 2026-07-28.',
+      'Positive interest expense dated 2026-01-01 through 2026-07-28.',
+    escrowBalance: 'Calculated escrow balances as of 2026-07-28.',
     requiredMonthlyPayments: 'Current effective debt terms as of 2026-07-28.',
     weightedAverageInterestRate:
       'Current annual rates weighted by calculated ledger balances.',
   },
   upcomingMaturities: [],
+  escrowBalances: [
+    {
+      debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+      debtName: 'Fictional Equipment Note',
+      creditor: 'Harbor Ridge Cooperative',
+      amount: '300.00',
+      effectiveDate: '2026-07-28',
+      basis: 'Calculated escrow balance.',
+    },
+  ],
   attentionItems: [],
 };
 
@@ -502,6 +514,8 @@ const sampleDebtDetail: DebtDetailDto = {
   purpose: 'Generated equipment acquisition',
   status: 'active',
   originalPrincipal: '125000.00',
+  currentBalance: '124600.00',
+  currentBalanceEffectiveDate: '2026-07-28',
   originationDate: '2025-01-15',
   maturityDate: '2030-01-15',
   minimumPayment: '2450.00',
@@ -607,6 +621,9 @@ const sampleDebtSummary: DebtSummaryDto = {
   debtType: sampleDebtDetail.debtType,
   status: sampleDebtDetail.status,
   originalPrincipal: sampleDebtDetail.originalPrincipal,
+  currentBalance: sampleDebtDetail.currentBalance,
+  currentBalanceEffectiveDate: sampleDebtDetail.currentBalanceEffectiveDate,
+  calculatedEscrowBalance: sampleDebtDetail.calculatedEscrowBalance,
   originationDate: sampleDebtDetail.originationDate,
   maturityDate: sampleDebtDetail.maturityDate,
   initialTerm: sampleDebtDetail.terms[0]!,
@@ -698,7 +715,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.13.1')).toBeVisible();
+    expect(await screen.findByText('Version 0.14.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -880,7 +897,10 @@ describe('debt maintenance application', () => {
 
     expect(screen.getByLabelText(/Reconciliation date/)).toBeVisible();
     expect(screen.getByLabelText(/Verified lender balance/)).toBeVisible();
-    expect(screen.getByLabelText(/Reconciliation status/)).toBeVisible();
+    expect(screen.queryByLabelText(/Reconciliation status/)).toBeNull();
+    expect(screen.queryByLabelText(/Explanation/)).toBeNull();
+    expect(screen.queryByLabelText(/Supporting notes/)).toBeNull();
+    expect(screen.getByLabelText(/Include an approved adjustment/)).toBeVisible();
     expect(screen.queryByLabelText(/Statement reference/)).toBeNull();
   });
 

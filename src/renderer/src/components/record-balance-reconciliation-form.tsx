@@ -3,9 +3,8 @@ import type {
   CreateBalanceReconciliationRequest,
   DebtDetailDto,
 } from '../../../shared/debt-contracts';
-import { RECONCILIATION_STATUSES } from '../../../shared/debt-options';
 import { Field, FormActions } from './form-controls';
-import { inputClassName, labelFromValue } from './form-utils';
+import { inputClassName } from './form-utils';
 
 export interface RecordBalanceReconciliationFormProps {
   readonly busy: boolean;
@@ -39,11 +38,7 @@ export const RecordBalanceReconciliationForm = ({
   onCancel,
   onSubmit,
 }: RecordBalanceReconciliationFormProps): React.JSX.Element => {
-  const [status, setStatus] =
-    useState<
-      CreateBalanceReconciliationRequest['reconciliation']['reconciliationStatus']
-    >('unreconciled');
-  const includesAdjustment = status === 'reconciled_with_adjustment';
+  const [includesAdjustment, setIncludesAdjustment] = useState(false);
 
   const submit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -54,8 +49,6 @@ export const RecordBalanceReconciliationForm = ({
       reconciliation: {
         statementDate: value(data, 'reconciliation.statementDate'),
         statementEndingBalance: value(data, 'reconciliation.statementEndingBalance'),
-        reconciliationStatus: status,
-        explanation: nullableValue(data, 'reconciliation.explanation'),
         approvedAdjustment: includesAdjustment
           ? {
               totalAmount: value(data, 'reconciliation.approvedAdjustment.totalAmount'),
@@ -90,7 +83,6 @@ export const RecordBalanceReconciliationForm = ({
             }
           : null,
         sourceReference: null,
-        supportingNotes: nullableValue(data, 'reconciliation.supportingNotes'),
       },
     });
   };
@@ -136,60 +128,18 @@ export const RecordBalanceReconciliationForm = ({
             required
           />
         </Field>
-        <Field
-          error={fieldErrors?.['reconciliation.reconciliationStatus']}
-          label="Reconciliation status"
-          name="reconciliation.reconciliationStatus"
-        >
-          <select
-            className={inputClassName}
-            id="reconciliation.reconciliationStatus"
-            name="reconciliation.reconciliationStatus"
-            onChange={(event) =>
-              setStatus(
-                event.currentTarget
-                  .value as CreateBalanceReconciliationRequest['reconciliation']['reconciliationStatus'],
-              )
-            }
-            value={status}
-          >
-            {RECONCILIATION_STATUSES.map((option) => (
-              <option key={option} value={option}>
-                {labelFromValue(option)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <div className="lg:col-span-2">
-          <Field
-            error={fieldErrors?.['reconciliation.explanation']}
-            label="Explanation"
-            name="reconciliation.explanation"
-            optional
-          >
-            <textarea
-              className={inputClassName}
-              id="reconciliation.explanation"
-              name="reconciliation.explanation"
-              rows={3}
-            />
-          </Field>
-        </div>
-        <div className="lg:col-span-2">
-          <Field
-            error={fieldErrors?.['reconciliation.supportingNotes']}
-            label="Supporting notes"
-            name="reconciliation.supportingNotes"
-            optional
-          >
-            <textarea
-              className={inputClassName}
-              id="reconciliation.supportingNotes"
-              name="reconciliation.supportingNotes"
-              rows={3}
-            />
-          </Field>
-        </div>
+        <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 lg:col-span-2">
+          <input
+            checked={includesAdjustment}
+            className="mt-1"
+            onChange={(event) => setIncludesAdjustment(event.currentTarget.checked)}
+            type="checkbox"
+          />
+          <span>
+            Include an approved adjustment if the verified balance differs from the
+            ledger and the adjustment has already been reviewed.
+          </span>
+        </label>
       </div>
 
       {includesAdjustment ? (

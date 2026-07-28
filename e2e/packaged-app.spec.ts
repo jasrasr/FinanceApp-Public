@@ -38,7 +38,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.13.1')).toBeVisible();
+      await expect(window.getByText('Version 0.14.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();

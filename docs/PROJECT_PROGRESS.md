@@ -5,7 +5,7 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.13.1`. Earlier
+phase seven on 2026-07-28. The current application version is `0.14.0`. Earlier
 phase entries did not record an application version at the time they were
 completed.
 
@@ -661,3 +661,62 @@ completed.
     calculated signed reconciliation difference.
 - Recommended next phase:
   - Continue user acceptance testing of manual entry before broader cleanup.
+
+## Phase 14: Accounting Correction and Usability Acceptance Fixes
+
+- Completion date: 2026-07-28
+- Application version: 0.14.0
+- Features implemented:
+  - Corrected debt-balance calculations so payments reduce debt only by
+    principal-related allocations.
+  - Corrected dashboard and report year-to-date metrics so only current-year
+    activity is included.
+  - Displayed user-facing interest activity as a positive expense amount.
+  - Replaced original principal on collapsed debt cards with calculated current
+    balance as of the displayed effective date.
+  - Added total current escrow balance to the dashboard and escrow balance
+    visibility on debt list/detail.
+  - Simplified normal reconciliation entry by automatically assigning status
+    from the calculated difference and approved adjustment.
+  - Added a discoverable Record escrow activity action and escrow activity
+    history on mortgage debt detail.
+  - Added report date-range presets.
+- Material architecture and accounting decisions:
+  - Ledger balance calculations now use allocation-level treatment rather than
+    full transaction totals.
+  - Payment interest and escrow allocations do not reduce principal.
+  - Interest allocations affect debt balance only when posted as interest-charge
+    transactions.
+  - Escrow deposits, disbursements, refunds, adjustments, and reversals affect a
+    separate escrow balance.
+  - Normal reconciliation statuses are service-assigned rather than user-picked.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - No new IPC operations.
+  - Bridge contract version increased to 14 because debt summary, dashboard, and
+    reconciliation response semantics changed.
+- New UI screens or workflows:
+  - Debt cards now show current calculated balance and effective date.
+  - Dashboard now includes current escrow balance and escrow drill-through rows.
+  - Debt detail now includes escrow activity history and a mortgage escrow action.
+  - Reconciliation form now requires only reconciliation date, verified lender
+    balance, and optional approved adjustment action.
+  - Reports now include date-range presets.
+- Validation and smoke-test results:
+  - Regression coverage was added for allocation-based principal balance,
+    current-year YTD filtering, positive interest display, automatic
+    reconciliation status, escrow disbursement behavior, and report presets.
+  - Final validation and packaged smoke-test results are recorded in the
+    completion report for this phase.
+- Known limitations and technical debt:
+  - Legacy extra-principal allocation rows remain readable for compatibility.
+  - Escrow activity uses the existing transaction-entry path with clearer
+    mortgage detail entry points rather than a separate specialized posting
+    service.
+  - Reconciliation approved adjustments still use signed internal values because
+    they must equal a calculated signed reconciliation difference.
+- Recommended next phase:
+  - Continue focused user acceptance testing before deciding whether to pursue
+    release signing, cleanup of legacy compatibility UI/code, or production
+    release-process hardening.
