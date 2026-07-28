@@ -228,6 +228,16 @@ const convertSignedMoney = (field: string, value: string): number => {
   }
 };
 
+const manualTransactionDirection = (
+  transactionType: CreateDebtTransactionRequest['transaction']['transactionType'],
+): 1 | -1 => (transactionType === 'payment' ? -1 : 1);
+
+const convertManualTransactionAmount = (
+  field: string,
+  value: string,
+  direction: 1 | -1,
+): number => convertMoney(field, value) * direction;
+
 const convertRate = (field: string, value: string): number => {
   try {
     return percentageInputToRateMicros(value);
@@ -499,6 +509,56 @@ const buildAllocations = (
   if (allocations.length === 0) {
     throw new ApplicationServiceError('validation', 'Review the highlighted fields.', {
       [fieldPrefix]: ['Enter at least one allocation amount.'],
+    });
+  }
+
+  return allocations;
+};
+
+const buildManualTransactionAllocations = (
+  createId: () => string,
+  transactionId: string,
+  timestamp: string,
+  fieldPrefix: string,
+  allocationsInput: CreateDebtTransactionRequest['transaction']['allocations'],
+  direction: 1 | -1,
+): TransactionAllocationInsert[] => {
+  const allocations: TransactionAllocationInsert[] = [];
+
+  for (const [allocationType, amount] of allocationInputs(allocationsInput)) {
+    if (amount == null || amount.trim() === '') {
+      continue;
+    }
+
+    const formField = `${fieldPrefix}.${allocationType === 'extra_principal' ? 'extraPrincipal' : allocationType}`;
+    const amountCents = convertManualTransactionAmount(formField, amount, direction);
+
+    if (amountCents === 0) {
+      throw new ApplicationServiceError(
+        'validation',
+        'Review the highlighted fields.',
+        {
+          [formField]: ['Allocation amount must be nonzero.'],
+        },
+      );
+    }
+
+    allocations.push({
+      id: createId(),
+      transactionId,
+      allocationType,
+      amountCents,
+      notes: null,
+      createdAtUtc: timestamp,
+      updatedAtUtc: timestamp,
+    });
+  }
+
+  if (allocations.length === 0) {
+    throw new ApplicationServiceError('validation', 'Review the highlighted fields.', {
+      [`${fieldPrefix}.principal`]: [
+        'Enter at least one allocation amount for this transaction.',
+      ],
     });
   }
 
@@ -3367,15 +3427,19 @@ export const createDebtMaintenanceService = ({
 
         const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
         const transactionId = createId();
+        const direction = manualTransactionDirection(
+          parsed.transaction.transactionType,
+        );
         const transaction: DebtTransactionInsert = {
           id: transactionId,
           debtId: parsed.debtId,
           transactionType: parsed.transaction.transactionType,
           effectiveDate,
           postingDate,
-          totalAmountCents: convertSignedMoney(
+          totalAmountCents: convertManualTransactionAmount(
             'transaction.totalAmount',
             parsed.transaction.totalAmount,
+            direction,
           ),
           status: 'posted',
           description:
@@ -3388,12 +3452,13 @@ export const createDebtMaintenanceService = ({
           createdAtUtc: timestamp,
           updatedAtUtc: timestamp,
         };
-        const allocations = buildAllocations(
+        const allocations = buildManualTransactionAllocations(
           createId,
           transactionId,
           timestamp,
           'transaction.allocations',
           parsed.transaction.allocations,
+          direction,
         );
 
         const signErrors = validateTransactionSignConvention(transaction, allocations);

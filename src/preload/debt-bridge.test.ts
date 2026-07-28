@@ -42,9 +42,9 @@ describe('typed preload bridge', () => {
       'updateImportSheetMapping',
       'updateStagedImportRowReview',
     ]);
-    expect(bridge.bridgeVersion).toBe(12);
+    expect(bridge.bridgeVersion).toBe(13);
     expect(bridge.appMetadata).toEqual({
-      version: '0.13.0',
+      version: '0.13.1',
       lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);

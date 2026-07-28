@@ -50,7 +50,10 @@ Deductible percentages use basis points:
 
 ## Transaction Sign Convention
 
-Transaction totals and allocations are signed changes to the obligation:
+User-facing manual transaction workflows accept positive currency amounts only.
+The application service converts those positive entries to signed ledger values
+before validation and persistence. Transaction totals and allocations in the
+posted ledger remain signed changes to the obligation:
 
 - Borrowings and draws are positive.
 - Interest charges are positive.
@@ -64,14 +67,18 @@ Transaction totals and allocations are signed changes to the obligation:
 - Reversals have the exact opposite sign and amount of the original.
 - Other activity may be positive or negative but requires explicit description.
 
-Allocations use the same sign as the transaction total and must sum exactly to
-that total. User-facing transaction entry classifies amounts as principal,
-interest, escrow, fees, or penalties. Principal includes all principal paid,
-including additional principal. Legacy extra-principal and other allocation rows
-remain readable for compatibility but are not new user-facing categories.
+Manual-entry allocations are also entered as positive amounts and must sum to the
+positive entered transaction amount before sign conversion. Persisted allocations
+use the same sign as the transaction total and must sum exactly to that signed
+total. User-facing transaction entry classifies amounts as principal, interest,
+escrow, fees, or penalties. Principal includes all principal paid, including
+additional principal. Legacy extra-principal and other allocation rows remain
+readable for compatibility but are not new user-facing categories.
 
-For example, a generated payment of `-500.00` may allocate `-400.00` to principal
-and `-100.00` to interest. A separately posted interest charge is positive.
+For example, a user enters a generated payment amount of `500.00` and positive
+allocations of `400.00` principal and `100.00` interest. The ledger persists the
+payment as `-500.00` with `-400.00` principal and `-100.00` interest. A
+separately posted interest charge is persisted as positive.
 
 ## Unified Posted Ledger
 
@@ -155,6 +162,9 @@ new manual debts.
 - Manual transaction entry exposes one Transaction Date. The application uses
   that date as both the posting date and the accounting effective date for
   manually recorded activity.
+- Manual transaction entry accepts positive totals and positive allocations. The
+  application service applies the accounting sign from the selected transaction
+  type before posting.
 - Posted transactions may be reversed only by a new linked reversal transaction;
   the original row remains stored and is marked reversed.
 - Confirmed balance snapshots are separate evidence records and never overwrite

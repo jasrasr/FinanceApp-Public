@@ -109,7 +109,9 @@ reference exactly one prior transaction and originals cannot be deleted. Approve
 reconciliation adjustments are explicit posted transactions with source type
 `reconciliation` and source reference pointing to the reconciliation record that
 approved them. Source fields remain internal provenance fields and are not shown
-on simplified manual-entry forms.
+on simplified manual-entry forms. Manual user entry accepts positive amount
+strings; the application service converts them to these signed stored values
+according to transaction type.
 
 ## `transaction_allocations`
 
@@ -130,7 +132,9 @@ requires allocation signs to follow the transaction and their sum to equal the
 transaction total. User-facing entry treats all principal paid, including
 additional principal, as principal. Escrow allocations are included in the posted
 transaction total but are excluded from debt-principal balance calculations and
-tracked in a separate calculated escrow balance.
+tracked in a separate calculated escrow balance. Manual user entry accepts
+positive allocation strings and converts them to signed stored allocation rows
+before repository validation.
 
 ## `balance_snapshots`
 

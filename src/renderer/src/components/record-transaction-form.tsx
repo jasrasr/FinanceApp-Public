@@ -81,8 +81,9 @@ export const RecordTransactionForm = ({
     >
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
         Record posted activity only. Use one transaction date for both posting and
-        accounting effect. Mortgage escrow deposits are tracked separately from
-        principal.
+        accounting effect. Enter positive amounts; Debt Tracker applies the accounting
+        direction from the transaction type. Mortgage escrow deposits are tracked
+        separately from principal.
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -125,8 +126,8 @@ export const RecordTransactionForm = ({
         </Field>
         <Field
           error={fieldErrors?.['transaction.totalAmount']}
-          hint="Enter a signed currency amount. The sign must match the transaction type."
-          label="Total amount"
+          hint="Enter a positive currency amount. Debt Tracker applies the sign from the transaction type."
+          label="Amount"
           name="transaction.totalAmount"
         >
           <input
@@ -162,8 +163,9 @@ export const RecordTransactionForm = ({
             Allocation amounts
           </h3>
           <p className="mt-1 text-sm text-slate-600">
-            Fill only the classifications that apply. Amounts must reconcile to the
-            signed total.
+            Fill only the classifications that apply. Enter positive allocation amounts
+            that reconcile to the amount above before Debt Tracker applies the
+            accounting direction.
           </p>
         </div>
         <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">

@@ -19,9 +19,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 12,
+  bridgeVersion: 13,
   appMetadata: {
-    version: '0.13.0',
+    version: '0.13.1',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -698,7 +698,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.13.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.13.1')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -861,7 +861,7 @@ describe('debt maintenance application', () => {
     expect(screen.getByLabelText(/Transaction type/)).toBeVisible();
     expect(screen.getByLabelText(/Transaction date/)).toBeVisible();
     expect(screen.queryByLabelText(/Source type/)).toBeNull();
-    expect(screen.getByLabelText(/Total amount/)).toBeVisible();
+    expect(screen.getByLabelText(/Amount/)).toBeVisible();
     expect(screen.getByLabelText(/Principal/)).toBeVisible();
     expect(screen.queryByLabelText(/Extra principal/)).toBeNull();
     expect(screen.queryByLabelText(/^Other/)).toBeNull();

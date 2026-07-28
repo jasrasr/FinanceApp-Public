@@ -4,7 +4,11 @@ import type {
   DebtDetailDto,
   DebtTransactionDto,
 } from '../../../shared/debt-contracts';
-import { formatDollarString, formatTimestamp } from './display-format';
+import {
+  formatAbsoluteDollarString,
+  formatDollarString,
+  formatTimestamp,
+} from './display-format';
 import { labelFromValue } from './form-utils';
 
 const Definition = ({
@@ -370,8 +374,9 @@ export const DebtDetail = ({
             No posted activity yet
           </h4>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-            Record a payment, draw, fee, or other posted transaction after reviewing the
-            signed totals and allocation amounts.
+            Record a payment, draw, fee, escrow activity, or other posted transaction
+            using positive user-entered amounts. The transaction type communicates
+            direction.
           </p>
         </div>
       ) : (
@@ -414,7 +419,7 @@ export const DebtDetail = ({
                     {labelFromValue(transaction.transactionType)}
                   </td>
                   <td className="px-4 py-4 align-top text-right tabular-nums">
-                    {formatDollarString(transaction.totalAmount)}
+                    {formatAbsoluteDollarString(transaction.totalAmount)}
                   </td>
                   <td className="px-4 py-4 align-top text-slate-700">
                     {transaction.description}
@@ -428,7 +433,7 @@ export const DebtDetail = ({
                         >
                           <span>{labelFromValue(allocation.allocationType)}</span>
                           <span className="tabular-nums">
-                            {formatDollarString(allocation.amount)}
+                            {formatAbsoluteDollarString(allocation.amount)}
                           </span>
                         </li>
                       ))}

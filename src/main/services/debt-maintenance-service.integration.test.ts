@@ -86,13 +86,13 @@ const validTransactionRequest = (debtId: string) => ({
     effectiveDate: '2026-01-15',
     postingDate: '2026-01-16',
     status: 'posted' as const,
-    totalAmount: '-500.00',
+    totalAmount: '500.00',
     description: 'Generated payment.',
     sourceType: 'manual' as const,
     sourceReference: 'CHK-1001',
     allocations: {
-      principal: '-400.00',
-      interest: '-100.00',
+      principal: '400.00',
+      interest: '100.00',
       escrow: null,
       fee: null,
       penalty: null,
@@ -421,7 +421,7 @@ describe('debt creation', () => {
     expect(eventTypes).toContain('transaction_recorded');
   });
 
-  it('accepts simplified transaction input without user-facing source or description fields', () => {
+  it('accepts positive simplified transaction input without user-facing source or description fields', () => {
     const created = service.createDebt(validRequest());
     const updated = service.createDebtTransaction({
       debtId: created.id,
@@ -430,13 +430,13 @@ describe('debt creation', () => {
         effectiveDate: '2026-02-01',
         postingDate: '2026-02-01',
         status: 'posted',
-        totalAmount: '-750.00',
+        totalAmount: '750.00',
         description: null,
         sourceType: 'manual',
         sourceReference: null,
         allocations: {
-          principal: '-600.00',
-          interest: '-150.00',
+          principal: '600.00',
+          interest: '150.00',
           escrow: null,
           fee: null,
           penalty: null,
@@ -453,6 +453,67 @@ describe('debt creation', () => {
       sourceReference: null,
     });
     expect(updated.transactions[0]?.description).toContain('Manual payment');
+    expect(updated.transactions[0]?.totalAmount).toBe('-750.00');
+  });
+
+  it('normalizes positive user-entered transaction amounts to ledger signs by transaction type', () => {
+    const created = service.createDebt(validRequest());
+    const post = (
+      transactionType:
+        'payment' | 'borrowing_draw' | 'fee' | 'escrow_disbursement' | 'escrow_refund',
+      amount: string,
+      allocations: Record<string, string | null>,
+    ) =>
+      service.createDebtTransaction({
+        debtId: created.id,
+        transaction: {
+          transactionType,
+          effectiveDate: '2026-02-01',
+          postingDate: '2026-02-01',
+          status: 'posted',
+          totalAmount: amount,
+          description: null,
+          sourceType: 'manual',
+          sourceReference: null,
+          allocations: {
+            principal: allocations.principal ?? null,
+            interest: allocations.interest ?? null,
+            escrow: allocations.escrow ?? null,
+            fee: allocations.fee ?? null,
+            penalty: allocations.penalty ?? null,
+            extraPrincipal: null,
+            other: null,
+          },
+        },
+      });
+
+    post('payment', '500.00', { principal: '400.00', interest: '100.00' });
+    post('borrowing_draw', '250.00', { principal: '250.00' });
+    post('fee', '25.00', { fee: '25.00' });
+    post('payment', '300.00', { escrow: '300.00' });
+    post('escrow_disbursement', '125.00', { escrow: '125.00' });
+    post('escrow_refund', '50.00', { escrow: '50.00' });
+
+    const persisted = context.database
+      .select()
+      .from(debtTransactions)
+      .where(eq(debtTransactions.debtId, created.id))
+      .all();
+    const signsByType = new Map(
+      persisted.map((transaction) => [
+        transaction.transactionType,
+        transaction.totalAmountCents,
+      ]),
+    );
+
+    expect(signsByType.get('payment')).toBe(-30_000);
+    expect(signsByType.get('borrowing_draw')).toBe(25_000);
+    expect(signsByType.get('fee')).toBe(2_500);
+    expect(signsByType.get('escrow_disbursement')).toBe(12_500);
+    expect(signsByType.get('escrow_refund')).toBe(5_000);
+
+    const latest = service.getDebt({ id: created.id });
+    expect(latest.calculatedEscrowBalance).toBe('125.00');
   });
 
   it('tracks mortgage escrow deposits and disbursements separately from principal debt balance', () => {
@@ -468,14 +529,14 @@ describe('debt creation', () => {
         effectiveDate: '2026-03-01',
         postingDate: '2026-03-01',
         status: 'posted',
-        totalAmount: '-1800.00',
+        totalAmount: '1800.00',
         description: null,
         sourceType: 'manual',
         sourceReference: null,
         allocations: {
-          principal: '-1000.00',
-          interest: '-500.00',
-          escrow: '-300.00',
+          principal: '1000.00',
+          interest: '500.00',
+          escrow: '300.00',
           fee: null,
           penalty: null,
           extraPrincipal: null,

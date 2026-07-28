@@ -7,6 +7,9 @@ export const formatDollarString = (value: string): string => {
   return isNegative ? `-${formatted}` : formatted;
 };
 
+export const formatAbsoluteDollarString = (value: string): string =>
+  formatDollarString(value.startsWith('-') ? value.slice(1) : value);
+
 export const formatTimestamp = (value: string): string =>
   new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',

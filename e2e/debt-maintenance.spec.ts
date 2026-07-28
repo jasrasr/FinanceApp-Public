@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.13.0')).toBeVisible();
+    await expect(window.getByText('Version 0.13.1')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -93,12 +93,12 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await window.getByLabel('Transaction type').selectOption('payment');
     await window.getByLabel('Transaction date').fill('2026-01-15');
-    await window.getByLabel('Total amount').fill('-500.00');
-    await window.locator('[name="transaction.allocations.principal"]').fill('-400.00');
-    await window.locator('[name="transaction.allocations.interest"]').fill('-100.00');
+    await window.getByRole('textbox', { name: 'Amount' }).fill('500.00');
+    await window.locator('[name="transaction.allocations.principal"]').fill('400.00');
+    await window.locator('[name="transaction.allocations.interest"]').fill('100.00');
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
-    await expect(window.getByText('-$500.00')).toBeVisible();
+    await expect(window.getByText('$500.00', { exact: true })).toBeVisible();
 
     await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
     await window.locator('[name="reconciliation.statementDate"]').fill('2026-01-31');
@@ -137,25 +137,29 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await window.getByLabel('Transaction type').selectOption('payment');
     await window.getByLabel('Transaction date').fill('2026-02-01');
-    await window.getByLabel('Total amount').fill('-1800.00');
-    await window.locator('[name="transaction.allocations.principal"]').fill('-1000.00');
-    await window.locator('[name="transaction.allocations.interest"]').fill('-500.00');
-    await window.locator('[name="transaction.allocations.escrow"]').fill('-300.00');
+    await window.getByRole('textbox', { name: 'Amount' }).fill('1800.00');
+    await window.locator('[name="transaction.allocations.principal"]').fill('1000.00');
+    await window.locator('[name="transaction.allocations.interest"]').fill('500.00');
+    await window.locator('[name="transaction.allocations.escrow"]').fill('300.00');
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
-    await expect(window.getByText('$300.00', { exact: true })).toBeVisible();
+    await expect(
+      window.getByLabel('Core debt information').getByText('$300.00'),
+    ).toBeVisible();
 
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await window.getByLabel('Transaction type').selectOption('escrow_disbursement');
     await window.getByLabel('Transaction date').fill('2026-02-15');
-    await window.getByLabel('Total amount').fill('125.00');
+    await window.getByRole('textbox', { name: 'Amount' }).fill('125.00');
     await window
       .getByLabel('Description')
       .fill('Generated property tax escrow disbursement.');
     await window.locator('[name="transaction.allocations.escrow"]').fill('125.00');
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
-    await expect(window.getByText('$175.00', { exact: true })).toBeVisible();
+    await expect(
+      window.getByLabel('Core debt information').getByText('$175.00'),
+    ).toBeVisible();
 
     await window.getByRole('button', { name: 'Payoff scenarios' }).click();
     await expect(

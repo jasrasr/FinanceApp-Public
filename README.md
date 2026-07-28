@@ -188,6 +188,9 @@ Electron user-data directory that it removes after the workflow.
   projected or scenario activity.
 - Manual transaction entry uses one user-facing Transaction Date for both posting
   and accounting effect.
+- Manual transaction amounts and allocations are entered as positive currency
+  values. The application applies the stored accounting sign from the selected
+  transaction type.
 - Principal allocation includes all principal paid, including additional
   principal. Escrow deposits and disbursements are tracked separately and do not
   change mortgage principal.

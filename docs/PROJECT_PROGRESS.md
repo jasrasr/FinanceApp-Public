@@ -5,9 +5,9 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.13.0`, aligned
-to the thirteen completed feature phases. Earlier phase entries did not record
-an application version at the time they were completed.
+phase seven on 2026-07-28. The current application version is `0.13.1`. Earlier
+phase entries did not record an application version at the time they were
+completed.
 
 ## Phase 1: Application Foundation
 
@@ -620,3 +620,44 @@ an application version at the time they were completed.
 - Recommended next phase:
   - Use the simplified workflows in user acceptance testing before deciding on
     production hardening, release signing, or targeted cleanup.
+
+## Phase 13 Patch: Positive Transaction Entry
+
+- Completion date: 2026-07-28
+- Application version: 0.13.1
+- Features implemented:
+  - Manual transaction amount and allocation inputs now accept positive currency
+    values only.
+  - The main-process service applies ledger signs from the selected transaction
+    type before repository validation and persistence.
+  - Transaction history displays positive user-facing amounts, with direction
+    communicated by transaction type.
+- Material architecture and accounting decisions:
+  - Stored ledger signs remain unchanged for compatibility and accounting
+    integrity.
+  - Payments persist as negative ledger activity. Draws, fees, interest charges,
+    escrow disbursements, escrow refunds, escrow adjustments, principal
+    adjustments, and other manual activity persist as positive ledger activity.
+  - Reversals remain generated from posted transactions and preserve exact
+    offsetting signs internally.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - No new IPC operations.
+  - Bridge contract version increased to 13.
+  - Existing transaction DTO fields are retained; input semantics changed to
+    positive user-entered amounts for manual transaction entry.
+- New UI screens or workflows:
+  - Transaction-entry amount label simplified to `Amount`.
+  - Allocation guidance now states that positive allocation amounts must equal
+    the positive entered amount before sign conversion.
+- Validation and smoke-test results:
+  - Regression tests cover positive-entry payments, draws, fees, escrow deposits,
+    escrow disbursements, escrow refunds, and reversals.
+  - Final validation and Electron smoke-test results should be recorded in the
+    completion report for this patch.
+- Known limitations and technical debt:
+  - Reconciliation approved adjustments remain signed because they must equal a
+    calculated signed reconciliation difference.
+- Recommended next phase:
+  - Continue user acceptance testing of manual entry before broader cleanup.
