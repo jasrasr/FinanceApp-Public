@@ -5,8 +5,8 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.10.0`, aligned
-to the ten completed feature phases. Earlier phase entries did not record an
+phase seven on 2026-07-28. The current application version is `0.11.0`, aligned
+to the eleven completed feature phases. Earlier phase entries did not record an
 application version at the time they were completed.
 
 ## Phase 1: Application Foundation
@@ -450,4 +450,55 @@ application version at the time they were completed.
     period-by-period plan balances.
   - Charts remain intentionally minimal.
 - Recommended next phase:
-  - Phase 11: Backup, restore, export, and packaging.
+  - Phase 11: Backup, restore, and data export.
+
+## Phase 11: Backup, Restore, and Data Export
+
+- Completion date: 2026-07-28
+- Application version: 0.11.0
+- Features implemented:
+  - Manual validated SQLite database backups.
+  - Automatic rotating startup backups.
+  - Restore from listed validated local backups with confirmation.
+  - Pre-restore safety backup creation.
+  - CSV export of debts, terms, posted transactions, allocations, snapshots,
+    reconciliations, scenarios, dashboard data, and advanced report data.
+  - Data Management screen showing backup status, available backups, restore
+    controls, and export options.
+- Material architecture and accounting decisions:
+  - Backup, restore, and export run only in the Electron main process.
+  - Backups use SQLite's backup API and integrity validation rather than copying
+    an open database blindly.
+  - Restore validates backups before replacement and records non-sensitive audit
+    events.
+  - Exports label actual, confirmed, calculated, scenario, and exception values
+    separately.
+  - Export files omit audit-event detail and are not import sources.
+- Database schema or migration changes:
+  - No schema or migration changes.
+  - Existing `audit_events` records backup, restore, failed-restore, and export
+    events.
+- New or changed IPC operations:
+  - Added typed data-management operations:
+    - `getDataManagementStatus`
+    - `createManualBackup`
+    - `restoreBackup`
+    - `exportData`
+  - Preload bridge advanced to version 11.
+- New UI screens or workflows:
+  - Added Data Management navigation item.
+  - Added backup status cards, backup table, manual backup action, restore
+    action, refresh action, and CSV export action.
+- Validation and smoke-test results:
+  - Added integration tests for backup validation, restore with safety backup,
+    and labeled CSV export.
+  - Added renderer, preload bridge, IPC, and Electron E2E coverage for
+    data-management access and manual backup.
+  - Final validation is recorded in the phase-eleven completion report.
+- Known limitations and technical debt:
+  - Automatic backups currently run at startup and retain the ten newest
+    automatic backups.
+  - CSV export is one-way; exported files are not supported import sources.
+  - No cloud storage, encryption-key management, or installer packaging.
+- Recommended next phase:
+  - Packaging and installer preparation when explicitly approved.

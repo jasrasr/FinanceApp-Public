@@ -342,6 +342,28 @@ Reconciliation and data-quality exception reporting includes unreconciled,
 in-progress, exception, and unsupported-data items. It does not change
 reconciliation statuses, post adjustments, or edit ledger activity.
 
+## Backup, Restore, and Export
+
+Backups, restores, and exports are data-management workflows. They do not create,
+edit, or delete debts, terms, transactions, allocations, snapshots,
+reconciliations, or payoff scenarios through financial posting rules.
+
+- Backups use SQLite's online backup behavior against the live connection.
+- Backup success requires post-backup SQLite `integrity_check` and
+  `foreign_key_check` validation.
+- Automatic backups are rotating operational safeguards and are not report
+  snapshots.
+- Restore validates the selected backup before replacing the live database.
+- Restore creates a pre-restore safety backup using the same validation process.
+- Restore records non-sensitive audit events for successful and failed attempts.
+- Export files distinguish:
+  - `actual` obligation, term, transaction, allocation, and reconciliation data.
+  - `confirmed` balance snapshot evidence.
+  - `calculated` dashboard and report values.
+  - `scenario` saved payoff scenario values.
+- Export files intentionally omit audit-event detail and internal logs.
+- Exported files are not import sources for this phase.
+
 ## Corrections and Reversals
 
 Posted activity is not silently deleted or overwritten.

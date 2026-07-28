@@ -12,6 +12,7 @@ import type {
   CreateDebtRequest,
   CreatePayoffScenarioRequest,
   DashboardDto,
+  DataManagementStatusDto,
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
@@ -31,6 +32,7 @@ import { RecordBalanceReconciliationForm } from './components/record-balance-rec
 import { ConfirmationDialog } from './components/confirmation-dialog';
 import { CreateDebtForm } from './components/create-debt-form';
 import { Dashboard } from './components/dashboard';
+import { DataManagement } from './components/data-management';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { EditDebtForm } from './components/edit-debt-form';
@@ -48,7 +50,8 @@ type View =
   | 'add-term'
   | 'import'
   | 'payoff'
-  | 'reports';
+  | 'reports'
+  | 'data-management';
 type DetailPanel = 'overview' | 'transaction' | 'snapshot' | 'reconciliation';
 type Confirmation = 'archive' | 'restore' | 'reverse' | null;
 type ReverseTarget = {
@@ -101,6 +104,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [view, setView] = useState<View>('dashboard');
   const [dashboard, setDashboard] = useState<DashboardDto | null>(null);
   const [reports, setReports] = useState<DebtReportsDto | null>(null);
+  const [dataManagementStatus, setDataManagementStatus] =
+    useState<DataManagementStatusDto | null>(null);
   const [importBatches, setImportBatches] = useState<readonly ImportBatchSummaryDto[]>(
     [],
   );
@@ -174,6 +179,20 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setReports(result.value);
+    } else {
+      setError(result.error);
+    }
+
+    setLoading(false);
+  };
+
+  const loadDataManagementStatus = async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() => bridge.getDataManagementStatus({}));
+
+    if (result.ok) {
+      setDataManagementStatus(result.value);
     } else {
       setError(result.error);
     }
@@ -308,6 +327,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setError(null);
     setFieldErrors(undefined);
     void loadReports();
+  };
+
+  const showDataManagement = (): void => {
+    setView('data-management');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setConfirmation(null);
+    setReverseTarget(null);
+    setError(null);
+    setFieldErrors(undefined);
+    void loadDataManagementStatus();
   };
 
   const selectWorkbookForImport = async (): Promise<void> => {
@@ -478,6 +508,64 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     if (result.ok) {
       setSuccessMessage('Payoff scenario was archived.');
       await loadPayoffScenarios();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const createManualBackup = async (): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    const result = await invokeBridge(() => bridge.createManualBackup({}));
+
+    if (result.ok) {
+      setDataManagementStatus(result.value);
+      setSuccessMessage('Database backup was created and validated.');
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const exportData = async (): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.exportData({ format: 'csv', includeReports: true }),
+    );
+
+    if (result.ok) {
+      if (result.value.status === 'succeeded') {
+        setSuccessMessage(`Export completed with ${result.value.fileCount} CSV files.`);
+      } else {
+        setSuccessMessage('Export was cancelled.');
+      }
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const restoreBackup = async (backupId: string): Promise<void> => {
+    const confirmed = window.confirm(
+      'Restore this validated backup? Debt Tracker will create a safety backup first and replace the current local database.',
+    );
+    if (!confirmed) return;
+
+    setSaving(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.restoreBackup({ backupId, confirmed: true }),
+    );
+
+    if (result.ok) {
+      setDataManagementStatus(result.value);
+      setSuccessMessage('Database restore completed from a validated backup.');
+      await loadDashboard();
     } else {
       handleFailure(result.error);
     }
@@ -788,6 +876,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 Reports
               </button>
             </li>
+            <li className="mt-1">
+              <button
+                aria-current={view === 'data-management' ? 'page' : undefined}
+                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                onClick={showDataManagement}
+                type="button"
+              >
+                Data management
+              </button>
+            </li>
           </ul>
           <div className="mt-8 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
             <p>Version {bridge.appMetadata.version}</p>
@@ -830,7 +928,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                           ? () => void loadPayoffScenarios()
                           : view === 'reports'
                             ? () => void loadReports()
-                            : undefined
+                            : view === 'data-management'
+                              ? () => void loadDataManagementStatus()
+                              : undefined
                 }
               />
             </div>
@@ -920,6 +1020,18 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onApplyFilters={(request) => void loadReports(request)}
               onSelectDebt={(id) => void selectDebt(id)}
               reports={reports}
+            />
+          ) : null}
+
+          {view === 'data-management' ? (
+            <DataManagement
+              loading={loading}
+              onBackup={() => void createManualBackup()}
+              onExport={() => void exportData()}
+              onRefresh={() => void loadDataManagementStatus()}
+              onRestore={(backupId) => void restoreBackup(backupId)}
+              restoring={saving}
+              status={dataManagementStatus}
             />
           ) : null}
 

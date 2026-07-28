@@ -33,6 +33,8 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Advanced read-only debt reports for rollforwards, balance history, activity
   trends, maturity and required-payment schedules, sensitivity analysis,
   actual-versus-plan variance, and reconciliation/data-quality exceptions.
+- Data management screen for validated SQLite backups, restore from validated
+  local backups with pre-restore safety backup, and CSV data exports.
 - Restrained in-app display of the current package version and automatically
   generated last-changed timestamp.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
@@ -40,7 +42,7 @@ for maintaining debts and supporting future debt-paydown analysis.
   user-data directory.
 - Playwright-controlled Electron testing against disposable user-data directories.
 
-Backup, export, and packaging workflows have not been implemented.
+Application installer and packaging workflows have not been implemented.
 
 ## Prerequisites
 
@@ -212,6 +214,23 @@ Electron user-data directory that it removes after the workflow.
   scenarios currently do not persist period-by-period planned balances, variance
   detail is labeled as limited when planned reduction cannot be determined.
 - Charts are restrained and paired with tabular detail.
+
+## Backup, Restore, and Export Rules
+
+- Manual and automatic backups are stored under the Electron user-data directory,
+  outside this repository.
+- Backups use SQLite's backup API rather than blindly copying an open database.
+- A backup is reported successful only after SQLite integrity and foreign-key
+  checks pass.
+- Startup creates a rotating automatic backup; restore creates a pre-restore
+  safety backup before replacing the live database.
+- Restore is available only for listed local backup files, requires confirmation,
+  validates the selected backup before restore, and reopens the database after
+  replacement.
+- Failed restore attempts are designed to leave the existing database usable.
+- CSV exports are written to a user-selected directory outside the repository.
+- Export files label actual, confirmed, calculated, and scenario values
+  separately and omit audit-event detail.
 
 ## Workbook Import Rules
 

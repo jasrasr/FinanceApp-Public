@@ -190,8 +190,10 @@ Indexes cover entity lookup and event time.
 Manual debt maintenance records `debt_created`, `debt_updated`,
 `debt_term_created`, `debt_archived`, and `debt_restored` events. Posted activity,
 snapshots, reconciliations, and approved reconciliation adjustments also create
-audit events. Summaries avoid financial amounts; update metadata identifies
-classifications and related record identifiers rather than financial values.
+audit events. Backup, restore, failed-restore, and data-export workflows record
+non-sensitive operational audit events. Summaries avoid financial amounts; update
+metadata identifies classifications and related record identifiers rather than
+financial values.
 
 ## `import_batches`
 

@@ -4,16 +4,21 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  createManualBackupRequestSchema,
   createPayoffScenarioRequestSchema,
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
   archivePayoffScenarioRequestSchema,
   createDebtRequestSchema,
   dashboardDtoSchema,
+  dataExportDtoSchema,
+  dataManagementStatusDtoSchema,
   debtReportsDtoSchema,
   debtDetailDtoSchema,
   debtSummaryListSchema,
+  exportDataRequestSchema,
   getDashboardRequestSchema,
+  getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
   getImportBatchRequestSchema,
@@ -31,6 +36,7 @@ import {
   reverseDebtTransactionRequestSchema,
   rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
+  restoreBackupRequestSchema,
   selectWorkbookForImportRequestSchema,
   updateImportSheetMappingRequestSchema,
   updateStagedImportRowReviewRequestSchema,
@@ -40,6 +46,7 @@ import {
 } from '../../shared/debt-contracts';
 import { DEBT_IPC_CHANNELS } from '../../shared/debt-ipc';
 import { ApplicationServiceError } from '../services/application-error';
+import type { DataManagementService } from '../services/data-management-service';
 import type { DebtMaintenanceService } from '../services/debt-maintenance-service';
 import type { TrustedSenderValidator } from './trusted-sender';
 
@@ -124,9 +131,43 @@ const registerHandler = <TRequest, TResponse>(
   });
 };
 
+const registerAsyncHandler = <TRequest, TResponse>(
+  ipcMain: DebtIpcRegistrar,
+  channel: string,
+  requestSchema: ZodType<TRequest>,
+  responseSchema: ZodType<TResponse>,
+  isTrustedSender: TrustedSenderValidator,
+  operation: (request: TRequest) => Promise<TResponse>,
+): void => {
+  ipcMain.removeHandler(channel);
+  ipcMain.handle(
+    channel,
+    async (event, request): Promise<ApplicationResult<TResponse>> => {
+      if (!isTrustedSender(event)) {
+        return {
+          ok: false,
+          error: {
+            code: 'forbidden',
+            message: 'The request did not originate from trusted application content.',
+          },
+        };
+      }
+
+      try {
+        const parsedRequest = requestSchema.parse(request);
+        const parsedResponse = responseSchema.parse(await operation(parsedRequest));
+        return { ok: true, value: parsedResponse };
+      } catch (error) {
+        return { ok: false, error: structuredError(error) };
+      }
+    },
+  );
+};
+
 export const registerDebtIpcHandlers = (
   ipcMain: DebtIpcRegistrar,
   service: DebtMaintenanceService,
+  dataManagementService: DataManagementService,
   isTrustedSender: TrustedSenderValidator,
 ): void => {
   registerHandler(
@@ -144,6 +185,38 @@ export const registerDebtIpcHandlers = (
     dashboardDtoSchema,
     isTrustedSender,
     (request) => service.getDashboard(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.dataManagementStatus,
+    getDataManagementStatusRequestSchema,
+    dataManagementStatusDtoSchema,
+    isTrustedSender,
+    (request) => dataManagementService.getDataManagementStatus(request),
+  );
+  registerAsyncHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.createManualBackup,
+    createManualBackupRequestSchema,
+    dataManagementStatusDtoSchema,
+    isTrustedSender,
+    (request) => dataManagementService.createManualBackup(request),
+  );
+  registerAsyncHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.restoreBackup,
+    restoreBackupRequestSchema,
+    dataManagementStatusDtoSchema,
+    isTrustedSender,
+    (request) => dataManagementService.restoreBackup(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.exportData,
+    exportDataRequestSchema,
+    dataExportDtoSchema,
+    isTrustedSender,
+    (request) => dataManagementService.exportData(request),
   );
   registerHandler(
     ipcMain,

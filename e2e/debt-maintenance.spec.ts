@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.10.0')).toBeVisible();
+    await expect(window.getByText('Version 0.11.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -174,6 +174,17 @@ test('completes the manual debt-maintenance workflow', async () => {
         name: 'Actual-versus-plan variance using saved payoff scenarios',
       }),
     ).toBeVisible();
+
+    await window.getByRole('button', { name: 'Data management' }).click();
+    await expect(
+      window.getByRole('heading', { name: 'Backup, restore, and export' }),
+    ).toBeVisible();
+    await expect(window.getByText(/\\backups$/).first()).toBeVisible();
+    await window.getByRole('button', { name: 'Create backup' }).click();
+    await expect(
+      window.getByText('Database backup was created and validated.'),
+    ).toBeVisible();
+    await expect(window.getByText(/manual-/).first()).toBeVisible();
 
     await window.getByRole('button', { name: 'Debts' }).click();
     await window.getByRole('button', { name: 'View' }).click();

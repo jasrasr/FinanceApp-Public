@@ -1,6 +1,6 @@
 {
   "name": "debt-tracker",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "description": "A local desktop application for tracking debt paydown.",
   "main": "./out/main/index.js",

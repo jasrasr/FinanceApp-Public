@@ -2,7 +2,14 @@
 
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -28,6 +35,7 @@ import {
   type TemporaryDatabaseLocation,
 } from '../database/temporary-database';
 import { ApplicationServiceError } from './application-error';
+import { createDataManagementService } from './data-management-service';
 import {
   createDebtMaintenanceService,
   type DebtMaintenanceService,
@@ -1294,5 +1302,231 @@ describe('debt maintenance', () => {
     expect(context.database.select().from(importBatches).get()).toMatchObject({
       status: 'reviewed',
     });
+  });
+
+  it('creates and validates a manual SQLite backup outside the repository', async () => {
+    service.createDebt(validRequest('Generated Backup Note'));
+    const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-backups-'));
+    const dataService = createDataManagementService({
+      applicationRootDirectory: process.cwd(),
+      backupRootDirectory: backupRoot,
+      databasePath: temporary.databasePath,
+      getContext: () => context,
+      getDashboard: () => service.getDashboard({}),
+      getReports: () =>
+        service.getDebtReports({
+          startDate: null,
+          endDate: null,
+          debtId: null,
+          ownerEntity: null,
+          debtType: null,
+          status: null,
+        }),
+      reopenContext: () => {
+        context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+        service = createService();
+      },
+    });
+
+    try {
+      const status = await dataService.createManualBackup({});
+      expect(status.availableBackups).toHaveLength(1);
+      expect(status.availableBackups[0]).toMatchObject({
+        kind: 'manual',
+        integrityStatus: 'valid',
+      });
+      expect(existsSync(join(backupRoot, status.availableBackups[0]!.fileName))).toBe(
+        true,
+      );
+      expect(
+        context.database
+          .select({ eventType: auditEvents.eventType })
+          .from(auditEvents)
+          .all()
+          .map((event) => event.eventType),
+      ).toContain('database_backup_created');
+    } finally {
+      rmSync(backupRoot, { force: true, recursive: true });
+    }
+  });
+
+  it('restores from a validated backup and creates a pre-restore safety backup', async () => {
+    const original = service.createDebt(validRequest('Generated Restored Note'));
+    const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-restore-'));
+    const dataService = createDataManagementService({
+      applicationRootDirectory: process.cwd(),
+      backupRootDirectory: backupRoot,
+      databasePath: temporary.databasePath,
+      getContext: () => context,
+      getDashboard: () => service.getDashboard({}),
+      getReports: () =>
+        service.getDebtReports({
+          startDate: null,
+          endDate: null,
+          debtId: null,
+          ownerEntity: null,
+          debtType: null,
+          status: null,
+        }),
+      reopenContext: () => {
+        context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+        service = createService();
+      },
+    });
+
+    try {
+      const backupStatus = await dataService.createManualBackup({});
+      const postBackupDebt = service.createDebt(
+        validRequest('Generated Temporary Note'),
+      );
+      expect(service.listDebts({ includeArchived: true })).toHaveLength(2);
+
+      const restoredStatus = await dataService.restoreBackup({
+        backupId: backupStatus.availableBackups[0]!.id,
+        confirmed: true,
+      });
+
+      const restoredDebts = service.listDebts({ includeArchived: true });
+      expect(restoredDebts).toHaveLength(1);
+      expect(restoredDebts.map((debt) => debt.id)).toEqual([original.id]);
+      expect(() => service.getDebt({ id: postBackupDebt.id })).toThrow(
+        'Debt was not found.',
+      );
+      expect(service.getDebt({ id: original.id }).name).toBe('Generated Restored Note');
+      expect(
+        restoredStatus.availableBackups.some((backup) => backup.kind === 'pre_restore'),
+      ).toBe(true);
+      expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+      expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
+      const afterRestoreDebt = service.createDebt(
+        validRequest('Generated Post Restore Connection Note'),
+      );
+      expect(service.getDebt({ id: afterRestoreDebt.id }).name).toBe(
+        'Generated Post Restore Connection Note',
+      );
+      expect(
+        context.database
+          .select({ eventType: auditEvents.eventType })
+          .from(auditEvents)
+          .all()
+          .map((event) => event.eventType),
+      ).toContain('database_restored');
+    } finally {
+      rmSync(backupRoot, { force: true, recursive: true });
+    }
+  });
+
+  it('rejects a corrupted backup without replacing or damaging the live database', async () => {
+    const original = service.createDebt(
+      validRequest('Generated Corruption Guard Note'),
+    );
+    const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-corrupt-restore-'));
+    const dataService = createDataManagementService({
+      applicationRootDirectory: process.cwd(),
+      backupRootDirectory: backupRoot,
+      databasePath: temporary.databasePath,
+      getContext: () => context,
+      getDashboard: () => service.getDashboard({}),
+      getReports: () =>
+        service.getDebtReports({
+          startDate: null,
+          endDate: null,
+          debtId: null,
+          ownerEntity: null,
+          debtType: null,
+          status: null,
+        }),
+      reopenContext: () => {
+        context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+        service = createService();
+      },
+    });
+
+    try {
+      await dataService.createManualBackup({});
+      const postBackupDebt = service.createDebt(
+        validRequest('Generated Live Database Survivor Note'),
+      );
+      const corruptedBackupId = 'manual-generated-corrupt.sqlite3';
+      writeFileSync(join(backupRoot, corruptedBackupId), 'not a sqlite database');
+
+      await expect(
+        dataService.restoreBackup({
+          backupId: corruptedBackupId,
+          confirmed: true,
+        }),
+      ).rejects.toThrow();
+
+      expect(service.getDebt({ id: original.id }).name).toBe(
+        'Generated Corruption Guard Note',
+      );
+      expect(service.getDebt({ id: postBackupDebt.id }).name).toBe(
+        'Generated Live Database Survivor Note',
+      );
+      expect(service.listDebts({ includeArchived: true })).toHaveLength(2);
+      expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+      expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
+      const afterFailedRestoreDebt = service.createDebt(
+        validRequest('Generated After Failed Restore Note'),
+      );
+      expect(service.getDebt({ id: afterFailedRestoreDebt.id }).name).toBe(
+        'Generated After Failed Restore Note',
+      );
+    } finally {
+      rmSync(backupRoot, { force: true, recursive: true });
+    }
+  });
+
+  it('exports actual, confirmed, calculated, and scenario-labeled CSV files', () => {
+    const debt = service.createDebt(validRequest('Generated Export Note'));
+    service.createDebtTransaction(validTransactionRequest(debt.id));
+    service.createBalanceSnapshot(validSnapshotRequest(debt.id));
+    const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-export-backups-'));
+    const exportRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-exports-'));
+    const dataService = createDataManagementService({
+      applicationRootDirectory: process.cwd(),
+      backupRootDirectory: backupRoot,
+      databasePath: temporary.databasePath,
+      getContext: () => context,
+      getDashboard: () => service.getDashboard({}),
+      getReports: () =>
+        service.getDebtReports({
+          startDate: null,
+          endDate: null,
+          debtId: null,
+          ownerEntity: null,
+          debtType: null,
+          status: null,
+        }),
+      reopenContext: () => {
+        context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+        service = createService();
+      },
+      selectExportDirectory: () => exportRoot,
+    });
+
+    try {
+      const result = dataService.exportData({ format: 'csv', includeReports: true });
+      expect(result).toMatchObject({ status: 'succeeded', fileCount: 13 });
+      const files = readdirSync(result.exportDirectoryDisplayPath!);
+      expect(files).toContain('actual-debts.csv');
+      expect(files).toContain('confirmed-balance-snapshots.csv');
+      expect(files).toContain('calculated-dashboard-summary.csv');
+      expect(
+        readFileSync(
+          join(result.exportDirectoryDisplayPath!, 'actual-posted-transactions.csv'),
+          'utf8',
+        ),
+      ).toContain('actual/posted ledger activity');
+      expect(
+        readFileSync(
+          join(result.exportDirectoryDisplayPath!, 'calculated-dashboard-summary.csv'),
+          'utf8',
+        ),
+      ).toContain('calculated/dashboard metric');
+    } finally {
+      rmSync(backupRoot, { force: true, recursive: true });
+      rmSync(exportRoot, { force: true, recursive: true });
+    }
   });
 });

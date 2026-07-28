@@ -3,11 +3,13 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseContext } from './database/connection';
 import { initializeApplicationDatabase } from './database/database-startup';
+import { resolveApplicationDatabasePath } from './database/database-path';
 import {
   registerDebtIpcHandlers,
   removeDebtIpcHandlers,
 } from './ipc/debt-ipc-handlers';
 import { createTrustedSenderValidator } from './ipc/trusted-sender';
+import { createDataManagementService } from './services/data-management-service';
 import { createDebtMaintenanceService } from './services/debt-maintenance-service';
 
 const rendererFile = join(__dirname, '../renderer/index.html');
@@ -25,6 +27,15 @@ const selectWorkbookPath = (): string | null => {
         extensions: ['xlsx'],
       },
     ],
+  });
+
+  return result?.[0] ?? null;
+};
+
+const selectExportDirectory = (): string | null => {
+  const result = dialog.showOpenDialogSync({
+    title: 'Select folder for Debt Tracker export',
+    properties: ['openDirectory', 'createDirectory'],
   });
 
   return result?.[0] ?? null;
@@ -71,6 +82,7 @@ const createWindow = (): BrowserWindow => {
 };
 
 let databaseContext: DatabaseContext | undefined;
+let debtMaintenanceService: ReturnType<typeof createDebtMaintenanceService> | undefined;
 
 const applyTestUserDataOverride = (): void => {
   const override = process.env.DEBT_TRACKER_TEST_USER_DATA_DIR;
@@ -87,13 +99,33 @@ const applyTestUserDataOverride = (): void => {
 const startApplication = async (): Promise<void> => {
   applyTestUserDataOverride();
   await app.whenReady();
+  const userDataDirectory = app.getPath('userData');
+  const applicationRootDirectory = app.getAppPath();
+  const migrationsDirectory = join(applicationRootDirectory, 'drizzle');
+  const databasePath = resolveApplicationDatabasePath(
+    userDataDirectory,
+    applicationRootDirectory,
+  );
+
+  const reopenDatabaseContext = (): void => {
+    databaseContext = initializeApplicationDatabase({
+      userDataDirectory,
+      applicationRootDirectory,
+      migrationsDirectory,
+    });
+    const nextDebtMaintenanceService = createDebtMaintenanceService({
+      database: databaseContext.database,
+      selectWorkbookPath,
+    });
+    if (debtMaintenanceService) {
+      Object.assign(debtMaintenanceService, nextDebtMaintenanceService);
+    } else {
+      debtMaintenanceService = nextDebtMaintenanceService;
+    }
+  };
 
   try {
-    databaseContext = initializeApplicationDatabase({
-      userDataDirectory: app.getPath('userData'),
-      applicationRootDirectory: app.getAppPath(),
-      migrationsDirectory: join(app.getAppPath(), 'drizzle'),
-    });
+    reopenDatabaseContext();
   } catch (error) {
     const detail =
       error instanceof Error ? error.message : 'Unknown database startup error.';
@@ -106,13 +138,45 @@ const startApplication = async (): Promise<void> => {
     return;
   }
 
-  const service = createDebtMaintenanceService({
-    database: databaseContext.database,
-    selectWorkbookPath,
+  const service = debtMaintenanceService;
+  if (!service || !databaseContext) {
+    throw new Error('Debt Tracker database service was not initialized.');
+  }
+  const dataManagementService = createDataManagementService({
+    applicationRootDirectory,
+    backupRootDirectory: join(userDataDirectory, 'backups'),
+    databasePath,
+    getContext: () => {
+      if (!databaseContext) throw new Error('Database context is not available.');
+      return databaseContext;
+    },
+    getDashboard: () => {
+      if (!debtMaintenanceService) throw new Error('Debt service is not available.');
+      return debtMaintenanceService.getDashboard({});
+    },
+    getReports: () => {
+      if (!debtMaintenanceService) throw new Error('Debt service is not available.');
+      return debtMaintenanceService.getDebtReports({
+        startDate: null,
+        endDate: null,
+        debtId: null,
+        ownerEntity: null,
+        debtType: null,
+        status: null,
+      });
+    },
+    reopenContext: reopenDatabaseContext,
+    selectExportDirectory,
+  });
+  void dataManagementService.createAutomaticBackup('startup').catch((error) => {
+    const detail =
+      error instanceof Error ? error.message : 'Unknown automatic backup error.';
+    console.error(`Debt Tracker automatic backup failed: ${detail}`);
   });
   registerDebtIpcHandlers(
     ipcMain,
     service,
+    dataManagementService,
     createTrustedSenderValidator(trustedRendererLocation()),
   );
   createWindow();

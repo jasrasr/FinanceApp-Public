@@ -7,11 +7,16 @@ import type {
   ApplicationResult,
   ArchiveDebtRequest,
   CreateDebtRequest,
+  CreateManualBackupRequest,
   DashboardDto,
+  DataExportDto,
+  DataManagementStatusDto,
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
+  ExportDataRequest,
   GetDashboardRequest,
+  GetDataManagementStatusRequest,
   GetDebtReportsRequest,
   GetDebtRequest,
   GetImportBatchRequest,
@@ -30,6 +35,7 @@ import type {
   PreviewImportBatchPostingRequest,
   ReverseDebtTransactionRequest,
   RestoreDebtRequest,
+  RestoreBackupRequest,
   SelectWorkbookForImportRequest,
   UpdateImportSheetMappingRequest,
   UpdateStagedImportRowReviewRequest,
@@ -41,6 +47,16 @@ export interface DebtBridge {
     request: ListDebtsRequest,
   ): Promise<ApplicationResult<readonly DebtSummaryDto[]>>;
   getDashboard(request: GetDashboardRequest): Promise<ApplicationResult<DashboardDto>>;
+  getDataManagementStatus(
+    request: GetDataManagementStatusRequest,
+  ): Promise<ApplicationResult<DataManagementStatusDto>>;
+  createManualBackup(
+    request: CreateManualBackupRequest,
+  ): Promise<ApplicationResult<DataManagementStatusDto>>;
+  restoreBackup(
+    request: RestoreBackupRequest,
+  ): Promise<ApplicationResult<DataManagementStatusDto>>;
+  exportData(request: ExportDataRequest): Promise<ApplicationResult<DataExportDto>>;
   getDebtReports(
     request: GetDebtReportsRequest,
   ): Promise<ApplicationResult<DebtReportsDto>>;
@@ -100,6 +116,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 10;
+  readonly bridgeVersion: 11;
   readonly appMetadata: AppMetadataDto;
 }

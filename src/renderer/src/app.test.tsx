@@ -20,13 +20,52 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 10,
+  bridgeVersion: 11,
   appMetadata: {
-    version: '0.10.0',
+    version: '0.11.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
   getDashboard: vi.fn(async () => ({ ok: true as const, value: sampleDashboard })),
+  getDataManagementStatus: vi.fn(async () => ({
+    ok: true as const,
+    value: sampleDataManagementStatus,
+  })),
+  createManualBackup: vi.fn(async () => ({
+    ok: true as const,
+    value: {
+      ...sampleDataManagementStatus,
+      lastBackup: {
+        status: 'succeeded' as const,
+        message: 'Backup completed and passed SQLite integrity checks.',
+        completedAtUtc: '2026-07-28T13:45:00.000Z',
+        backup: sampleDataManagementStatus.availableBackups[0]!,
+      },
+    },
+  })),
+  restoreBackup: vi.fn(async () => ({
+    ok: true as const,
+    value: {
+      ...sampleDataManagementStatus,
+      lastRestore: {
+        status: 'succeeded' as const,
+        message: 'Restore completed from a validated backup.',
+        completedAtUtc: '2026-07-28T13:46:00.000Z',
+        backup: sampleDataManagementStatus.availableBackups[0]!,
+      },
+    },
+  })),
+  exportData: vi.fn(async () => ({
+    ok: true as const,
+    value: {
+      status: 'succeeded' as const,
+      exportedAtUtc: '2026-07-28T13:47:00.000Z',
+      exportDirectoryDisplayPath: 'C:\\Generated\\Exports\\debt-tracker-export',
+      fileCount: 12,
+      format: 'csv' as const,
+      message: 'Export completed.',
+    },
+  })),
   getDebtReports: vi.fn(async () => ({ ok: true as const, value: sampleReports })),
   selectWorkbookForImport: vi.fn(async () => ({
     ok: true as const,
@@ -106,6 +145,33 @@ const sampleDashboard: DashboardDto = {
   },
   upcomingMaturities: [],
   attentionItems: [],
+};
+
+const sampleDataManagementStatus = {
+  backupDirectoryDisplayPath: 'C:\\Generated\\Debt Tracker\\backups',
+  lastSuccessfulBackupAtUtc: '2026-07-28T13:44:00.000Z',
+  availableBackups: [
+    {
+      id: 'manual-2026-07-28T134400-000Z.sqlite3',
+      fileName: 'manual-2026-07-28T134400-000Z.sqlite3',
+      kind: 'manual' as const,
+      createdAtUtc: '2026-07-28T13:44:00.000Z',
+      sizeBytes: 131072,
+      integrityStatus: 'valid' as const,
+    },
+  ],
+  lastBackup: {
+    status: 'not_run' as const,
+    message: 'No operation has been run in this session.',
+    completedAtUtc: null,
+    backup: null,
+  },
+  lastRestore: {
+    status: 'not_run' as const,
+    message: 'No operation has been run in this session.',
+    completedAtUtc: null,
+    backup: null,
+  },
 };
 
 const sampleReportBasis = {
@@ -630,7 +696,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.10.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.11.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -669,6 +735,34 @@ describe('debt maintenance application', () => {
       ownerEntity: null,
       debtType: null,
       status: null,
+    });
+  });
+
+  it('renders data-management status and runs backup and export actions', async () => {
+    const bridge = createBridge();
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Data management' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Backup, restore, and export' }),
+    ).toBeVisible();
+    expect(screen.getByText('manual-2026-07-28T134400-000Z.sqlite3')).toBeVisible();
+    expect(screen.getByText(/C:\\Generated\\Debt Tracker\\backups/)).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create backup' }));
+    expect(
+      await screen.findByText('Database backup was created and validated.'),
+    ).toBeVisible();
+    expect(bridge.createManualBackup).toHaveBeenCalledWith({});
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV files' }));
+    expect(
+      await screen.findByText('Export completed with 12 CSV files.'),
+    ).toBeVisible();
+    expect(bridge.exportData).toHaveBeenCalledWith({
+      format: 'csv',
+      includeReports: true,
     });
   });
 

@@ -234,6 +234,24 @@ export const listDebtsRequestSchema = z
 
 export const getDashboardRequestSchema = z.object({}).strict();
 
+export const getDataManagementStatusRequestSchema = z.object({}).strict();
+
+export const createManualBackupRequestSchema = z.object({}).strict();
+
+export const restoreBackupRequestSchema = z
+  .object({
+    backupId: z.string().trim().min(1).max(255),
+    confirmed: z.literal(true),
+  })
+  .strict();
+
+export const exportDataRequestSchema = z
+  .object({
+    format: z.literal('csv'),
+    includeReports: z.boolean(),
+  })
+  .strict();
+
 export const getDebtReportsRequestSchema = z
   .object({
     startDate: financialDateInputSchema.nullable(),
@@ -521,6 +539,47 @@ export const dashboardDtoSchema = z
     upcomingMaturities: z.array(dashboardDebtMetricDtoSchema),
     attentionItems: z.array(dashboardAttentionItemDtoSchema),
     activeDebtCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const backupSummaryDtoSchema = z
+  .object({
+    id: z.string(),
+    fileName: z.string(),
+    kind: z.enum(['manual', 'automatic', 'pre_restore']),
+    createdAtUtc: utcTimestampSchema,
+    sizeBytes: z.number().int().nonnegative(),
+    integrityStatus: z.enum(['valid', 'invalid', 'not_checked']),
+  })
+  .strict();
+
+const backupOperationDtoSchema = z
+  .object({
+    status: z.enum(['succeeded', 'failed', 'not_run']),
+    message: z.string(),
+    completedAtUtc: utcTimestampSchema.nullable(),
+    backup: backupSummaryDtoSchema.nullable(),
+  })
+  .strict();
+
+export const dataManagementStatusDtoSchema = z
+  .object({
+    backupDirectoryDisplayPath: z.string(),
+    lastSuccessfulBackupAtUtc: utcTimestampSchema.nullable(),
+    availableBackups: z.array(backupSummaryDtoSchema),
+    lastBackup: backupOperationDtoSchema,
+    lastRestore: backupOperationDtoSchema,
+  })
+  .strict();
+
+export const dataExportDtoSchema = z
+  .object({
+    status: z.enum(['succeeded', 'cancelled']),
+    exportedAtUtc: utcTimestampSchema.nullable(),
+    exportDirectoryDisplayPath: z.string().nullable(),
+    fileCount: z.number().int().nonnegative(),
+    format: z.literal('csv'),
+    message: z.string(),
   })
   .strict();
 
@@ -880,6 +939,10 @@ export const debtSummaryListSchema = z.array(debtSummaryDtoSchema);
 export const debtListResultSchema = applicationResultSchema(debtSummaryListSchema);
 export const debtDetailResultSchema = applicationResultSchema(debtDetailDtoSchema);
 export const dashboardResultSchema = applicationResultSchema(dashboardDtoSchema);
+export const dataManagementStatusResultSchema = applicationResultSchema(
+  dataManagementStatusDtoSchema,
+);
+export const dataExportResultSchema = applicationResultSchema(dataExportDtoSchema);
 export const debtReportsResultSchema = applicationResultSchema(debtReportsDtoSchema);
 export const importBatchResultSchema = applicationResultSchema(importBatchDtoSchema);
 export const importBatchOrNullResultSchema = applicationResultSchema(
@@ -920,6 +983,12 @@ export type CreateBalanceReconciliationRequest = z.infer<
 >;
 export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
 export type GetDashboardRequest = z.infer<typeof getDashboardRequestSchema>;
+export type GetDataManagementStatusRequest = z.infer<
+  typeof getDataManagementStatusRequestSchema
+>;
+export type CreateManualBackupRequest = z.infer<typeof createManualBackupRequestSchema>;
+export type RestoreBackupRequest = z.infer<typeof restoreBackupRequestSchema>;
+export type ExportDataRequest = z.infer<typeof exportDataRequestSchema>;
 export type GetDebtReportsRequest = z.infer<typeof getDebtReportsRequestSchema>;
 export type SelectWorkbookForImportRequest = z.infer<
   typeof selectWorkbookForImportRequestSchema
@@ -960,6 +1029,8 @@ export type BalanceReconciliationDto = z.infer<typeof balanceReconciliationDtoSc
 export type DebtSummaryDto = z.infer<typeof debtSummaryDtoSchema>;
 export type DebtDetailDto = z.infer<typeof debtDetailDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
+export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSchema>;
+export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;
 export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
 export type ImportBatchSummaryDto = z.infer<typeof importBatchSummaryDtoSchema>;

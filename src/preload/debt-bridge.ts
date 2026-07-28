@@ -4,16 +4,21 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  createManualBackupRequestSchema,
   createPayoffScenarioRequestSchema,
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
   archivePayoffScenarioRequestSchema,
   createDebtRequestSchema,
   dashboardResultSchema,
+  dataExportResultSchema,
+  dataManagementStatusResultSchema,
   debtReportsResultSchema,
   debtDetailResultSchema,
   debtListResultSchema,
+  exportDataRequestSchema,
   getDashboardRequestSchema,
+  getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
   getImportBatchRequestSchema,
@@ -33,6 +38,7 @@ import {
   reverseDebtTransactionRequestSchema,
   rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
+  restoreBackupRequestSchema,
   selectWorkbookForImportRequestSchema,
   updateImportSheetMappingRequestSchema,
   updateStagedImportRowReviewRequestSchema,
@@ -41,11 +47,14 @@ import {
   type CreateBalanceReconciliationRequest,
   type CreateBalanceSnapshotRequest,
   type CreateDebtTransactionRequest,
+  type CreateManualBackupRequest,
   type CreatePayoffScenarioRequest,
   type ArchiveDebtRequest,
   type ArchivePayoffScenarioRequest,
   type CreateDebtRequest,
+  type ExportDataRequest,
   type GetDashboardRequest,
+  type GetDataManagementStatusRequest,
   type GetDebtReportsRequest,
   type GetDebtRequest,
   type GetImportBatchRequest,
@@ -57,6 +66,7 @@ import {
   type RerunPayoffScenarioRequest,
   type ReverseDebtTransactionRequest,
   type RestoreDebtRequest,
+  type RestoreBackupRequest,
   type SelectWorkbookForImportRequest,
   type UpdateImportSheetMappingRequest,
   type UpdateStagedImportRowReviewRequest,
@@ -70,7 +80,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 10,
+    bridgeVersion: 11,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -81,6 +91,34 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.dashboard,
           getDashboardRequestSchema.parse(request),
+        ),
+      ),
+    getDataManagementStatus: async (request: GetDataManagementStatusRequest) =>
+      dataManagementStatusResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.dataManagementStatus,
+          getDataManagementStatusRequestSchema.parse(request),
+        ),
+      ),
+    createManualBackup: async (request: CreateManualBackupRequest) =>
+      dataManagementStatusResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.createManualBackup,
+          createManualBackupRequestSchema.parse(request),
+        ),
+      ),
+    restoreBackup: async (request: RestoreBackupRequest) =>
+      dataManagementStatusResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.restoreBackup,
+          restoreBackupRequestSchema.parse(request),
+        ),
+      ),
+    exportData: async (request: ExportDataRequest) =>
+      dataExportResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.exportData,
+          exportDataRequestSchema.parse(request),
         ),
       ),
     getDebtReports: async (request: GetDebtReportsRequest) =>

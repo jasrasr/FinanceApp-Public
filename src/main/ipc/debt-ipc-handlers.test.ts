@@ -3,6 +3,7 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import type { DataManagementService } from '../services/data-management-service';
 import type { DebtMaintenanceService } from '../services/debt-maintenance-service';
 import { registerDebtIpcHandlers, type DebtIpcRegistrar } from './debt-ipc-handlers';
 import { DEBT_IPC_CHANNELS } from '../../shared/debt-ipc';
@@ -35,6 +36,30 @@ const createService = (): DebtMaintenanceService => ({
   restoreDebt: vi.fn(),
 });
 
+const createDataManagementService = (): DataManagementService => ({
+  getDataManagementStatus: vi.fn(() => ({
+    backupDirectoryDisplayPath: 'Generated backup directory',
+    lastSuccessfulBackupAtUtc: null,
+    availableBackups: [],
+    lastBackup: {
+      status: 'not_run' as const,
+      message: 'No operation has been run in this session.',
+      completedAtUtc: null,
+      backup: null,
+    },
+    lastRestore: {
+      status: 'not_run' as const,
+      message: 'No operation has been run in this session.',
+      completedAtUtc: null,
+      backup: null,
+    },
+  })),
+  createManualBackup: vi.fn(),
+  createAutomaticBackup: vi.fn(),
+  restoreBackup: vi.fn(),
+  exportData: vi.fn(),
+});
+
 const createRegistrar = () => {
   const handlers = new Map<
     string,
@@ -58,7 +83,12 @@ describe('debt IPC handlers', () => {
   it('rejects untrusted senders before calling the service', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(registrar, service, () => false);
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => false,
+    );
 
     const result = handlers.get(DEBT_IPC_CHANNELS.list)?.(event, {
       includeArchived: false,
@@ -77,7 +107,12 @@ describe('debt IPC handlers', () => {
   it('rejects invalid payloads with a structured validation error', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(registrar, service, () => true);
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
 
     const result = handlers.get(DEBT_IPC_CHANNELS.list)?.(event, {
       includeArchived: 'yes',
@@ -93,7 +128,12 @@ describe('debt IPC handlers', () => {
   it('returns a validated DTO result for an approved operation', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(registrar, service, () => true);
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
 
     const result = handlers.get(DEBT_IPC_CHANNELS.list)?.(event, {
       includeArchived: false,
@@ -106,7 +146,12 @@ describe('debt IPC handlers', () => {
   it('rejects invalid posted-transaction payloads on the new channel', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(registrar, service, () => true);
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
 
     const result = handlers.get(DEBT_IPC_CHANNELS.createTransaction)?.(event, {
       debtId: randomUUID(),
@@ -141,7 +186,12 @@ describe('debt IPC handlers', () => {
   it('rejects invalid reconciliation payloads on the reconciliation channel', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(registrar, service, () => true);
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
 
     const result = handlers.get(DEBT_IPC_CHANNELS.createReconciliation)?.(event, {
       debtId: randomUUID(),
@@ -166,7 +216,12 @@ describe('debt IPC handlers', () => {
   it('rejects ambiguous staged rows when approval is requested', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(registrar, service, () => true);
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
 
     const result = handlers.get(DEBT_IPC_CHANNELS.updateStagedImportRowReview)?.(
       event,
@@ -191,7 +246,12 @@ describe('debt IPC handlers', () => {
   it('requires explicit confirmation before posting an import batch', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(registrar, service, () => true);
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
 
     const result = handlers.get(DEBT_IPC_CHANNELS.postImportBatch)?.(event, {
       batchId: randomUUID(),
@@ -208,7 +268,12 @@ describe('debt IPC handlers', () => {
   it('rejects invalid payoff scenario payloads on the projection channel', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(registrar, service, () => true);
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
 
     const result = handlers.get(DEBT_IPC_CHANNELS.createPayoffScenario)?.(event, {
       name: 'Generated invalid scenario',
@@ -230,7 +295,12 @@ describe('debt IPC handlers', () => {
   it('rejects invalid advanced report filters on the report channel', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(registrar, service, () => true);
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
 
     const result = handlers.get(DEBT_IPC_CHANNELS.reports)?.(event, {
       startDate: '2026-12-31',
