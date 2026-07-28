@@ -371,6 +371,25 @@ Use architecture decision records for material choices involving:
 - Packaging.
 - Major dependency selection or replacement.
 
+### `docs/PROJECT_PROGRESS.md`
+
+Every completed implementation phase must update `docs/PROJECT_PROGRESS.md` in
+the same change. Keep the document concise, chronological, and suitable for
+onboarding a future developer or AI assistant.
+
+Each phase entry must include:
+
+- Phase number and title.
+- Completion date.
+- Features implemented.
+- Material architecture and accounting decisions.
+- Database schema or migration changes.
+- New or changed IPC operations.
+- New UI screens or workflows.
+- Validation and smoke-test results.
+- Known limitations and technical debt.
+- Recommended next phase.
+
 Do not leave material database or accounting decisions documented only in
 source-code comments, commit messages, or conversation history.
 
