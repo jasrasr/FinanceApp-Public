@@ -7,6 +7,7 @@ import type {
   DashboardDto,
   DebtDetailDto,
   DebtSummaryDto,
+  ImportBatchDto,
 } from '../../shared/debt-contracts';
 import { App } from './app';
 import { RecordBalanceSnapshotForm } from './components/record-balance-snapshot-form';
@@ -16,6 +17,20 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 const createBridge = (): DebtBridge => ({
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
   getDashboard: vi.fn(async () => ({ ok: true as const, value: sampleDashboard })),
+  selectWorkbookForImport: vi.fn(async () => ({
+    ok: true as const,
+    value: sampleImportBatch,
+  })),
+  listImportBatches: vi.fn(async () => ({ ok: true as const, value: [] })),
+  getImportBatch: vi.fn(async () => ({ ok: true as const, value: sampleImportBatch })),
+  updateImportSheetMapping: vi.fn(async () => ({
+    ok: true as const,
+    value: sampleImportBatch,
+  })),
+  updateStagedImportRowReview: vi.fn(async () => ({
+    ok: true as const,
+    value: sampleImportBatch,
+  })),
   getDebt: vi.fn(),
   createDebt: vi.fn(),
   updateDebt: vi.fn(),
@@ -55,6 +70,79 @@ const sampleDashboard: DashboardDto = {
   },
   upcomingMaturities: [],
   attentionItems: [],
+};
+
+const sampleImportBatch: ImportBatchDto = {
+  id: '44444444-4444-4444-4444-444444444444',
+  sourceWorkbookName: 'generated-debt-schedule.xlsx',
+  sourceWorkbookFingerprint: 'generated-fingerprint',
+  sourceWorkbookModifiedAtUtc: '2026-07-28T10:00:00.000Z',
+  status: 'open',
+  importedAtUtc: '2026-07-28T10:00:00.000Z',
+  createdAtUtc: '2026-07-28T10:00:00.000Z',
+  updatedAtUtc: '2026-07-28T10:00:00.000Z',
+  sheetMappings: [
+    {
+      id: '55555555-5555-5555-5555-555555555555',
+      batchId: '44444444-4444-4444-4444-444444444444',
+      sourceSheetName: 'Generated Transactions',
+      proposedRecordType: 'transaction',
+      reviewStatus: 'needs_review',
+      fieldMapping: { date: 'date', amount: 'amount' },
+      notes: null,
+      createdAtUtc: '2026-07-28T10:00:00.000Z',
+      updatedAtUtc: '2026-07-28T10:00:00.000Z',
+    },
+  ],
+  stagedRows: [
+    {
+      id: '66666666-6666-6666-6666-666666666666',
+      batchId: '44444444-4444-4444-4444-444444444444',
+      sheetMappingId: '55555555-5555-5555-5555-555555555555',
+      sourceSheetName: 'Generated Transactions',
+      sourceRowNumber: 2,
+      sourceCellReferences: { date: 'A2', amount: 'B2', status: 'C2' },
+      sourceDisplayedValues: {
+        date: '2026-01-15',
+        amount: '-250.00',
+        status: 'projected or actual',
+      },
+      sourceFormulas: { amount: 'B1*-1' },
+      proposedRecordType: 'transaction',
+      activityClassification: 'ambiguous',
+      normalizedValues: {
+        date: '2026-01-15',
+        amount: '-250.00',
+        status: 'projected or actual',
+      },
+      validationMessages: ['Actual versus projected classification requires review.'],
+      duplicateCandidate: 'transaction:unknown:2026-01-15:-250.00',
+      reconciliationException: null,
+      reviewStatus: 'needs_review',
+      reviewNotes: null,
+      reviewedAtUtc: null,
+      createdAtUtc: '2026-07-28T10:00:00.000Z',
+      updatedAtUtc: '2026-07-28T10:00:00.000Z',
+    },
+  ],
+  controlTotals: {
+    totalRows: 1,
+    needsReviewRows: 1,
+    approvedRows: 0,
+    rejectedRows: 0,
+    deferredRows: 0,
+    ambiguousRows: 1,
+    duplicateCandidateRows: 1,
+    invalidRows: 1,
+    reconciliationExceptionRows: 0,
+    candidateTotalsByType: {
+      debt: 0,
+      transaction: 1,
+      term: 0,
+      balance_snapshot: 0,
+      unknown: 0,
+    },
+  },
 };
 
 const sampleDebtDetail: DebtDetailDto = {
@@ -253,6 +341,32 @@ describe('debt maintenance application', () => {
         'No unreconciled, in-progress, or exception reconciliation items for active debts.',
       ),
     ).toBeVisible();
+  });
+
+  it('renders the workbook import empty state', async () => {
+    render(<App bridge={createBridge()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Workbook import' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Stage and map workbook rows' }),
+    ).toBeVisible();
+    expect(screen.getByText(/No staged workbook imports yet/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Select workbook' })).toBeVisible();
+  });
+
+  it('stages a generated workbook and displays review-only import rows', async () => {
+    const bridge = createBridge();
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Workbook import' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Select workbook' }));
+
+    expect(await screen.findByText('generated-debt-schedule.xlsx')).toBeVisible();
+    expect(screen.getByText('Ambiguous rows')).toBeVisible();
+    expect(screen.getByText('Generated Transactions row 2')).toBeVisible();
+    expect(screen.getByText('Formula source preserved')).toBeVisible();
+    expect(bridge.selectWorkbookForImport).toHaveBeenCalledWith({});
   });
 
   it('renders the record-transaction form controls', () => {

@@ -11,9 +11,17 @@ import {
   debtListResultSchema,
   getDashboardRequestSchema,
   getDebtRequestSchema,
+  getImportBatchRequestSchema,
+  importBatchOrNullResultSchema,
+  importBatchResultSchema,
+  importBatchSummaryListResultSchema,
+  listImportBatchesRequestSchema,
   listDebtsRequestSchema,
   reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
+  selectWorkbookForImportRequestSchema,
+  updateImportSheetMappingRequestSchema,
+  updateStagedImportRowReviewRequestSchema,
   updateDebtRequestSchema,
   type AddDebtTermRequest,
   type CreateBalanceReconciliationRequest,
@@ -23,9 +31,13 @@ import {
   type CreateDebtRequest,
   type GetDashboardRequest,
   type GetDebtRequest,
+  type GetImportBatchRequest,
   type ListDebtsRequest,
   type ReverseDebtTransactionRequest,
   type RestoreDebtRequest,
+  type SelectWorkbookForImportRequest,
+  type UpdateImportSheetMappingRequest,
+  type UpdateStagedImportRowReviewRequest,
   type UpdateDebtRequest,
 } from '../shared/debt-contracts';
 import { DEBT_IPC_CHANNELS } from '../shared/debt-ipc';
@@ -35,7 +47,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 5,
+    bridgeVersion: 6,
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
         await invoke(DEBT_IPC_CHANNELS.list, listDebtsRequestSchema.parse(request)),
@@ -45,6 +57,41 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.dashboard,
           getDashboardRequestSchema.parse(request),
+        ),
+      ),
+    selectWorkbookForImport: async (request: SelectWorkbookForImportRequest) =>
+      importBatchOrNullResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.selectWorkbookForImport,
+          selectWorkbookForImportRequestSchema.parse(request),
+        ),
+      ),
+    listImportBatches: async () =>
+      importBatchSummaryListResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.listImportBatches,
+          listImportBatchesRequestSchema.parse({}),
+        ),
+      ),
+    getImportBatch: async (request: GetImportBatchRequest) =>
+      importBatchResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.getImportBatch,
+          getImportBatchRequestSchema.parse(request),
+        ),
+      ),
+    updateImportSheetMapping: async (request: UpdateImportSheetMappingRequest) =>
+      importBatchResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.updateImportSheetMapping,
+          updateImportSheetMappingRequestSchema.parse(request),
+        ),
+      ),
+    updateStagedImportRowReview: async (request: UpdateStagedImportRowReviewRequest) =>
+      importBatchResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.updateStagedImportRowReview,
+          updateStagedImportRowReviewRequestSchema.parse(request),
         ),
       ),
     getDebt: async (request: GetDebtRequest) =>

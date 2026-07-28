@@ -12,6 +12,8 @@ import type {
   DashboardDto,
   DebtDetailDto,
   DebtSummaryDto,
+  ImportBatchDto,
+  ImportBatchSummaryDto,
   UpdateDebtRequest,
   ReverseDebtTransactionRequest,
 } from '../../shared/debt-contracts';
@@ -25,8 +27,9 @@ import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { EditDebtForm } from './components/edit-debt-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
+import { WorkbookImport } from './components/workbook-import';
 
-type View = 'dashboard' | 'list' | 'create' | 'detail' | 'edit' | 'add-term';
+type View = 'dashboard' | 'list' | 'create' | 'detail' | 'edit' | 'add-term' | 'import';
 type DetailPanel = 'overview' | 'transaction' | 'snapshot' | 'reconciliation';
 type Confirmation = 'archive' | 'restore' | 'reverse' | null;
 type ReverseTarget = {
@@ -78,6 +81,12 @@ const ErrorNotice = ({
 export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Element => {
   const [view, setView] = useState<View>('dashboard');
   const [dashboard, setDashboard] = useState<DashboardDto | null>(null);
+  const [importBatches, setImportBatches] = useState<readonly ImportBatchSummaryDto[]>(
+    [],
+  );
+  const [selectedImportBatch, setSelectedImportBatch] = useState<ImportBatchDto | null>(
+    null,
+  );
   const [debts, setDebts] = useState<readonly DebtSummaryDto[]>([]);
   const [selectedDebt, setSelectedDebt] = useState<DebtDetailDto | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -115,6 +124,34 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setDashboard(result.value);
+    } else {
+      setError(result.error);
+    }
+
+    setLoading(false);
+  };
+
+  const loadImportBatches = async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() => bridge.listImportBatches());
+
+    if (result.ok) {
+      setImportBatches(result.value);
+    } else {
+      setError(result.error);
+    }
+
+    setLoading(false);
+  };
+
+  const loadImportBatch = async (id: string): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() => bridge.getImportBatch({ id }));
+
+    if (result.ok) {
+      setSelectedImportBatch(result.value);
     } else {
       setError(result.error);
     }
@@ -163,6 +200,97 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setError(null);
     setFieldErrors(undefined);
     void loadDebts();
+  };
+
+  const showImports = (): void => {
+    setView('import');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setConfirmation(null);
+    setReverseTarget(null);
+    setError(null);
+    setFieldErrors(undefined);
+    void loadImportBatches();
+  };
+
+  const selectWorkbookForImport = async (): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() => bridge.selectWorkbookForImport({}));
+
+    if (result.ok) {
+      if (result.value) {
+        setSelectedImportBatch(result.value);
+        setSuccessMessage('Workbook rows were staged for review.');
+      }
+      await loadImportBatches();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const reviewImportMapping = async (
+    mapping: ImportBatchDto['sheetMappings'][number],
+    reviewStatus: 'approved' | 'rejected' | 'deferred',
+  ): Promise<void> => {
+    if (!selectedImportBatch) return;
+
+    setSaving(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.updateImportSheetMapping({
+        batchId: selectedImportBatch.id,
+        mappingId: mapping.id,
+        proposedRecordType: mapping.proposedRecordType,
+        reviewStatus,
+        fieldMapping: mapping.fieldMapping,
+        notes: mapping.notes,
+      }),
+    );
+
+    if (result.ok) {
+      setSelectedImportBatch(result.value);
+      setSuccessMessage('Sheet mapping review was saved.');
+      await loadImportBatches();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const reviewImportRow = async (
+    row: ImportBatchDto['stagedRows'][number],
+    reviewStatus: 'approved' | 'rejected' | 'deferred',
+  ): Promise<void> => {
+    if (!selectedImportBatch) return;
+
+    setSaving(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.updateStagedImportRowReview({
+        batchId: selectedImportBatch.id,
+        rowId: row.id,
+        proposedRecordType: row.proposedRecordType,
+        activityClassification: row.activityClassification,
+        reviewStatus,
+        normalizedValues: row.normalizedValues,
+        reviewNotes: row.reviewNotes,
+      }),
+    );
+
+    if (result.ok) {
+      setSelectedImportBatch(result.value);
+      setSuccessMessage('Staged row review was saved.');
+      await loadImportBatches();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
   };
 
   const selectDebt = async (id: string): Promise<void> => {
@@ -438,6 +566,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 Debts
               </button>
             </li>
+            <li className="mt-1">
+              <button
+                aria-current={view === 'import' ? 'page' : undefined}
+                className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                onClick={showImports}
+                type="button"
+              >
+                Workbook import
+              </button>
+            </li>
           </ul>
         </nav>
 
@@ -468,7 +606,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                     ? () => void loadDebts()
                     : view === 'dashboard'
                       ? () => void loadDashboard()
-                      : undefined
+                      : view === 'import'
+                        ? () => void loadImportBatches()
+                        : undefined
                 }
               />
             </div>
@@ -516,6 +656,23 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 void loadDebts(nextValue);
               }}
               onSelect={(id) => void selectDebt(id)}
+            />
+          ) : null}
+
+          {view === 'import' ? (
+            <WorkbookImport
+              batches={importBatches}
+              loading={loading}
+              onReviewMapping={(mapping, reviewStatus) =>
+                void reviewImportMapping(mapping, reviewStatus)
+              }
+              onReviewRow={(row, reviewStatus) =>
+                void reviewImportRow(row, reviewStatus)
+              }
+              onSelectBatch={(id) => void loadImportBatch(id)}
+              onSelectWorkbook={() => void selectWorkbookForImport()}
+              saving={saving}
+              selectedBatch={selectedImportBatch}
             />
           ) : null}
 

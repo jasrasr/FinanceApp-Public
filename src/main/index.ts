@@ -15,6 +15,21 @@ const rendererFile = join(__dirname, '../renderer/index.html');
 const trustedRendererLocation = (): string =>
   process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(rendererFile).toString();
 
+const selectWorkbookPath = (): string | null => {
+  const result = dialog.showOpenDialogSync({
+    title: 'Select workbook to stage for import',
+    properties: ['openFile'],
+    filters: [
+      {
+        name: 'Excel workbooks',
+        extensions: ['xlsx'],
+      },
+    ],
+  });
+
+  return result?.[0] ?? null;
+};
+
 const createWindow = (): BrowserWindow => {
   const mainWindow = new BrowserWindow({
     autoHideMenuBar: true,
@@ -93,6 +108,7 @@ const startApplication = async (): Promise<void> => {
 
   const service = createDebtMaintenanceService({
     database: databaseContext.database,
+    selectWorkbookPath,
   });
   registerDebtIpcHandlers(
     ipcMain,

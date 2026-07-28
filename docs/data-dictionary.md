@@ -193,6 +193,75 @@ snapshots, reconciliations, and approved reconciliation adjustments also create
 audit events. Summaries avoid financial amounts; update metadata identifies
 classifications and related record identifiers rather than financial values.
 
+## `import_batches`
+
+Represents one staged workbook import. The source workbook is read as untrusted
+input; the file is not copied into the repository or posted to financial tables.
+
+| Column                            | Type | Required | Rule                                  |
+| --------------------------------- | ---: | :------: | ------------------------------------- |
+| `id`                              | text |   Yes    | Primary key; UUID                     |
+| `source_workbook_name`            | text |   Yes    | Base workbook filename only           |
+| `source_workbook_fingerprint`     | text |   Yes    | Hash used for duplicate-source review |
+| `source_workbook_modified_at_utc` | text |    No    | Source file modified timestamp        |
+| `status`                          | text |   Yes    | Open, reviewed, or closed             |
+| `imported_at_utc`                 | text |   Yes    | UTC timestamp                         |
+| `created_at_utc`                  | text |   Yes    | UTC timestamp                         |
+| `updated_at_utc`                  | text |   Yes    | UTC timestamp                         |
+
+The fingerprint is provenance for review and duplicate detection. It is not a
+posting key and does not authorize overwriting prior imports.
+
+## `import_sheet_mappings`
+
+Stores user-reviewable sheet-level mapping proposals for a batch.
+
+| Column                 | Type | Required | Rule                                                  |
+| ---------------------- | ---: | :------: | ----------------------------------------------------- |
+| `id`                   | text |   Yes    | Primary key; UUID                                     |
+| `batch_id`             | text |   Yes    | Foreign key to `import_batches`                       |
+| `source_sheet_name`    | text |   Yes    | Workbook sheet name                                   |
+| `proposed_record_type` | text |   Yes    | Debt, transaction, term, balance snapshot, or unknown |
+| `review_status`        | text |   Yes    | Needs review, approved, rejected, or deferred         |
+| `field_mapping_json`   | text |   Yes    | JSON source-field to proposed-field mapping           |
+| `notes`                | text |    No    | Mapping review notes                                  |
+| `created_at_utc`       | text |   Yes    | UTC timestamp                                         |
+| `updated_at_utc`       | text |   Yes    | UTC timestamp                                         |
+
+Sheet name is unique per batch. Approving a sheet mapping confirms review only;
+it does not post staged rows.
+
+## `staged_import_rows`
+
+Stores source-row evidence and normalized proposals separately from posted
+financial records.
+
+| Column                          |    Type | Required | Rule                                                  |
+| ------------------------------- | ------: | :------: | ----------------------------------------------------- |
+| `id`                            |    text |   Yes    | Primary key; UUID                                     |
+| `batch_id`                      |    text |   Yes    | Foreign key to `import_batches`                       |
+| `sheet_mapping_id`              |    text |   Yes    | Foreign key to `import_sheet_mappings`                |
+| `source_sheet_name`             |    text |   Yes    | Workbook sheet name                                   |
+| `source_row_number`             | integer |   Yes    | One-based workbook row number                         |
+| `source_cell_references_json`   |    text |   Yes    | JSON proposed field to cell reference                 |
+| `source_displayed_values_json`  |    text |   Yes    | JSON displayed workbook values                        |
+| `source_formulas_json`          |    text |   Yes    | JSON formulas where present                           |
+| `proposed_record_type`          |    text |   Yes    | Debt, transaction, term, balance snapshot, or unknown |
+| `activity_classification`       |    text |   Yes    | Actual, projected, or ambiguous                       |
+| `normalized_values_json`        |    text |   Yes    | JSON normalized proposed values                       |
+| `validation_messages_json`      |    text |   Yes    | JSON array of review issues                           |
+| `duplicate_candidate_json`      |    text |    No    | Duplicate-candidate review key or metadata            |
+| `reconciliation_exception_json` |    text |    No    | Exception metadata for balance-related rows           |
+| `review_status`                 |    text |   Yes    | Needs review, approved, rejected, or deferred         |
+| `review_notes`                  |    text |    No    | User review notes                                     |
+| `reviewed_at_utc`               |    text |    No    | UTC timestamp                                         |
+| `created_at_utc`                |    text |   Yes    | UTC timestamp                                         |
+| `updated_at_utc`                |    text |   Yes    | UTC timestamp                                         |
+
+Batch, sheet, and row number are unique. Staged rows are not ledger rows, debt
+rows, term rows, balance snapshots, or reconciliations. A future posting workflow
+must explicitly create posted records from approved staged rows.
+
 ## Settings
 
 No `app_settings` table is created. Drizzle maintains migration state, and no

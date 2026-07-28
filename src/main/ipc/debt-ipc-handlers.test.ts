@@ -10,6 +10,11 @@ import { DEBT_IPC_CHANNELS } from '../../shared/debt-ipc';
 const createService = (): DebtMaintenanceService => ({
   listDebts: vi.fn(() => []),
   getDashboard: vi.fn(),
+  selectWorkbookForImport: vi.fn(() => null),
+  listImportBatches: vi.fn(() => []),
+  getImportBatch: vi.fn(),
+  updateImportSheetMapping: vi.fn(),
+  updateStagedImportRowReview: vi.fn(),
   getDebt: vi.fn(),
   createDebt: vi.fn(),
   updateDebt: vi.fn(),
@@ -148,5 +153,30 @@ describe('debt IPC handlers', () => {
       error: { code: 'validation' },
     });
     expect(service.createBalanceReconciliation).not.toHaveBeenCalled();
+  });
+
+  it('rejects ambiguous staged rows when approval is requested', () => {
+    const service = createService();
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(registrar, service, () => true);
+
+    const result = handlers.get(DEBT_IPC_CHANNELS.updateStagedImportRowReview)?.(
+      event,
+      {
+        batchId: randomUUID(),
+        rowId: randomUUID(),
+        proposedRecordType: 'transaction',
+        activityClassification: 'ambiguous',
+        reviewStatus: 'approved',
+        normalizedValues: { amount: '100.00' },
+        reviewNotes: null,
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(service.updateStagedImportRowReview).not.toHaveBeenCalled();
   });
 });

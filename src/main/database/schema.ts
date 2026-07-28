@@ -31,6 +31,21 @@ const MAX_SAFE_INTEGER_SQL = sql.raw(String(MAX_SAFE_INTEGER));
 const FINANCIAL_DATE_GLOB_SQL = sql.raw(`'${FINANCIAL_DATE_GLOB}'`);
 const sqlList = (values: readonly string[]) =>
   sql.raw(values.map((value) => `'${value}'`).join(', '));
+const IMPORT_BATCH_STATUSES = ['open', 'reviewed', 'closed'] as const;
+const IMPORT_RECORD_TYPES = [
+  'debt',
+  'transaction',
+  'term',
+  'balance_snapshot',
+  'unknown',
+] as const;
+const IMPORT_REVIEW_STATUSES = [
+  'needs_review',
+  'approved',
+  'rejected',
+  'deferred',
+] as const;
+const IMPORT_ROW_CLASSIFICATIONS = ['actual', 'projected', 'ambiguous'] as const;
 
 export const debts = sqliteTable(
   'debts',
@@ -439,6 +454,142 @@ export const auditEvents = sqliteTable(
   ],
 );
 
+export const importBatches = sqliteTable(
+  'import_batches',
+  {
+    id: text('id').primaryKey(),
+    sourceWorkbookName: text('source_workbook_name').notNull(),
+    sourceWorkbookFingerprint: text('source_workbook_fingerprint').notNull(),
+    sourceWorkbookModifiedAtUtc: text('source_workbook_modified_at_utc'),
+    status: text('status', { enum: IMPORT_BATCH_STATUSES }).notNull(),
+    importedAtUtc: text('imported_at_utc').notNull(),
+    createdAtUtc: text('created_at_utc').notNull(),
+    updatedAtUtc: text('updated_at_utc').notNull(),
+  },
+  (table) => [
+    index('import_batches_imported_at_idx').on(table.importedAtUtc),
+    check(
+      'import_batches_status_valid',
+      sql`${table.status} IN (${sqlList(IMPORT_BATCH_STATUSES)})`,
+    ),
+    check(
+      'import_batches_timestamp_format',
+      sql`${table.importedAtUtc} LIKE '%Z' AND ${table.createdAtUtc} LIKE '%Z' AND ${table.updatedAtUtc} LIKE '%Z' AND (${table.sourceWorkbookModifiedAtUtc} IS NULL OR ${table.sourceWorkbookModifiedAtUtc} LIKE '%Z')`,
+    ),
+  ],
+);
+
+export const importSheetMappings = sqliteTable(
+  'import_sheet_mappings',
+  {
+    id: text('id').primaryKey(),
+    batchId: text('batch_id')
+      .notNull()
+      .references(() => importBatches.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
+    sourceSheetName: text('source_sheet_name').notNull(),
+    proposedRecordType: text('proposed_record_type', {
+      enum: IMPORT_RECORD_TYPES,
+    }).notNull(),
+    reviewStatus: text('review_status', {
+      enum: IMPORT_REVIEW_STATUSES,
+    }).notNull(),
+    fieldMappingJson: text('field_mapping_json').notNull(),
+    notes: text('notes'),
+    createdAtUtc: text('created_at_utc').notNull(),
+    updatedAtUtc: text('updated_at_utc').notNull(),
+  },
+  (table) => [
+    uniqueIndex('import_sheet_mappings_batch_sheet_uq').on(
+      table.batchId,
+      table.sourceSheetName,
+    ),
+    index('import_sheet_mappings_batch_idx').on(table.batchId),
+    check(
+      'import_sheet_mappings_record_type_valid',
+      sql`${table.proposedRecordType} IN (${sqlList(IMPORT_RECORD_TYPES)})`,
+    ),
+    check(
+      'import_sheet_mappings_review_status_valid',
+      sql`${table.reviewStatus} IN (${sqlList(IMPORT_REVIEW_STATUSES)})`,
+    ),
+    check(
+      'import_sheet_mappings_timestamp_format',
+      sql`${table.createdAtUtc} LIKE '%Z' AND ${table.updatedAtUtc} LIKE '%Z'`,
+    ),
+  ],
+);
+
+export const stagedImportRows = sqliteTable(
+  'staged_import_rows',
+  {
+    id: text('id').primaryKey(),
+    batchId: text('batch_id')
+      .notNull()
+      .references(() => importBatches.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
+    sheetMappingId: text('sheet_mapping_id')
+      .notNull()
+      .references(() => importSheetMappings.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
+    sourceSheetName: text('source_sheet_name').notNull(),
+    sourceRowNumber: integer('source_row_number').notNull(),
+    sourceCellReferencesJson: text('source_cell_references_json').notNull(),
+    sourceDisplayedValuesJson: text('source_displayed_values_json').notNull(),
+    sourceFormulasJson: text('source_formulas_json').notNull(),
+    proposedRecordType: text('proposed_record_type', {
+      enum: IMPORT_RECORD_TYPES,
+    }).notNull(),
+    activityClassification: text('activity_classification', {
+      enum: IMPORT_ROW_CLASSIFICATIONS,
+    }).notNull(),
+    normalizedValuesJson: text('normalized_values_json').notNull(),
+    validationMessagesJson: text('validation_messages_json').notNull(),
+    duplicateCandidateJson: text('duplicate_candidate_json'),
+    reconciliationExceptionJson: text('reconciliation_exception_json'),
+    reviewStatus: text('review_status', {
+      enum: IMPORT_REVIEW_STATUSES,
+    }).notNull(),
+    reviewNotes: text('review_notes'),
+    reviewedAtUtc: text('reviewed_at_utc'),
+    createdAtUtc: text('created_at_utc').notNull(),
+    updatedAtUtc: text('updated_at_utc').notNull(),
+  },
+  (table) => [
+    uniqueIndex('staged_import_rows_source_uq').on(
+      table.batchId,
+      table.sourceSheetName,
+      table.sourceRowNumber,
+    ),
+    index('staged_import_rows_batch_idx').on(table.batchId),
+    index('staged_import_rows_mapping_idx').on(table.sheetMappingId),
+    index('staged_import_rows_review_status_idx').on(table.reviewStatus),
+    check(
+      'staged_import_rows_record_type_valid',
+      sql`${table.proposedRecordType} IN (${sqlList(IMPORT_RECORD_TYPES)})`,
+    ),
+    check(
+      'staged_import_rows_activity_classification_valid',
+      sql`${table.activityClassification} IN (${sqlList(IMPORT_ROW_CLASSIFICATIONS)})`,
+    ),
+    check(
+      'staged_import_rows_review_status_valid',
+      sql`${table.reviewStatus} IN (${sqlList(IMPORT_REVIEW_STATUSES)})`,
+    ),
+    check('staged_import_rows_row_number_valid', sql`${table.sourceRowNumber} > 0`),
+    check(
+      'staged_import_rows_timestamp_format',
+      sql`${table.createdAtUtc} LIKE '%Z' AND ${table.updatedAtUtc} LIKE '%Z' AND (${table.reviewedAtUtc} IS NULL OR ${table.reviewedAtUtc} LIKE '%Z')`,
+    ),
+  ],
+);
+
 export const schema = {
   auditEvents,
   balanceReconciliations,
@@ -446,5 +597,8 @@ export const schema = {
   debtTerms,
   debtTransactions,
   debts,
+  importBatches,
+  importSheetMappings,
+  stagedImportRows,
   transactionAllocations,
 };

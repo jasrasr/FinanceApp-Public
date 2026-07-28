@@ -1,0 +1,1565 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "355f8ace-1cb4-4375-9a92-61f031c5280e",
+  "prevId": "9bccf8d8-097b-4f97-accf-bf87f16f4724",
+  "tables": {
+    "audit_events": {
+      "name": "audit_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entity_type": {
+          "name": "entity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occurred_at_utc": {
+          "name": "occurred_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "before_metadata_json": {
+          "name": "before_metadata_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "after_metadata_json": {
+          "name": "after_metadata_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "audit_events_entity_idx": {
+          "name": "audit_events_entity_idx",
+          "columns": [
+            "entity_type",
+            "entity_id"
+          ],
+          "isUnique": false
+        },
+        "audit_events_occurred_at_idx": {
+          "name": "audit_events_occurred_at_idx",
+          "columns": [
+            "occurred_at_utc"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "audit_events_source_valid": {
+          "name": "audit_events_source_valid",
+          "value": "\"audit_events\".\"source\" IN ('user', 'import', 'system', 'migration')"
+        },
+        "audit_events_timestamp_format": {
+          "name": "audit_events_timestamp_format",
+          "value": "\"audit_events\".\"occurred_at_utc\" LIKE '%Z'"
+        }
+      }
+    },
+    "balance_reconciliations": {
+      "name": "balance_reconciliations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "debt_id": {
+          "name": "debt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "statement_date": {
+          "name": "statement_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "statement_ending_balance_cents": {
+          "name": "statement_ending_balance_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "application_calculated_balance_cents": {
+          "name": "application_calculated_balance_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "calculated_difference_cents": {
+          "name": "calculated_difference_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reconciliation_status": {
+          "name": "reconciliation_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "explanation": {
+          "name": "explanation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "approved_adjustment_transaction_id": {
+          "name": "approved_adjustment_transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_reference": {
+          "name": "source_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "supporting_notes": {
+          "name": "supporting_notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_utc": {
+          "name": "created_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_utc": {
+          "name": "updated_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "balance_reconciliations_debt_statement_uq": {
+          "name": "balance_reconciliations_debt_statement_uq",
+          "columns": [
+            "debt_id",
+            "statement_date"
+          ],
+          "isUnique": true
+        },
+        "balance_reconciliations_status_idx": {
+          "name": "balance_reconciliations_status_idx",
+          "columns": [
+            "reconciliation_status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "balance_reconciliations_debt_id_debts_id_fk": {
+          "name": "balance_reconciliations_debt_id_debts_id_fk",
+          "tableFrom": "balance_reconciliations",
+          "tableTo": "debts",
+          "columnsFrom": [
+            "debt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "balance_reconciliations_approved_adjustment_transaction_id_debt_transactions_id_fk": {
+          "name": "balance_reconciliations_approved_adjustment_transaction_id_debt_transactions_id_fk",
+          "tableFrom": "balance_reconciliations",
+          "tableTo": "debt_transactions",
+          "columnsFrom": [
+            "approved_adjustment_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "balance_reconciliations_status_valid": {
+          "name": "balance_reconciliations_status_valid",
+          "value": "\"balance_reconciliations\".\"reconciliation_status\" IN ('unreconciled', 'in_progress', 'reconciled', 'reconciled_with_adjustment', 'exception')"
+        },
+        "balance_reconciliations_statement_date_format": {
+          "name": "balance_reconciliations_statement_date_format",
+          "value": "\"balance_reconciliations\".\"statement_date\" GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        },
+        "balance_reconciliations_statement_balance_range": {
+          "name": "balance_reconciliations_statement_balance_range",
+          "value": "\"balance_reconciliations\".\"statement_ending_balance_cents\" BETWEEN 0 AND 9007199254740991"
+        },
+        "balance_reconciliations_application_balance_range": {
+          "name": "balance_reconciliations_application_balance_range",
+          "value": "\"balance_reconciliations\".\"application_calculated_balance_cents\" BETWEEN 0 AND 9007199254740991"
+        },
+        "balance_reconciliations_difference_calculation": {
+          "name": "balance_reconciliations_difference_calculation",
+          "value": "\"balance_reconciliations\".\"calculated_difference_cents\" = \"balance_reconciliations\".\"statement_ending_balance_cents\" - \"balance_reconciliations\".\"application_calculated_balance_cents\""
+        },
+        "balance_reconciliations_adjustment_consistency": {
+          "name": "balance_reconciliations_adjustment_consistency",
+          "value": "((\"balance_reconciliations\".\"reconciliation_status\" = 'reconciled_with_adjustment' AND \"balance_reconciliations\".\"approved_adjustment_transaction_id\" IS NOT NULL) OR (\"balance_reconciliations\".\"reconciliation_status\" <> 'reconciled_with_adjustment' AND \"balance_reconciliations\".\"approved_adjustment_transaction_id\" IS NULL))"
+        },
+        "balance_reconciliations_timestamp_format": {
+          "name": "balance_reconciliations_timestamp_format",
+          "value": "\"balance_reconciliations\".\"created_at_utc\" LIKE '%Z' AND \"balance_reconciliations\".\"updated_at_utc\" LIKE '%Z'"
+        }
+      }
+    },
+    "balance_snapshots": {
+      "name": "balance_snapshots",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "debt_id": {
+          "name": "debt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confirmed_balance_cents": {
+          "name": "confirmed_balance_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_reference": {
+          "name": "source_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_utc": {
+          "name": "created_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_utc": {
+          "name": "updated_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "balance_snapshots_debt_date_source_uq": {
+          "name": "balance_snapshots_debt_date_source_uq",
+          "columns": [
+            "debt_id",
+            "effective_date",
+            "source_type"
+          ],
+          "isUnique": true
+        },
+        "balance_snapshots_debt_effective_idx": {
+          "name": "balance_snapshots_debt_effective_idx",
+          "columns": [
+            "debt_id",
+            "effective_date"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "balance_snapshots_debt_id_debts_id_fk": {
+          "name": "balance_snapshots_debt_id_debts_id_fk",
+          "tableFrom": "balance_snapshots",
+          "tableTo": "debts",
+          "columnsFrom": [
+            "debt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "balance_snapshots_source_type_valid": {
+          "name": "balance_snapshots_source_type_valid",
+          "value": "\"balance_snapshots\".\"source_type\" IN ('manual', 'statement', 'import')"
+        },
+        "balance_snapshots_effective_date_format": {
+          "name": "balance_snapshots_effective_date_format",
+          "value": "\"balance_snapshots\".\"effective_date\" GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        },
+        "balance_snapshots_balance_range": {
+          "name": "balance_snapshots_balance_range",
+          "value": "\"balance_snapshots\".\"confirmed_balance_cents\" BETWEEN 0 AND 9007199254740991"
+        },
+        "balance_snapshots_timestamp_format": {
+          "name": "balance_snapshots_timestamp_format",
+          "value": "\"balance_snapshots\".\"created_at_utc\" LIKE '%Z' AND \"balance_snapshots\".\"updated_at_utc\" LIKE '%Z'"
+        }
+      }
+    },
+    "debt_terms": {
+      "name": "debt_terms",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "debt_id": {
+          "name": "debt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effective_start_date": {
+          "name": "effective_start_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effective_end_date": {
+          "name": "effective_end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "interest_rate_type": {
+          "name": "interest_rate_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "interest_rate_micros": {
+          "name": "interest_rate_micros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "day_count_convention": {
+          "name": "day_count_convention",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "calculation_convention": {
+          "name": "calculation_convention",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "required_payment_cents": {
+          "name": "required_payment_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payment_frequency": {
+          "name": "payment_frequency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_utc": {
+          "name": "created_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_utc": {
+          "name": "updated_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "debt_terms_debt_start_uq": {
+          "name": "debt_terms_debt_start_uq",
+          "columns": [
+            "debt_id",
+            "effective_start_date"
+          ],
+          "isUnique": true
+        },
+        "debt_terms_debt_period_idx": {
+          "name": "debt_terms_debt_period_idx",
+          "columns": [
+            "debt_id",
+            "effective_start_date",
+            "effective_end_date"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "debt_terms_debt_id_debts_id_fk": {
+          "name": "debt_terms_debt_id_debts_id_fk",
+          "tableFrom": "debt_terms",
+          "tableTo": "debts",
+          "columnsFrom": [
+            "debt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "debt_terms_rate_type_valid": {
+          "name": "debt_terms_rate_type_valid",
+          "value": "\"debt_terms\".\"interest_rate_type\" IN ('fixed', 'variable', 'promotional', 'zero')"
+        },
+        "debt_terms_day_count_valid": {
+          "name": "debt_terms_day_count_valid",
+          "value": "\"debt_terms\".\"day_count_convention\" IN ('actual_365', 'actual_360', 'thirty_360', 'monthly')"
+        },
+        "debt_terms_calculation_valid": {
+          "name": "debt_terms_calculation_valid",
+          "value": "\"debt_terms\".\"calculation_convention\" IN ('simple_daily', 'amortized_monthly', 'interest_only', 'simple', 'other')"
+        },
+        "debt_terms_payment_frequency_valid": {
+          "name": "debt_terms_payment_frequency_valid",
+          "value": "\"debt_terms\".\"payment_frequency\" IN ('weekly', 'biweekly', 'semimonthly', 'monthly', 'quarterly', 'annually', 'irregular', 'other')"
+        },
+        "debt_terms_effective_start_format": {
+          "name": "debt_terms_effective_start_format",
+          "value": "\"debt_terms\".\"effective_start_date\" GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        },
+        "debt_terms_effective_end_format": {
+          "name": "debt_terms_effective_end_format",
+          "value": "\"debt_terms\".\"effective_end_date\" IS NULL OR \"debt_terms\".\"effective_end_date\" GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        },
+        "debt_terms_effective_period_order": {
+          "name": "debt_terms_effective_period_order",
+          "value": "\"debt_terms\".\"effective_end_date\" IS NULL OR \"debt_terms\".\"effective_end_date\" >= \"debt_terms\".\"effective_start_date\""
+        },
+        "debt_terms_interest_rate_range": {
+          "name": "debt_terms_interest_rate_range",
+          "value": "\"debt_terms\".\"interest_rate_micros\" BETWEEN 0 AND 9007199254740991"
+        },
+        "debt_terms_zero_rate_consistency": {
+          "name": "debt_terms_zero_rate_consistency",
+          "value": "\"debt_terms\".\"interest_rate_type\" <> 'zero' OR \"debt_terms\".\"interest_rate_micros\" = 0"
+        },
+        "debt_terms_required_payment_range": {
+          "name": "debt_terms_required_payment_range",
+          "value": "\"debt_terms\".\"required_payment_cents\" BETWEEN 0 AND 9007199254740991"
+        },
+        "debt_terms_timestamp_format": {
+          "name": "debt_terms_timestamp_format",
+          "value": "\"debt_terms\".\"created_at_utc\" LIKE '%Z' AND \"debt_terms\".\"updated_at_utc\" LIKE '%Z'"
+        }
+      }
+    },
+    "debt_transactions": {
+      "name": "debt_transactions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "debt_id": {
+          "name": "debt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "transaction_type": {
+          "name": "transaction_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "posting_date": {
+          "name": "posting_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "total_amount_cents": {
+          "name": "total_amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_reference": {
+          "name": "source_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reversal_of_transaction_id": {
+          "name": "reversal_of_transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "supersedes_transaction_id": {
+          "name": "supersedes_transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_utc": {
+          "name": "created_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_utc": {
+          "name": "updated_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "debt_transactions_reversal_of_uq": {
+          "name": "debt_transactions_reversal_of_uq",
+          "columns": [
+            "reversal_of_transaction_id"
+          ],
+          "isUnique": true,
+          "where": "\"debt_transactions\".\"reversal_of_transaction_id\" IS NOT NULL"
+        },
+        "debt_transactions_supersedes_uq": {
+          "name": "debt_transactions_supersedes_uq",
+          "columns": [
+            "supersedes_transaction_id"
+          ],
+          "isUnique": true,
+          "where": "\"debt_transactions\".\"supersedes_transaction_id\" IS NOT NULL"
+        },
+        "debt_transactions_debt_effective_idx": {
+          "name": "debt_transactions_debt_effective_idx",
+          "columns": [
+            "debt_id",
+            "effective_date"
+          ],
+          "isUnique": false
+        },
+        "debt_transactions_debt_posting_idx": {
+          "name": "debt_transactions_debt_posting_idx",
+          "columns": [
+            "debt_id",
+            "posting_date"
+          ],
+          "isUnique": false
+        },
+        "debt_transactions_status_idx": {
+          "name": "debt_transactions_status_idx",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "debt_transactions_debt_id_debts_id_fk": {
+          "name": "debt_transactions_debt_id_debts_id_fk",
+          "tableFrom": "debt_transactions",
+          "tableTo": "debts",
+          "columnsFrom": [
+            "debt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "debt_transactions_reversal_of_transaction_id_debt_transactions_id_fk": {
+          "name": "debt_transactions_reversal_of_transaction_id_debt_transactions_id_fk",
+          "tableFrom": "debt_transactions",
+          "tableTo": "debt_transactions",
+          "columnsFrom": [
+            "reversal_of_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "debt_transactions_supersedes_transaction_id_debt_transactions_id_fk": {
+          "name": "debt_transactions_supersedes_transaction_id_debt_transactions_id_fk",
+          "tableFrom": "debt_transactions",
+          "tableTo": "debt_transactions",
+          "columnsFrom": [
+            "supersedes_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "debt_transactions_type_valid": {
+          "name": "debt_transactions_type_valid",
+          "value": "\"debt_transactions\".\"transaction_type\" IN ('payment', 'borrowing_draw', 'fee', 'penalty', 'interest_charge', 'principal_adjustment', 'approved_reconciliation_adjustment', 'reversal', 'other')"
+        },
+        "debt_transactions_status_valid": {
+          "name": "debt_transactions_status_valid",
+          "value": "\"debt_transactions\".\"status\" IN ('posted', 'reversed', 'superseded')"
+        },
+        "debt_transactions_source_type_valid": {
+          "name": "debt_transactions_source_type_valid",
+          "value": "\"debt_transactions\".\"source_type\" IN ('manual', 'import', 'statement', 'system', 'reconciliation')"
+        },
+        "debt_transactions_effective_date_format": {
+          "name": "debt_transactions_effective_date_format",
+          "value": "\"debt_transactions\".\"effective_date\" GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        },
+        "debt_transactions_posting_date_format": {
+          "name": "debt_transactions_posting_date_format",
+          "value": "\"debt_transactions\".\"posting_date\" GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        },
+        "debt_transactions_amount_range": {
+          "name": "debt_transactions_amount_range",
+          "value": "\"debt_transactions\".\"total_amount_cents\" <> 0 AND \"debt_transactions\".\"total_amount_cents\" BETWEEN -9007199254740991 AND 9007199254740991"
+        },
+        "debt_transactions_reversal_relationship": {
+          "name": "debt_transactions_reversal_relationship",
+          "value": "((\"debt_transactions\".\"transaction_type\" = 'reversal' AND \"debt_transactions\".\"reversal_of_transaction_id\" IS NOT NULL) OR (\"debt_transactions\".\"transaction_type\" <> 'reversal' AND \"debt_transactions\".\"reversal_of_transaction_id\" IS NULL))"
+        },
+        "debt_transactions_no_self_relationship": {
+          "name": "debt_transactions_no_self_relationship",
+          "value": "(\"debt_transactions\".\"reversal_of_transaction_id\" IS NULL OR \"debt_transactions\".\"reversal_of_transaction_id\" <> \"debt_transactions\".\"id\") AND (\"debt_transactions\".\"supersedes_transaction_id\" IS NULL OR \"debt_transactions\".\"supersedes_transaction_id\" <> \"debt_transactions\".\"id\")"
+        },
+        "debt_transactions_timestamp_format": {
+          "name": "debt_transactions_timestamp_format",
+          "value": "\"debt_transactions\".\"created_at_utc\" LIKE '%Z' AND \"debt_transactions\".\"updated_at_utc\" LIKE '%Z'"
+        }
+      }
+    },
+    "debts": {
+      "name": "debts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "creditor": {
+          "name": "creditor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_entity": {
+          "name": "owner_entity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "debt_type": {
+          "name": "debt_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "original_principal_cents": {
+          "name": "original_principal_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "origination_date": {
+          "name": "origination_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "maturity_date": {
+          "name": "maturity_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "minimum_payment_cents": {
+          "name": "minimum_payment_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payment_frequency": {
+          "name": "payment_frequency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "credit_limit_cents": {
+          "name": "credit_limit_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "collateral_description": {
+          "name": "collateral_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tax_category": {
+          "name": "tax_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "deductible_percentage_bps": {
+          "name": "deductible_percentage_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_utc": {
+          "name": "created_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_utc": {
+          "name": "updated_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at_utc": {
+          "name": "archived_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "debts_creditor_idx": {
+          "name": "debts_creditor_idx",
+          "columns": [
+            "creditor"
+          ],
+          "isUnique": false
+        },
+        "debts_owner_entity_idx": {
+          "name": "debts_owner_entity_idx",
+          "columns": [
+            "owner_entity"
+          ],
+          "isUnique": false
+        },
+        "debts_status_idx": {
+          "name": "debts_status_idx",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "debts_type_valid": {
+          "name": "debts_type_valid",
+          "value": "\"debts\".\"debt_type\" IN ('mortgage', 'heloc', 'auto', 'student', 'personal', 'business', 'credit_card', 'medical', 'tax', 'other')"
+        },
+        "debts_status_valid": {
+          "name": "debts_status_valid",
+          "value": "\"debts\".\"status\" IN ('active', 'paid_off', 'closed')"
+        },
+        "debts_payment_frequency_valid": {
+          "name": "debts_payment_frequency_valid",
+          "value": "\"debts\".\"payment_frequency\" IN ('weekly', 'biweekly', 'semimonthly', 'monthly', 'quarterly', 'annually', 'irregular', 'other')"
+        },
+        "debts_tax_category_valid": {
+          "name": "debts_tax_category_valid",
+          "value": "\"debts\".\"tax_category\" IN ('personal_nondeductible', 'mortgage_interest', 'investment_interest', 'business', 'student_loan', 'other', 'unknown')"
+        },
+        "debts_original_principal_range": {
+          "name": "debts_original_principal_range",
+          "value": "\"debts\".\"original_principal_cents\" >= 0 AND \"debts\".\"original_principal_cents\" <= 9007199254740991"
+        },
+        "debts_minimum_payment_range": {
+          "name": "debts_minimum_payment_range",
+          "value": "\"debts\".\"minimum_payment_cents\" >= 0 AND \"debts\".\"minimum_payment_cents\" <= 9007199254740991"
+        },
+        "debts_credit_limit_range": {
+          "name": "debts_credit_limit_range",
+          "value": "\"debts\".\"credit_limit_cents\" IS NULL OR (\"debts\".\"credit_limit_cents\" >= 0 AND \"debts\".\"credit_limit_cents\" <= 9007199254740991)"
+        },
+        "debts_deductible_percentage_range": {
+          "name": "debts_deductible_percentage_range",
+          "value": "\"debts\".\"deductible_percentage_bps\" BETWEEN 0 AND 10000"
+        },
+        "debts_origination_date_format": {
+          "name": "debts_origination_date_format",
+          "value": "\"debts\".\"origination_date\" GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        },
+        "debts_maturity_date_format": {
+          "name": "debts_maturity_date_format",
+          "value": "\"debts\".\"maturity_date\" IS NULL OR \"debts\".\"maturity_date\" GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        },
+        "debts_maturity_after_origination": {
+          "name": "debts_maturity_after_origination",
+          "value": "\"debts\".\"maturity_date\" IS NULL OR \"debts\".\"maturity_date\" >= \"debts\".\"origination_date\""
+        },
+        "debts_timestamp_format": {
+          "name": "debts_timestamp_format",
+          "value": "\"debts\".\"created_at_utc\" LIKE '%Z' AND \"debts\".\"updated_at_utc\" LIKE '%Z' AND (\"debts\".\"archived_at_utc\" IS NULL OR \"debts\".\"archived_at_utc\" LIKE '%Z')"
+        }
+      }
+    },
+    "import_batches": {
+      "name": "import_batches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_workbook_name": {
+          "name": "source_workbook_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_workbook_fingerprint": {
+          "name": "source_workbook_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_workbook_modified_at_utc": {
+          "name": "source_workbook_modified_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "imported_at_utc": {
+          "name": "imported_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_utc": {
+          "name": "created_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_utc": {
+          "name": "updated_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "import_batches_imported_at_idx": {
+          "name": "import_batches_imported_at_idx",
+          "columns": [
+            "imported_at_utc"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "import_batches_status_valid": {
+          "name": "import_batches_status_valid",
+          "value": "\"import_batches\".\"status\" IN ('open', 'reviewed', 'closed')"
+        },
+        "import_batches_timestamp_format": {
+          "name": "import_batches_timestamp_format",
+          "value": "\"import_batches\".\"imported_at_utc\" LIKE '%Z' AND \"import_batches\".\"created_at_utc\" LIKE '%Z' AND \"import_batches\".\"updated_at_utc\" LIKE '%Z' AND (\"import_batches\".\"source_workbook_modified_at_utc\" IS NULL OR \"import_batches\".\"source_workbook_modified_at_utc\" LIKE '%Z')"
+        }
+      }
+    },
+    "import_sheet_mappings": {
+      "name": "import_sheet_mappings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_sheet_name": {
+          "name": "source_sheet_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "proposed_record_type": {
+          "name": "proposed_record_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "review_status": {
+          "name": "review_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_mapping_json": {
+          "name": "field_mapping_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_utc": {
+          "name": "created_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_utc": {
+          "name": "updated_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "import_sheet_mappings_batch_sheet_uq": {
+          "name": "import_sheet_mappings_batch_sheet_uq",
+          "columns": [
+            "batch_id",
+            "source_sheet_name"
+          ],
+          "isUnique": true
+        },
+        "import_sheet_mappings_batch_idx": {
+          "name": "import_sheet_mappings_batch_idx",
+          "columns": [
+            "batch_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "import_sheet_mappings_batch_id_import_batches_id_fk": {
+          "name": "import_sheet_mappings_batch_id_import_batches_id_fk",
+          "tableFrom": "import_sheet_mappings",
+          "tableTo": "import_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "import_sheet_mappings_record_type_valid": {
+          "name": "import_sheet_mappings_record_type_valid",
+          "value": "\"import_sheet_mappings\".\"proposed_record_type\" IN ('debt', 'transaction', 'term', 'balance_snapshot', 'unknown')"
+        },
+        "import_sheet_mappings_review_status_valid": {
+          "name": "import_sheet_mappings_review_status_valid",
+          "value": "\"import_sheet_mappings\".\"review_status\" IN ('needs_review', 'approved', 'rejected', 'deferred')"
+        },
+        "import_sheet_mappings_timestamp_format": {
+          "name": "import_sheet_mappings_timestamp_format",
+          "value": "\"import_sheet_mappings\".\"created_at_utc\" LIKE '%Z' AND \"import_sheet_mappings\".\"updated_at_utc\" LIKE '%Z'"
+        }
+      }
+    },
+    "staged_import_rows": {
+      "name": "staged_import_rows",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sheet_mapping_id": {
+          "name": "sheet_mapping_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_sheet_name": {
+          "name": "source_sheet_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_row_number": {
+          "name": "source_row_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_cell_references_json": {
+          "name": "source_cell_references_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_displayed_values_json": {
+          "name": "source_displayed_values_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_formulas_json": {
+          "name": "source_formulas_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "proposed_record_type": {
+          "name": "proposed_record_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "activity_classification": {
+          "name": "activity_classification",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "normalized_values_json": {
+          "name": "normalized_values_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "validation_messages_json": {
+          "name": "validation_messages_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "duplicate_candidate_json": {
+          "name": "duplicate_candidate_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reconciliation_exception_json": {
+          "name": "reconciliation_exception_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "review_status": {
+          "name": "review_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "review_notes": {
+          "name": "review_notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reviewed_at_utc": {
+          "name": "reviewed_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_utc": {
+          "name": "created_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_utc": {
+          "name": "updated_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "staged_import_rows_source_uq": {
+          "name": "staged_import_rows_source_uq",
+          "columns": [
+            "batch_id",
+            "source_sheet_name",
+            "source_row_number"
+          ],
+          "isUnique": true
+        },
+        "staged_import_rows_batch_idx": {
+          "name": "staged_import_rows_batch_idx",
+          "columns": [
+            "batch_id"
+          ],
+          "isUnique": false
+        },
+        "staged_import_rows_mapping_idx": {
+          "name": "staged_import_rows_mapping_idx",
+          "columns": [
+            "sheet_mapping_id"
+          ],
+          "isUnique": false
+        },
+        "staged_import_rows_review_status_idx": {
+          "name": "staged_import_rows_review_status_idx",
+          "columns": [
+            "review_status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "staged_import_rows_batch_id_import_batches_id_fk": {
+          "name": "staged_import_rows_batch_id_import_batches_id_fk",
+          "tableFrom": "staged_import_rows",
+          "tableTo": "import_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "staged_import_rows_sheet_mapping_id_import_sheet_mappings_id_fk": {
+          "name": "staged_import_rows_sheet_mapping_id_import_sheet_mappings_id_fk",
+          "tableFrom": "staged_import_rows",
+          "tableTo": "import_sheet_mappings",
+          "columnsFrom": [
+            "sheet_mapping_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "staged_import_rows_record_type_valid": {
+          "name": "staged_import_rows_record_type_valid",
+          "value": "\"staged_import_rows\".\"proposed_record_type\" IN ('debt', 'transaction', 'term', 'balance_snapshot', 'unknown')"
+        },
+        "staged_import_rows_activity_classification_valid": {
+          "name": "staged_import_rows_activity_classification_valid",
+          "value": "\"staged_import_rows\".\"activity_classification\" IN ('actual', 'projected', 'ambiguous')"
+        },
+        "staged_import_rows_review_status_valid": {
+          "name": "staged_import_rows_review_status_valid",
+          "value": "\"staged_import_rows\".\"review_status\" IN ('needs_review', 'approved', 'rejected', 'deferred')"
+        },
+        "staged_import_rows_row_number_valid": {
+          "name": "staged_import_rows_row_number_valid",
+          "value": "\"staged_import_rows\".\"source_row_number\" > 0"
+        },
+        "staged_import_rows_timestamp_format": {
+          "name": "staged_import_rows_timestamp_format",
+          "value": "\"staged_import_rows\".\"created_at_utc\" LIKE '%Z' AND \"staged_import_rows\".\"updated_at_utc\" LIKE '%Z' AND (\"staged_import_rows\".\"reviewed_at_utc\" IS NULL OR \"staged_import_rows\".\"reviewed_at_utc\" LIKE '%Z')"
+        }
+      }
+    },
+    "transaction_allocations": {
+      "name": "transaction_allocations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "transaction_id": {
+          "name": "transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "allocation_type": {
+          "name": "allocation_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_utc": {
+          "name": "created_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_utc": {
+          "name": "updated_at_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "transaction_allocations_type_uq": {
+          "name": "transaction_allocations_type_uq",
+          "columns": [
+            "transaction_id",
+            "allocation_type"
+          ],
+          "isUnique": true
+        },
+        "transaction_allocations_transaction_idx": {
+          "name": "transaction_allocations_transaction_idx",
+          "columns": [
+            "transaction_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "transaction_allocations_transaction_id_debt_transactions_id_fk": {
+          "name": "transaction_allocations_transaction_id_debt_transactions_id_fk",
+          "tableFrom": "transaction_allocations",
+          "tableTo": "debt_transactions",
+          "columnsFrom": [
+            "transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "transaction_allocations_type_valid": {
+          "name": "transaction_allocations_type_valid",
+          "value": "\"transaction_allocations\".\"allocation_type\" IN ('principal', 'interest', 'escrow', 'fee', 'penalty', 'extra_principal', 'other')"
+        },
+        "transaction_allocations_amount_range": {
+          "name": "transaction_allocations_amount_range",
+          "value": "\"transaction_allocations\".\"amount_cents\" <> 0 AND \"transaction_allocations\".\"amount_cents\" BETWEEN -9007199254740991 AND 9007199254740991"
+        },
+        "transaction_allocations_timestamp_format": {
+          "name": "transaction_allocations_timestamp_format",
+          "value": "\"transaction_allocations\".\"created_at_utc\" LIKE '%Z' AND \"transaction_allocations\".\"updated_at_utc\" LIKE '%Z'"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

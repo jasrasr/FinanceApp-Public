@@ -19,12 +19,17 @@ describe('typed preload bridge', () => {
       'createDebtTransaction',
       'getDashboard',
       'getDebt',
+      'getImportBatch',
       'listDebts',
+      'listImportBatches',
       'restoreDebt',
       'reverseDebtTransaction',
+      'selectWorkbookForImport',
       'updateDebt',
+      'updateImportSheetMapping',
+      'updateStagedImportRowReview',
     ]);
-    expect(bridge.bridgeVersion).toBe(5);
+    expect(bridge.bridgeVersion).toBe(6);
     expect('invoke' in bridge).toBe(false);
     expect('query' in bridge).toBe(false);
     expect('database' in bridge).toBe(false);
@@ -49,5 +54,16 @@ describe('typed preload bridge', () => {
     const bridge = createAppBridge(vi.fn(async () => ({ rows: [] })));
 
     await expect(bridge.listDebts({ includeArchived: false })).rejects.toThrow();
+  });
+
+  it('uses fixed import channels and validates cancel response', async () => {
+    const invoke = vi.fn(async () => ({ ok: true, value: null }));
+    const bridge = createAppBridge(invoke);
+
+    await expect(bridge.selectWorkbookForImport({})).resolves.toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.selectWorkbookForImport, {});
   });
 });

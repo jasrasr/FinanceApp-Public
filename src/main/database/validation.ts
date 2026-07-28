@@ -30,6 +30,23 @@ const utcTimestampSchema = z
   .refine(isUtcTimestamp, 'Must be a valid UTC ISO timestamp ending in Z.');
 const moneyCentsSchema = z.number().int().safe();
 const nonnegativeMoneyCentsSchema = moneyCentsSchema.nonnegative();
+const jsonTextSchema = z.string().trim().min(1);
+
+export const IMPORT_BATCH_STATUSES = ['open', 'reviewed', 'closed'] as const;
+export const IMPORT_RECORD_TYPES = [
+  'debt',
+  'transaction',
+  'term',
+  'balance_snapshot',
+  'unknown',
+] as const;
+export const IMPORT_REVIEW_STATUSES = [
+  'needs_review',
+  'approved',
+  'rejected',
+  'deferred',
+] as const;
+export const IMPORT_ROW_CLASSIFICATIONS = ['actual', 'projected', 'ambiguous'] as const;
 
 export const debtInsertSchema = z
   .object({
@@ -226,6 +243,51 @@ export const auditEventInsertSchema = z.object({
   afterMetadataJson: optionalText,
 });
 
+export const importBatchInsertSchema = z.object({
+  id: idSchema,
+  sourceWorkbookName: requiredText,
+  sourceWorkbookFingerprint: requiredText,
+  sourceWorkbookModifiedAtUtc: utcTimestampSchema.nullable().optional(),
+  status: z.enum(IMPORT_BATCH_STATUSES),
+  importedAtUtc: utcTimestampSchema,
+  createdAtUtc: utcTimestampSchema,
+  updatedAtUtc: utcTimestampSchema,
+});
+
+export const importSheetMappingInsertSchema = z.object({
+  id: idSchema,
+  batchId: idSchema,
+  sourceSheetName: requiredText,
+  proposedRecordType: z.enum(IMPORT_RECORD_TYPES),
+  reviewStatus: z.enum(IMPORT_REVIEW_STATUSES),
+  fieldMappingJson: jsonTextSchema,
+  notes: optionalText,
+  createdAtUtc: utcTimestampSchema,
+  updatedAtUtc: utcTimestampSchema,
+});
+
+export const stagedImportRowInsertSchema = z.object({
+  id: idSchema,
+  batchId: idSchema,
+  sheetMappingId: idSchema,
+  sourceSheetName: requiredText,
+  sourceRowNumber: z.number().int().positive(),
+  sourceCellReferencesJson: jsonTextSchema,
+  sourceDisplayedValuesJson: jsonTextSchema,
+  sourceFormulasJson: jsonTextSchema,
+  proposedRecordType: z.enum(IMPORT_RECORD_TYPES),
+  activityClassification: z.enum(IMPORT_ROW_CLASSIFICATIONS),
+  normalizedValuesJson: jsonTextSchema,
+  validationMessagesJson: jsonTextSchema,
+  duplicateCandidateJson: jsonTextSchema.nullable().optional(),
+  reconciliationExceptionJson: jsonTextSchema.nullable().optional(),
+  reviewStatus: z.enum(IMPORT_REVIEW_STATUSES),
+  reviewNotes: optionalText,
+  reviewedAtUtc: utcTimestampSchema.nullable().optional(),
+  createdAtUtc: utcTimestampSchema,
+  updatedAtUtc: utcTimestampSchema,
+});
+
 export type DebtInsert = z.infer<typeof debtInsertSchema>;
 export type DebtTermInsert = z.infer<typeof debtTermInsertSchema>;
 export type DebtTransactionInsert = z.infer<typeof debtTransactionInsertSchema>;
@@ -237,3 +299,6 @@ export type BalanceReconciliationInput = z.infer<
   typeof balanceReconciliationInputSchema
 >;
 export type AuditEventInsert = z.infer<typeof auditEventInsertSchema>;
+export type ImportBatchInsert = z.infer<typeof importBatchInsertSchema>;
+export type ImportSheetMappingInsert = z.infer<typeof importSheetMappingInsertSchema>;
+export type StagedImportRowInsert = z.infer<typeof stagedImportRowInsertSchema>;

@@ -199,6 +199,31 @@ Upcoming maturities include active debts maturing within 12 months of the
 dashboard effective date. Attention items include unreconciled, in-progress, and
 exception reconciliations for active debts.
 
+## Workbook Import Staging
+
+Workbook import is a source-ingestion and review workflow, not a posting
+workflow.
+
+- The workbook is treated as untrusted input and is read only by the Electron
+  main process.
+- Source workbook name, sheet, row, cell references, displayed values, formulas,
+  and import timestamps are preserved for provenance.
+- Source displayed values are retained separately from normalized proposed
+  values.
+- Staged rows may be detected as likely debts, transactions, terms, balance
+  snapshots, or unknown records.
+- Actual-versus-projected classification is never silently inferred when the row
+  is ambiguous. Ambiguous rows remain flagged for review and cannot be approved
+  until classified.
+- Formula text is preserved as source metadata. Workbook formulas do not become
+  Debt Tracker accounting rules unless a future phase independently documents
+  and tests that rule.
+- Approving, rejecting, or deferring staged mappings and rows records review
+  state only. It does not post debts, terms, transactions, snapshots,
+  reconciliations, or adjustments.
+- Duplicate candidates, invalid values, control totals, and reconciliation
+  exceptions are review aids and do not alter the posted ledger.
+
 ## Corrections and Reversals
 
 Posted activity is not silently deleted or overwritten.

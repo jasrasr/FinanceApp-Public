@@ -7,6 +7,9 @@ import {
   debtTerms,
   debtTransactions,
   debts,
+  importBatches,
+  importSheetMappings,
+  stagedImportRows,
   transactionAllocations,
 } from './schema';
 import {
@@ -17,6 +20,9 @@ import {
   debtInsertSchema,
   debtTermInsertSchema,
   debtTransactionInsertSchema,
+  importBatchInsertSchema,
+  importSheetMappingInsertSchema,
+  stagedImportRowInsertSchema,
   transactionAllocationInsertSchema,
   type AuditEventInsert,
   type BalanceReconciliationInput,
@@ -24,6 +30,9 @@ import {
   type DebtInsert,
   type DebtTermInsert,
   type DebtTransactionInsert,
+  type ImportBatchInsert,
+  type ImportSheetMappingInsert,
+  type StagedImportRowInsert,
   type TransactionAllocationInsert,
 } from './validation';
 import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
@@ -34,6 +43,9 @@ export type DebtTransactionRecord = typeof debtTransactions.$inferSelect;
 export type TransactionAllocationRecord = typeof transactionAllocations.$inferSelect;
 export type BalanceSnapshotRecord = typeof balanceSnapshots.$inferSelect;
 export type BalanceReconciliationRecord = typeof balanceReconciliations.$inferSelect;
+export type ImportBatchRecord = typeof importBatches.$inferSelect;
+export type ImportSheetMappingRecord = typeof importSheetMappings.$inferSelect;
+export type StagedImportRowRecord = typeof stagedImportRows.$inferSelect;
 
 export interface DebtWithTermsRecord {
   readonly debt: DebtRecord;
@@ -49,6 +61,12 @@ export interface DebtWithActivityRecord extends DebtWithTermsRecord {
   readonly transactions: readonly DebtTransactionWithAllocationsRecord[];
   readonly balanceSnapshots: readonly BalanceSnapshotRecord[];
   readonly balanceReconciliations: readonly BalanceReconciliationRecord[];
+}
+
+export interface ImportBatchWithRowsRecord {
+  readonly batch: ImportBatchRecord;
+  readonly sheetMappings: readonly ImportSheetMappingRecord[];
+  readonly stagedRows: readonly StagedImportRowRecord[];
 }
 
 export interface PostedTransactionInput {
@@ -558,6 +576,159 @@ export const setDebtArchivedState = (
       throw new RepositoryConflictError(
         'Debt changed or its archive state no longer matches.',
       );
+    }
+
+    transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const createImportBatchRecord = (
+  database: AppDatabase,
+  input: {
+    readonly batch: ImportBatchInsert;
+    readonly sheetMappings: readonly ImportSheetMappingInsert[];
+    readonly stagedRows: readonly StagedImportRowInsert[];
+    readonly audit: AuditEventInsert;
+  },
+): void => {
+  const batch = importBatchInsertSchema.parse(input.batch);
+  const sheetMappings = input.sheetMappings.map((mapping) =>
+    importSheetMappingInsertSchema.parse(mapping),
+  );
+  const stagedRows = input.stagedRows.map((row) =>
+    stagedImportRowInsertSchema.parse(row),
+  );
+  const audit = auditEventInsertSchema.parse(input.audit);
+
+  database.transaction((transaction) => {
+    transaction.insert(importBatches).values(batch).run();
+    if (sheetMappings.length > 0) {
+      transaction.insert(importSheetMappings).values(sheetMappings).run();
+    }
+    if (stagedRows.length > 0) {
+      transaction.insert(stagedImportRows).values(stagedRows).run();
+    }
+    transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const getImportBatchRecord = (
+  database: AppDatabase,
+  batchId: string,
+): ImportBatchWithRowsRecord | undefined => {
+  const batch = database
+    .select()
+    .from(importBatches)
+    .where(eq(importBatches.id, batchId))
+    .get();
+
+  if (!batch) return undefined;
+
+  return {
+    batch,
+    sheetMappings: database
+      .select()
+      .from(importSheetMappings)
+      .where(eq(importSheetMappings.batchId, batchId))
+      .orderBy(asc(importSheetMappings.sourceSheetName))
+      .all(),
+    stagedRows: database
+      .select()
+      .from(stagedImportRows)
+      .where(eq(stagedImportRows.batchId, batchId))
+      .orderBy(
+        asc(stagedImportRows.sourceSheetName),
+        asc(stagedImportRows.sourceRowNumber),
+      )
+      .all(),
+  };
+};
+
+export const listImportBatchRecords = (
+  database: AppDatabase,
+): readonly ImportBatchRecord[] =>
+  database.select().from(importBatches).orderBy(asc(importBatches.importedAtUtc)).all();
+
+export const updateImportSheetMappingReview = (
+  database: AppDatabase,
+  input: {
+    readonly id: string;
+    readonly batchId: string;
+    readonly reviewStatus: ImportSheetMappingRecord['reviewStatus'];
+    readonly proposedRecordType: ImportSheetMappingRecord['proposedRecordType'];
+    readonly fieldMappingJson: string;
+    readonly notes: string | null;
+    readonly updatedAtUtc: string;
+    readonly audit: AuditEventInsert;
+  },
+): void => {
+  const audit = auditEventInsertSchema.parse(input.audit);
+
+  database.transaction((transaction) => {
+    const result = transaction
+      .update(importSheetMappings)
+      .set({
+        reviewStatus: input.reviewStatus,
+        proposedRecordType: input.proposedRecordType,
+        fieldMappingJson: input.fieldMappingJson,
+        notes: input.notes,
+        updatedAtUtc: input.updatedAtUtc,
+      })
+      .where(
+        and(
+          eq(importSheetMappings.id, input.id),
+          eq(importSheetMappings.batchId, input.batchId),
+        ),
+      )
+      .run();
+
+    if (result.changes !== 1) {
+      throw new RepositoryNotFoundError('Import sheet mapping was not found.');
+    }
+
+    transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const updateStagedImportRowReview = (
+  database: AppDatabase,
+  input: {
+    readonly id: string;
+    readonly batchId: string;
+    readonly reviewStatus: StagedImportRowRecord['reviewStatus'];
+    readonly proposedRecordType: StagedImportRowRecord['proposedRecordType'];
+    readonly activityClassification: StagedImportRowRecord['activityClassification'];
+    readonly normalizedValuesJson: string;
+    readonly reviewNotes: string | null;
+    readonly reviewedAtUtc: string | null;
+    readonly updatedAtUtc: string;
+    readonly audit: AuditEventInsert;
+  },
+): void => {
+  const audit = auditEventInsertSchema.parse(input.audit);
+
+  database.transaction((transaction) => {
+    const result = transaction
+      .update(stagedImportRows)
+      .set({
+        reviewStatus: input.reviewStatus,
+        proposedRecordType: input.proposedRecordType,
+        activityClassification: input.activityClassification,
+        normalizedValuesJson: input.normalizedValuesJson,
+        reviewNotes: input.reviewNotes,
+        reviewedAtUtc: input.reviewedAtUtc,
+        updatedAtUtc: input.updatedAtUtc,
+      })
+      .where(
+        and(
+          eq(stagedImportRows.id, input.id),
+          eq(stagedImportRows.batchId, input.batchId),
+        ),
+      )
+      .run();
+
+    if (result.changes !== 1) {
+      throw new RepositoryNotFoundError('Staged import row was not found.');
     }
 
     transaction.insert(auditEvents).values(audit).run();

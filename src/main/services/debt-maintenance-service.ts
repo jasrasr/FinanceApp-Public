@@ -12,9 +12,15 @@ import type {
   DebtSummaryDto,
   GetDashboardRequest,
   GetDebtRequest,
+  GetImportBatchRequest,
+  ImportBatchDto,
+  ImportBatchSummaryDto,
   ListDebtsRequest,
   ReverseDebtTransactionRequest,
   RestoreDebtRequest,
+  SelectWorkbookForImportRequest,
+  UpdateImportSheetMappingRequest,
+  UpdateStagedImportRowReviewRequest,
   UpdateDebtRequest,
 } from '../../shared/debt-contracts';
 import {
@@ -26,9 +32,14 @@ import {
   createDebtRequestSchema,
   getDashboardRequestSchema,
   getDebtRequestSchema,
+  getImportBatchRequestSchema,
+  listImportBatchesRequestSchema,
   listDebtsRequestSchema,
   reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
+  selectWorkbookForImportRequestSchema,
+  updateImportSheetMappingRequestSchema,
+  updateStagedImportRowReviewRequestSchema,
   updateDebtRequestSchema,
 } from '../../shared/debt-contracts';
 import type { AppDatabase } from '../database/connection';
@@ -36,16 +47,21 @@ import {
   calculateLedgerBalanceThroughDate,
   createBalanceReconciliationRecord,
   createBalanceSnapshotRecord,
+  createImportBatchRecord,
   createPostedTransactionRecord,
   appendDebtTermRecord,
   getDebtActivityRecord,
   getDebtTransactionRecord,
+  getImportBatchRecord,
   createDebtAndInitialTerm,
+  listImportBatchRecords,
   listActiveDebtActivityRecords,
   listDebtRecords,
   RepositoryConflictError,
   RepositoryNotFoundError,
   setDebtArchivedState,
+  updateImportSheetMappingReview,
+  updateStagedImportRowReview,
   updateDebtDescriptiveRecord,
   type DebtRecord,
   type BalanceReconciliationRecord,
@@ -53,6 +69,10 @@ import {
   type DebtTermRecord,
   type DebtWithTermsRecord,
   type DebtWithActivityRecord,
+  type ImportBatchRecord,
+  type ImportBatchWithRowsRecord,
+  type ImportSheetMappingRecord,
+  type StagedImportRowRecord,
 } from '../database/debt-maintenance-repository';
 import { reversePostedTransaction } from '../database/repository';
 import type {
@@ -61,6 +81,8 @@ import type {
   DebtInsert,
   DebtTermInsert,
   DebtTransactionInsert,
+  ImportSheetMappingInsert,
+  StagedImportRowInsert,
   TransactionAllocationInsert,
 } from '../database/validation';
 import {
@@ -81,10 +103,20 @@ import {
 import { centsToDollars } from '../domain/accounting/money';
 import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
 import { ApplicationServiceError } from './application-error';
+import { parseWorkbookForImport } from './workbook-import-parser';
 
 export interface DebtMaintenanceService {
   listDebts(request: ListDebtsRequest): readonly DebtSummaryDto[];
   getDashboard(request: GetDashboardRequest): DashboardDto;
+  selectWorkbookForImport(
+    request: SelectWorkbookForImportRequest,
+  ): ImportBatchDto | null;
+  listImportBatches(): readonly ImportBatchSummaryDto[];
+  getImportBatch(request: GetImportBatchRequest): ImportBatchDto;
+  updateImportSheetMapping(request: UpdateImportSheetMappingRequest): ImportBatchDto;
+  updateStagedImportRowReview(
+    request: UpdateStagedImportRowReviewRequest,
+  ): ImportBatchDto;
   getDebt(request: GetDebtRequest): DebtDetailDto;
   createDebt(request: CreateDebtRequest): DebtDetailDto;
   updateDebt(request: UpdateDebtRequest): DebtDetailDto;
@@ -103,6 +135,7 @@ export interface DebtMaintenanceServiceDependencies {
   readonly database: AppDatabase;
   readonly createId?: () => string;
   readonly now?: () => string;
+  readonly selectWorkbookPath?: () => string | null;
 }
 
 const nullableText = (value: string | null): string | null => {
@@ -303,6 +336,27 @@ const createReconciliationAudit = (
   action,
   occurredAtUtc: timestamp,
   source: 'user',
+  summary,
+  beforeMetadataJson: null,
+  afterMetadataJson: afterMetadata ? JSON.stringify(afterMetadata) : null,
+});
+
+const createImportAudit = (
+  id: string,
+  entityId: string,
+  eventType: string,
+  action: string,
+  timestamp: string,
+  summary: string,
+  afterMetadata?: Record<string, unknown>,
+): AuditEventInsert => ({
+  id,
+  eventType,
+  entityType: 'import_batch',
+  entityId,
+  action,
+  occurredAtUtc: timestamp,
+  source: 'import',
   summary,
   beforeMetadataJson: null,
   afterMetadataJson: afterMetadata ? JSON.stringify(afterMetadata) : null,
@@ -794,6 +848,140 @@ const createDashboard = (
   };
 };
 
+const parseJsonRecord = (
+  text: string,
+): Readonly<Record<string, string | null | unknown>> => {
+  const parsed = JSON.parse(text) as unknown;
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as Record<string, string | null | unknown>)
+    : {};
+};
+
+const parseStringRecord = (text: string): Readonly<Record<string, string>> => {
+  const parsed = parseJsonRecord(text);
+  return Object.fromEntries(
+    Object.entries(parsed).flatMap(([key, value]) =>
+      typeof value === 'string' ? [[key, value]] : [],
+    ),
+  );
+};
+
+const parseNullableStringRecord = (
+  text: string,
+): Readonly<Record<string, string | null>> => {
+  const parsed = parseJsonRecord(text);
+  return Object.fromEntries(
+    Object.entries(parsed).flatMap(([key, value]) =>
+      typeof value === 'string' || value === null ? [[key, value]] : [],
+    ),
+  );
+};
+
+const parseStringArray = (text: string): string[] => {
+  const parsed = JSON.parse(text) as unknown;
+  return Array.isArray(parsed)
+    ? parsed.filter((value): value is string => typeof value === 'string')
+    : [];
+};
+
+const mapImportBatchSummary = (batch: ImportBatchRecord): ImportBatchSummaryDto => ({
+  id: batch.id,
+  sourceWorkbookName: batch.sourceWorkbookName,
+  sourceWorkbookFingerprint: batch.sourceWorkbookFingerprint,
+  sourceWorkbookModifiedAtUtc: batch.sourceWorkbookModifiedAtUtc,
+  status: batch.status,
+  importedAtUtc: batch.importedAtUtc,
+  createdAtUtc: batch.createdAtUtc,
+  updatedAtUtc: batch.updatedAtUtc,
+});
+
+const mapImportSheetMapping = (
+  mapping: ImportSheetMappingRecord,
+): ImportBatchDto['sheetMappings'][number] => ({
+  id: mapping.id,
+  batchId: mapping.batchId,
+  sourceSheetName: mapping.sourceSheetName,
+  proposedRecordType: mapping.proposedRecordType,
+  reviewStatus: mapping.reviewStatus,
+  fieldMapping: parseStringRecord(mapping.fieldMappingJson),
+  notes: mapping.notes,
+  createdAtUtc: mapping.createdAtUtc,
+  updatedAtUtc: mapping.updatedAtUtc,
+});
+
+const mapStagedImportRow = (
+  row: StagedImportRowRecord,
+): ImportBatchDto['stagedRows'][number] => ({
+  id: row.id,
+  batchId: row.batchId,
+  sheetMappingId: row.sheetMappingId,
+  sourceSheetName: row.sourceSheetName,
+  sourceRowNumber: row.sourceRowNumber,
+  sourceCellReferences: parseStringRecord(row.sourceCellReferencesJson),
+  sourceDisplayedValues: parseStringRecord(row.sourceDisplayedValuesJson),
+  sourceFormulas: parseStringRecord(row.sourceFormulasJson),
+  proposedRecordType: row.proposedRecordType,
+  activityClassification: row.activityClassification,
+  normalizedValues: parseNullableStringRecord(row.normalizedValuesJson),
+  validationMessages: parseStringArray(row.validationMessagesJson),
+  duplicateCandidate: row.duplicateCandidateJson,
+  reconciliationException: row.reconciliationExceptionJson,
+  reviewStatus: row.reviewStatus,
+  reviewNotes: row.reviewNotes,
+  reviewedAtUtc: row.reviewedAtUtc,
+  createdAtUtc: row.createdAtUtc,
+  updatedAtUtc: row.updatedAtUtc,
+});
+
+const createImportControlTotals = (
+  rows: readonly StagedImportRowRecord[],
+): ImportBatchDto['controlTotals'] => ({
+  totalRows: rows.length,
+  needsReviewRows: rows.filter((row) => row.reviewStatus === 'needs_review').length,
+  approvedRows: rows.filter((row) => row.reviewStatus === 'approved').length,
+  rejectedRows: rows.filter((row) => row.reviewStatus === 'rejected').length,
+  deferredRows: rows.filter((row) => row.reviewStatus === 'deferred').length,
+  ambiguousRows: rows.filter((row) => row.activityClassification === 'ambiguous')
+    .length,
+  duplicateCandidateRows: rows.filter((row) => row.duplicateCandidateJson !== null)
+    .length,
+  invalidRows: rows.filter(
+    (row) => parseStringArray(row.validationMessagesJson).length > 0,
+  ).length,
+  reconciliationExceptionRows: rows.filter(
+    (row) => row.reconciliationExceptionJson !== null,
+  ).length,
+  candidateTotalsByType: {
+    debt: rows.filter((row) => row.proposedRecordType === 'debt').length,
+    transaction: rows.filter((row) => row.proposedRecordType === 'transaction').length,
+    term: rows.filter((row) => row.proposedRecordType === 'term').length,
+    balance_snapshot: rows.filter(
+      (row) => row.proposedRecordType === 'balance_snapshot',
+    ).length,
+    unknown: rows.filter((row) => row.proposedRecordType === 'unknown').length,
+  },
+});
+
+const mapImportBatch = (record: ImportBatchWithRowsRecord): ImportBatchDto => ({
+  ...mapImportBatchSummary(record.batch),
+  sheetMappings: record.sheetMappings.map(mapImportSheetMapping),
+  stagedRows: record.stagedRows.map(mapStagedImportRow),
+  controlTotals: createImportControlTotals(record.stagedRows),
+});
+
+const getImportBatchOrThrow = (
+  database: AppDatabase,
+  id: string,
+): ImportBatchWithRowsRecord => {
+  const record = getImportBatchRecord(database, id);
+
+  if (!record) {
+    throw new ApplicationServiceError('not_found', 'Import batch was not found.');
+  }
+
+  return record;
+};
+
 const normalizeError = (error: unknown): never => {
   if (error instanceof ApplicationServiceError) {
     throw error;
@@ -829,6 +1017,7 @@ export const createDebtMaintenanceService = ({
   database,
   createId = randomUUID,
   now = currentUtcTimestamp,
+  selectWorkbookPath,
 }: DebtMaintenanceServiceDependencies): DebtMaintenanceService => {
   const getRecordOrThrow = (id: string): DebtWithActivityRecord => {
     const record = getDebtActivityRecord(database, id);
@@ -858,6 +1047,195 @@ export const createDebtMaintenanceService = ({
           listActiveDebtActivityRecords(database),
           currentFinancialDate(now),
         );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    selectWorkbookForImport: (request) => {
+      try {
+        selectWorkbookForImportRequestSchema.parse(request);
+
+        if (!selectWorkbookPath) {
+          throw new ApplicationServiceError(
+            'database_unavailable',
+            'Workbook selection is not available in this environment.',
+          );
+        }
+
+        const workbookPath = selectWorkbookPath();
+
+        if (!workbookPath) {
+          return null;
+        }
+
+        const timestamp = currentUtcTimestampSchema(now());
+        const parsedWorkbook = parseWorkbookForImport(workbookPath);
+        const batchId = createId();
+        const sheetMappings: ImportSheetMappingInsert[] = [];
+        const stagedRows: StagedImportRowInsert[] = [];
+
+        for (const sheet of parsedWorkbook.sheets) {
+          const sheetMappingId = createId();
+          sheetMappings.push({
+            id: sheetMappingId,
+            batchId,
+            sourceSheetName: sheet.name,
+            proposedRecordType: sheet.proposedRecordType,
+            reviewStatus: 'needs_review',
+            fieldMappingJson: JSON.stringify(sheet.fieldMapping),
+            notes:
+              sheet.proposedRecordType === 'unknown'
+                ? 'Sheet type requires manual mapping review.'
+                : null,
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          });
+
+          for (const row of sheet.rows) {
+            stagedRows.push({
+              id: createId(),
+              batchId,
+              sheetMappingId,
+              sourceSheetName: row.sheetName,
+              sourceRowNumber: row.rowNumber,
+              sourceCellReferencesJson: JSON.stringify(row.cellReferences),
+              sourceDisplayedValuesJson: JSON.stringify(row.displayedValues),
+              sourceFormulasJson: JSON.stringify(row.formulas),
+              proposedRecordType: row.proposedRecordType,
+              activityClassification: row.activityClassification,
+              normalizedValuesJson: JSON.stringify(row.normalizedValues),
+              validationMessagesJson: JSON.stringify(row.validationMessages),
+              duplicateCandidateJson: row.duplicateCandidate,
+              reconciliationExceptionJson: row.reconciliationException,
+              reviewStatus: 'needs_review',
+              reviewNotes: null,
+              reviewedAtUtc: null,
+              createdAtUtc: timestamp,
+              updatedAtUtc: timestamp,
+            });
+          }
+        }
+
+        createImportBatchRecord(database, {
+          batch: {
+            id: batchId,
+            sourceWorkbookName: parsedWorkbook.workbookName,
+            sourceWorkbookFingerprint: parsedWorkbook.fingerprint,
+            sourceWorkbookModifiedAtUtc: parsedWorkbook.modifiedAtUtc,
+            status: 'open',
+            importedAtUtc: timestamp,
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          },
+          sheetMappings,
+          stagedRows,
+          audit: createImportAudit(
+            createId(),
+            batchId,
+            'workbook_import_staged',
+            'stage',
+            timestamp,
+            'Workbook rows were staged for review.',
+            {
+              workbookName: parsedWorkbook.workbookName,
+              sheetCount: sheetMappings.length,
+              stagedRowCount: stagedRows.length,
+            },
+          ),
+        });
+
+        return mapImportBatch(getImportBatchOrThrow(database, batchId));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    listImportBatches: () => {
+      try {
+        listImportBatchesRequestSchema.parse({});
+        return listImportBatchRecords(database).map(mapImportBatchSummary);
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getImportBatch: (request) => {
+      try {
+        const parsed = getImportBatchRequestSchema.parse(request);
+        return mapImportBatch(getImportBatchOrThrow(database, parsed.id));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    updateImportSheetMapping: (request) => {
+      try {
+        const parsed = updateImportSheetMappingRequestSchema.parse(request);
+        const timestamp = currentUtcTimestampSchema(now());
+
+        updateImportSheetMappingReview(database, {
+          id: parsed.mappingId,
+          batchId: parsed.batchId,
+          proposedRecordType: parsed.proposedRecordType,
+          reviewStatus: parsed.reviewStatus,
+          fieldMappingJson: JSON.stringify(parsed.fieldMapping),
+          notes: nullableText(parsed.notes),
+          updatedAtUtc: timestamp,
+          audit: createImportAudit(
+            createId(),
+            parsed.batchId,
+            'import_sheet_mapping_reviewed',
+            'review_mapping',
+            timestamp,
+            'Import sheet mapping review status was updated.',
+            {
+              mappingId: parsed.mappingId,
+              reviewStatus: parsed.reviewStatus,
+              proposedRecordType: parsed.proposedRecordType,
+            },
+          ),
+        });
+
+        return mapImportBatch(getImportBatchOrThrow(database, parsed.batchId));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    updateStagedImportRowReview: (request) => {
+      try {
+        const parsed = updateStagedImportRowReviewRequestSchema.parse(request);
+        const timestamp = currentUtcTimestampSchema(now());
+        const reviewedAtUtc = parsed.reviewStatus === 'needs_review' ? null : timestamp;
+
+        updateStagedImportRowReview(database, {
+          id: parsed.rowId,
+          batchId: parsed.batchId,
+          proposedRecordType: parsed.proposedRecordType,
+          activityClassification: parsed.activityClassification,
+          reviewStatus: parsed.reviewStatus,
+          normalizedValuesJson: JSON.stringify(parsed.normalizedValues),
+          reviewNotes: nullableText(parsed.reviewNotes),
+          reviewedAtUtc,
+          updatedAtUtc: timestamp,
+          audit: createImportAudit(
+            createId(),
+            parsed.batchId,
+            'staged_import_row_reviewed',
+            'review_row',
+            timestamp,
+            'Staged import row review status was updated.',
+            {
+              rowId: parsed.rowId,
+              reviewStatus: parsed.reviewStatus,
+              proposedRecordType: parsed.proposedRecordType,
+              activityClassification: parsed.activityClassification,
+            },
+          ),
+        });
+
+        return mapImportBatch(getImportBatchOrThrow(database, parsed.batchId));
       } catch (error) {
         return normalizeError(error);
       }

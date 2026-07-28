@@ -11,9 +11,15 @@ import type {
   DebtSummaryDto,
   GetDashboardRequest,
   GetDebtRequest,
+  GetImportBatchRequest,
+  ImportBatchDto,
+  ImportBatchSummaryDto,
   ListDebtsRequest,
   ReverseDebtTransactionRequest,
   RestoreDebtRequest,
+  SelectWorkbookForImportRequest,
+  UpdateImportSheetMappingRequest,
+  UpdateStagedImportRowReviewRequest,
   UpdateDebtRequest,
 } from './debt-contracts';
 
@@ -22,6 +28,19 @@ export interface DebtBridge {
     request: ListDebtsRequest,
   ): Promise<ApplicationResult<readonly DebtSummaryDto[]>>;
   getDashboard(request: GetDashboardRequest): Promise<ApplicationResult<DashboardDto>>;
+  selectWorkbookForImport(
+    request: SelectWorkbookForImportRequest,
+  ): Promise<ApplicationResult<ImportBatchDto | null>>;
+  getImportBatch(
+    request: GetImportBatchRequest,
+  ): Promise<ApplicationResult<ImportBatchDto>>;
+  listImportBatches(): Promise<ApplicationResult<readonly ImportBatchSummaryDto[]>>;
+  updateImportSheetMapping(
+    request: UpdateImportSheetMappingRequest,
+  ): Promise<ApplicationResult<ImportBatchDto>>;
+  updateStagedImportRowReview(
+    request: UpdateStagedImportRowReviewRequest,
+  ): Promise<ApplicationResult<ImportBatchDto>>;
   getDebt(request: GetDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   createDebt(request: CreateDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   updateDebt(request: UpdateDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
@@ -44,5 +63,5 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 5;
+  readonly bridgeVersion: 6;
 }

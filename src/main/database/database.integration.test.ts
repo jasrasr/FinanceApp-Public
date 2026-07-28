@@ -88,6 +88,9 @@ describe('database migrations and isolation', () => {
       'debt_terms',
       'debt_transactions',
       'debts',
+      'import_batches',
+      'import_sheet_mappings',
+      'staged_import_rows',
       'transaction_allocations',
     ]);
   });

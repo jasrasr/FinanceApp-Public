@@ -22,13 +22,16 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Basic dashboard with active-debt totals, year-to-date posted activity metrics,
   current-term payment and rate summaries, upcoming maturities, and open
   reconciliation attention items.
+- Workbook import staging and mapping for Excel files, including source
+  provenance, sheet and row review, formulas as source metadata, ambiguous-row
+  flags, control totals, and review-only approve/reject/defer states.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
 - Automatic development-database initialization and migration under Electron's
   user-data directory.
 - Playwright-controlled Electron testing against disposable user-data directories.
 
-Dashboard, workbook import, payoff scenario, reporting, backup, export, and
-packaging workflows have not been implemented.
+Posting imported rows, payoff scenario, reporting, backup, export, and packaging
+workflows have not been implemented.
 
 ## Prerequisites
 
@@ -153,6 +156,21 @@ Electron user-data directory that it removes after the workflow.
   amount.
 - Weighted-average interest rate uses current effective rates weighted by
   application-calculated ledger balances.
+
+## Workbook Import Rules
+
+- Workbook selection and parsing occur only in the Electron main process.
+- Excel workbooks are treated as untrusted input and are never modified by Debt
+  Tracker.
+- Import creates batches, sheet mappings, and staged rows only. It does not post
+  debts, terms, transactions, snapshots, reconciliations, or adjustments.
+- Source workbook name, fingerprint, sheet, row, cell references, displayed
+  values, formulas, and import timestamps are preserved as import provenance.
+- Original source values remain separate from normalized proposed values.
+- Actual-versus-projected ambiguity is flagged for review and cannot be approved
+  silently.
+- Workbook formulas are preserved as source metadata only and are not translated
+  into application calculation logic.
 
 ## Privacy
 

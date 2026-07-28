@@ -12,9 +12,16 @@ import {
   debtSummaryListSchema,
   getDashboardRequestSchema,
   getDebtRequestSchema,
+  getImportBatchRequestSchema,
+  importBatchDtoSchema,
+  importBatchSummaryDtoSchema,
+  listImportBatchesRequestSchema,
   listDebtsRequestSchema,
   reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
+  selectWorkbookForImportRequestSchema,
+  updateImportSheetMappingRequestSchema,
+  updateStagedImportRowReviewRequestSchema,
   updateDebtRequestSchema,
   type ApplicationError,
   type ApplicationResult,
@@ -125,6 +132,46 @@ export const registerDebtIpcHandlers = (
     dashboardDtoSchema,
     isTrustedSender,
     (request) => service.getDashboard(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.selectWorkbookForImport,
+    selectWorkbookForImportRequestSchema,
+    importBatchDtoSchema.nullable(),
+    isTrustedSender,
+    (request) => service.selectWorkbookForImport(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.listImportBatches,
+    listImportBatchesRequestSchema,
+    importBatchSummaryDtoSchema.array(),
+    isTrustedSender,
+    () => service.listImportBatches(),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.getImportBatch,
+    getImportBatchRequestSchema,
+    importBatchDtoSchema,
+    isTrustedSender,
+    (request) => service.getImportBatch(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.updateImportSheetMapping,
+    updateImportSheetMappingRequestSchema,
+    importBatchDtoSchema,
+    isTrustedSender,
+    (request) => service.updateImportSheetMapping(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.updateStagedImportRowReview,
+    updateStagedImportRowReviewRequestSchema,
+    importBatchDtoSchema,
+    isTrustedSender,
+    (request) => service.updateStagedImportRowReview(request),
   );
   registerHandler(
     ipcMain,

@@ -25,6 +25,15 @@ test('completes the manual debt-maintenance workflow', async () => {
       window.getByRole('heading', { name: 'No active debts to summarize' }),
     ).toBeVisible();
 
+    await window.getByRole('button', { name: 'Workbook import' }).click();
+    await expect(
+      window.getByRole('heading', { name: 'Stage and map workbook rows' }),
+    ).toBeVisible();
+    await expect(window.getByText(/No staged workbook imports yet/)).toBeVisible();
+    await expect(
+      window.getByText(/staged for review before a future posting/),
+    ).toBeVisible();
+
     await window.getByRole('button', { name: 'Debts' }).click();
     await expect(
       window.getByRole('heading', { name: 'No debts to display' }),
