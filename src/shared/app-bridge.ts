@@ -15,7 +15,11 @@ import type {
   GetImportBatchRequest,
   ImportBatchDto,
   ImportBatchSummaryDto,
+  ImportPostingPreviewDto,
+  ImportPostingResultDto,
   ListDebtsRequest,
+  PostImportBatchRequest,
+  PreviewImportBatchPostingRequest,
   ReverseDebtTransactionRequest,
   RestoreDebtRequest,
   SelectWorkbookForImportRequest,
@@ -36,6 +40,12 @@ export interface DebtBridge {
     request: GetImportBatchRequest,
   ): Promise<ApplicationResult<ImportBatchDto>>;
   listImportBatches(): Promise<ApplicationResult<readonly ImportBatchSummaryDto[]>>;
+  previewImportBatchPosting(
+    request: PreviewImportBatchPostingRequest,
+  ): Promise<ApplicationResult<ImportPostingPreviewDto>>;
+  postImportBatch(
+    request: PostImportBatchRequest,
+  ): Promise<ApplicationResult<ImportPostingResultDto>>;
   updateImportSheetMapping(
     request: UpdateImportSheetMappingRequest,
   ): Promise<ApplicationResult<ImportBatchDto>>;
@@ -64,6 +74,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 7;
+  readonly bridgeVersion: 8;
   readonly appMetadata: AppMetadataDto;
 }

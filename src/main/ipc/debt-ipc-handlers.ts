@@ -15,8 +15,12 @@ import {
   getImportBatchRequestSchema,
   importBatchDtoSchema,
   importBatchSummaryDtoSchema,
+  importPostingPreviewDtoSchema,
+  importPostingResultDtoSchema,
   listImportBatchesRequestSchema,
   listDebtsRequestSchema,
+  postImportBatchRequestSchema,
+  previewImportBatchPostingRequestSchema,
   reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
   selectWorkbookForImportRequestSchema,
@@ -156,6 +160,22 @@ export const registerDebtIpcHandlers = (
     importBatchDtoSchema,
     isTrustedSender,
     (request) => service.getImportBatch(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.previewImportBatchPosting,
+    previewImportBatchPostingRequestSchema,
+    importPostingPreviewDtoSchema,
+    isTrustedSender,
+    (request) => service.previewImportBatchPosting(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.postImportBatch,
+    postImportBatchRequestSchema,
+    importPostingResultDtoSchema,
+    isTrustedSender,
+    (request) => service.postImportBatch(request),
   );
   registerHandler(
     ipcMain,

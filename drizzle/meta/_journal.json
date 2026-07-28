@@ -15,6 +15,13 @@
       "when": 1785244970893,
       "tag": "0001_aberrant_the_santerians",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785249936406,
+      "tag": "0002_foamy_betty_ross",
+      "breakpoints": true
     }
   ]
 }

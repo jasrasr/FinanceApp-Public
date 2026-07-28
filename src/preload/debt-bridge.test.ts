@@ -23,6 +23,8 @@ describe('typed preload bridge', () => {
       'getImportBatch',
       'listDebts',
       'listImportBatches',
+      'postImportBatch',
+      'previewImportBatchPosting',
       'restoreDebt',
       'reverseDebtTransaction',
       'selectWorkbookForImport',
@@ -30,9 +32,9 @@ describe('typed preload bridge', () => {
       'updateImportSheetMapping',
       'updateStagedImportRowReview',
     ]);
-    expect(bridge.bridgeVersion).toBe(7);
+    expect(bridge.bridgeVersion).toBe(8);
     expect(bridge.appMetadata).toEqual({
-      version: '0.7.0',
+      version: '0.8.0',
       lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);
@@ -73,5 +75,41 @@ describe('typed preload bridge', () => {
       value: null,
     });
     expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.selectWorkbookForImport, {});
+  });
+
+  it('uses fixed import posting channels and requires confirmation', async () => {
+    const invoke = vi.fn(async () => ({
+      ok: true,
+      value: {
+        batchId: '11111111-1111-4111-8111-111111111111',
+        batchStatus: 'open',
+        approvedMappings: 1,
+        unapprovedMappings: 0,
+        approvedRows: 1,
+        rejectedRows: 0,
+        deferredRows: 0,
+        postableRows: 1,
+        exceptionRows: 0,
+        alreadyPosted: false,
+        rowResults: [],
+      },
+    }));
+    const bridge = createAppBridge(invoke);
+
+    await expect(
+      bridge.previewImportBatchPosting({
+        batchId: '11111111-1111-4111-8111-111111111111',
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.previewImportBatchPosting, {
+      batchId: '11111111-1111-4111-8111-111111111111',
+    });
+
+    await expect(
+      bridge.postImportBatch({
+        batchId: '11111111-1111-4111-8111-111111111111',
+        confirmed: false,
+      } as never),
+    ).rejects.toThrow();
   });
 });

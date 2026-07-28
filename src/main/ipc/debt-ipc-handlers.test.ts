@@ -13,6 +13,8 @@ const createService = (): DebtMaintenanceService => ({
   selectWorkbookForImport: vi.fn(() => null),
   listImportBatches: vi.fn(() => []),
   getImportBatch: vi.fn(),
+  previewImportBatchPosting: vi.fn(),
+  postImportBatch: vi.fn(),
   updateImportSheetMapping: vi.fn(),
   updateStagedImportRowReview: vi.fn(),
   getDebt: vi.fn(),
@@ -178,5 +180,22 @@ describe('debt IPC handlers', () => {
       error: { code: 'validation' },
     });
     expect(service.updateStagedImportRowReview).not.toHaveBeenCalled();
+  });
+
+  it('requires explicit confirmation before posting an import batch', () => {
+    const service = createService();
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(registrar, service, () => true);
+
+    const result = handlers.get(DEBT_IPC_CHANNELS.postImportBatch)?.(event, {
+      batchId: randomUUID(),
+      confirmed: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(service.postImportBatch).not.toHaveBeenCalled();
   });
 });

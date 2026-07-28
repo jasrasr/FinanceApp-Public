@@ -8,6 +8,7 @@ import type {
   DebtDetailDto,
   DebtSummaryDto,
   ImportBatchDto,
+  ImportPostingPreviewDto,
 } from '../../shared/debt-contracts';
 import { App } from './app';
 import { formatLastChanged } from './components/display-format';
@@ -17,9 +18,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 7,
+  bridgeVersion: 8,
   appMetadata: {
-    version: '0.7.0',
+    version: '0.8.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -30,6 +31,14 @@ const createBridge = (): AppBridge => ({
   })),
   listImportBatches: vi.fn(async () => ({ ok: true as const, value: [] })),
   getImportBatch: vi.fn(async () => ({ ok: true as const, value: sampleImportBatch })),
+  previewImportBatchPosting: vi.fn(async () => ({
+    ok: true as const,
+    value: sampleImportPostingPreview,
+  })),
+  postImportBatch: vi.fn(async () => ({
+    ok: true as const,
+    value: { ...sampleImportPostingPreview, postedAtUtc: null, createdRecordCount: 0 },
+  })),
   updateImportSheetMapping: vi.fn(async () => ({
     ok: true as const,
     value: sampleImportBatch,
@@ -150,6 +159,31 @@ const sampleImportBatch: ImportBatchDto = {
       unknown: 0,
     },
   },
+};
+
+const sampleImportPostingPreview: ImportPostingPreviewDto = {
+  batchId: '44444444-4444-4444-4444-444444444444',
+  batchStatus: 'open',
+  approvedMappings: 0,
+  unapprovedMappings: 1,
+  approvedRows: 0,
+  rejectedRows: 0,
+  deferredRows: 0,
+  postableRows: 0,
+  exceptionRows: 1,
+  alreadyPosted: false,
+  rowResults: [
+    {
+      stagedRowId: '66666666-6666-6666-6666-666666666666',
+      sourceSheetName: 'Generated Transactions',
+      sourceRowNumber: 2,
+      proposedRecordType: 'transaction',
+      reviewStatus: 'needs_review',
+      canPost: false,
+      validationMessages: ['Actual versus projected classification requires review.'],
+      createdRecords: [],
+    },
+  ],
 };
 
 const sampleDebtDetail: DebtDetailDto = {
@@ -354,7 +388,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.7.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.8.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -383,9 +417,17 @@ describe('debt maintenance application', () => {
 
     expect(await screen.findByText('generated-debt-schedule.xlsx')).toBeVisible();
     expect(screen.getByText('Ambiguous rows')).toBeVisible();
-    expect(screen.getByText('Generated Transactions row 2')).toBeVisible();
+    expect(screen.getByText('Posting preview')).toBeVisible();
+    expect(
+      screen.getByText('Actual versus projected classification requires review.'),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Post approved rows' })).toBeDisabled();
+    expect(screen.getAllByText('Generated Transactions row 2')).toHaveLength(2);
     expect(screen.getByText('Formula source preserved')).toBeVisible();
     expect(bridge.selectWorkbookForImport).toHaveBeenCalledWith({});
+    expect(bridge.previewImportBatchPosting).toHaveBeenCalledWith({
+      batchId: sampleImportBatch.id,
+    });
   });
 
   it('renders the record-transaction form controls', () => {

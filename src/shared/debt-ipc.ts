@@ -9,6 +9,8 @@ export const DEBT_IPC_CHANNELS = {
   selectWorkbookForImport: 'debt:import:select-workbook',
   listImportBatches: 'debt:import:list-batches',
   getImportBatch: 'debt:import:get-batch',
+  previewImportBatchPosting: 'debt:import:preview-posting',
+  postImportBatch: 'debt:import:post-batch',
   updateImportSheetMapping: 'debt:import:update-sheet-mapping',
   updateStagedImportRowReview: 'debt:import:update-row-review',
   get: 'debt:get',

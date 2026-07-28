@@ -17,6 +17,7 @@ import {
   debtTransactions,
   debts,
   importBatches,
+  importPostings,
   importSheetMappings,
   stagedImportRows,
   transactionAllocations,
@@ -253,6 +254,86 @@ const createService = (createId: () => string = randomUUID): DebtMaintenanceServ
       return new Date(clock).toISOString();
     },
   });
+
+const stageApprovedImportBatch = (
+  rows: readonly {
+    readonly id: string;
+    readonly sheet: string;
+    readonly rowNumber: number;
+    readonly recordType: 'debt' | 'transaction' | 'term' | 'balance_snapshot';
+    readonly normalizedValues: Readonly<Record<string, string | null>>;
+  }[],
+): string => {
+  const batchId = randomUUID();
+  const timestamp = new Date(clock).toISOString();
+  const mappingIds = new Map<string, string>();
+
+  context.database
+    .insert(importBatches)
+    .values({
+      id: batchId,
+      sourceWorkbookName: 'generated-reviewed-import.xlsx',
+      sourceWorkbookFingerprint: `generated-${batchId}`,
+      sourceWorkbookModifiedAtUtc: timestamp,
+      status: 'reviewed',
+      importedAtUtc: timestamp,
+      createdAtUtc: timestamp,
+      updatedAtUtc: timestamp,
+    })
+    .run();
+
+  for (const row of rows) {
+    if (!mappingIds.has(row.sheet)) {
+      const mappingId = randomUUID();
+      mappingIds.set(row.sheet, mappingId);
+      context.database
+        .insert(importSheetMappings)
+        .values({
+          id: mappingId,
+          batchId,
+          sourceSheetName: row.sheet,
+          proposedRecordType: row.recordType,
+          reviewStatus: 'approved',
+          fieldMappingJson: JSON.stringify(
+            Object.fromEntries(
+              Object.keys(row.normalizedValues).map((key) => [key, key]),
+            ),
+          ),
+          notes: null,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+        })
+        .run();
+    }
+
+    context.database
+      .insert(stagedImportRows)
+      .values({
+        id: row.id,
+        batchId,
+        sheetMappingId: mappingIds.get(row.sheet)!,
+        sourceSheetName: row.sheet,
+        sourceRowNumber: row.rowNumber,
+        sourceCellReferencesJson: JSON.stringify({ generated: `A${row.rowNumber}` }),
+        sourceDisplayedValuesJson: JSON.stringify(row.normalizedValues),
+        sourceFormulasJson: JSON.stringify({}),
+        proposedRecordType: row.recordType,
+        activityClassification: 'actual',
+        normalizedValuesJson: JSON.stringify(row.normalizedValues),
+        validationMessagesJson: JSON.stringify([]),
+        duplicateCandidateJson: null,
+        reconciliationExceptionJson: null,
+        reviewStatus: 'approved',
+        reviewNotes: 'Generated approved test row.',
+        reviewedAtUtc: timestamp,
+        createdAtUtc: timestamp,
+        updatedAtUtc: timestamp,
+      })
+      .run();
+  }
+
+  return batchId;
+};
 
 beforeEach(() => {
   temporary = createTemporaryDatabaseLocation();
@@ -872,5 +953,169 @@ describe('debt maintenance', () => {
         .all()
         .map((event) => event.eventType),
     ).toContain('import_sheet_mapping_reviewed');
+  });
+
+  it('posts approved reviewed workbook rows transactionally with provenance', () => {
+    const debt = service.createDebt(validRequest('Generated Import Posting Note'));
+    const rowId = randomUUID();
+    const batchId = stageApprovedImportBatch([
+      {
+        id: rowId,
+        sheet: 'Generated Approved Transactions',
+        rowNumber: 2,
+        recordType: 'transaction',
+        normalizedValues: {
+          debt_id: debt.id,
+          transaction_type: 'payment',
+          effective_date: '2026-04-15',
+          posting_date: '2026-04-15',
+          amount: '-125.00',
+          description: 'Generated approved import payment.',
+          allocation_type: 'principal',
+        },
+      },
+    ]);
+
+    const preview = service.previewImportBatchPosting({ batchId });
+    expect(preview).toMatchObject({
+      postableRows: 1,
+      exceptionRows: 0,
+      alreadyPosted: false,
+    });
+
+    const result = service.postImportBatch({ batchId, confirmed: true });
+    expect(result.createdRecordCount).toBe(2);
+    expect(
+      result.rowResults[0]?.createdRecords.map((record) => record.entityType),
+    ).toEqual(['debt_transaction', 'transaction_allocation']);
+
+    const transaction = context.database
+      .select()
+      .from(debtTransactions)
+      .where(eq(debtTransactions.sourceReference, `import:${batchId}:${rowId}`))
+      .get();
+    expect(transaction).toMatchObject({
+      debtId: debt.id,
+      sourceType: 'import',
+      totalAmountCents: -12_500,
+    });
+    expect(context.database.select().from(importPostings).all()).toHaveLength(2);
+    expect(context.database.select().from(importBatches).get()).toMatchObject({
+      status: 'closed',
+    });
+    expect(
+      context.database
+        .select({ eventType: auditEvents.eventType })
+        .from(auditEvents)
+        .all()
+        .map((event) => event.eventType),
+    ).toContain('workbook_import_posted');
+  });
+
+  it('safely retries a completed import batch without duplicate posting', () => {
+    const debt = service.createDebt(validRequest('Generated Retry Import Note'));
+    const batchId = stageApprovedImportBatch([
+      {
+        id: randomUUID(),
+        sheet: 'Generated Approved Transactions',
+        rowNumber: 2,
+        recordType: 'transaction',
+        normalizedValues: {
+          debt_id: debt.id,
+          transaction_type: 'payment',
+          effective_date: '2026-04-15',
+          posting_date: '2026-04-15',
+          amount: '-125.00',
+          description: 'Generated approved import payment.',
+          allocation_type: 'principal',
+        },
+      },
+    ]);
+
+    service.postImportBatch({ batchId, confirmed: true });
+    const retry = service.postImportBatch({ batchId, confirmed: true });
+
+    expect(retry.alreadyPosted).toBe(true);
+    expect(context.database.select().from(debtTransactions).all()).toHaveLength(1);
+    expect(context.database.select().from(importPostings).all()).toHaveLength(2);
+  });
+
+  it('rejects imported debt terms that overlap existing effective periods', () => {
+    const debt = service.createDebt(validRequest('Generated Import Term Note'));
+    const batchId = stageApprovedImportBatch([
+      {
+        id: randomUUID(),
+        sheet: 'Generated Approved Terms',
+        rowNumber: 2,
+        recordType: 'term',
+        normalizedValues: {
+          debt_id: debt.id,
+          effective_start_date: '2025-06-01',
+          interest_rate_type: 'fixed',
+          annual_interest_rate: '6.00',
+          day_count_convention: 'actual_365',
+          calculation_convention: 'simple_daily',
+          required_payment: '2500.00',
+          payment_frequency: 'monthly',
+        },
+      },
+    ]);
+
+    expect(() => service.postImportBatch({ batchId, confirmed: true })).toThrow(
+      'Import row cannot be posted.',
+    );
+    expect(context.database.select().from(debtTerms).all()).toHaveLength(1);
+    expect(context.database.select().from(importPostings).all()).toHaveLength(0);
+  });
+
+  it('rolls back all live records when an approved row fails during batch posting', () => {
+    const debt = service.createDebt(validRequest('Generated Rollback Import Note'));
+    const batchId = stageApprovedImportBatch([
+      {
+        id: randomUUID(),
+        sheet: 'Generated Approved Transactions',
+        rowNumber: 2,
+        recordType: 'transaction',
+        normalizedValues: {
+          debt_id: debt.id,
+          transaction_type: 'payment',
+          effective_date: '2026-04-15',
+          posting_date: '2026-04-15',
+          amount: '-125.00',
+          description: 'Generated approved import payment.',
+          allocation_type: 'principal',
+        },
+      },
+      {
+        id: randomUUID(),
+        sheet: 'Generated Approved Balances',
+        rowNumber: 2,
+        recordType: 'balance_snapshot',
+        normalizedValues: {
+          debt_id: debt.id,
+          statement_date: '2026-01-31',
+          ending_balance: '124500.00',
+        },
+      },
+      {
+        id: randomUUID(),
+        sheet: 'Generated Approved Balances',
+        rowNumber: 3,
+        recordType: 'balance_snapshot',
+        normalizedValues: {
+          debt_id: debt.id,
+          statement_date: '2026-01-31',
+          ending_balance: '124000.00',
+        },
+      },
+    ]);
+
+    expect(() => service.postImportBatch({ batchId, confirmed: true })).toThrow();
+    expect(context.database.select().from(debtTransactions).all()).toHaveLength(0);
+    expect(context.database.select().from(importPostings).all()).toHaveLength(0);
+    expect(context.database.select().from(balanceSnapshots).all()).toHaveLength(0);
+    expect(context.database.select().from(importBatches).get()).toMatchObject({
+      status: 'reviewed',
+    });
   });
 });

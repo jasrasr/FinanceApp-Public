@@ -8,6 +8,7 @@ import {
   debtTransactions,
   debts,
   importBatches,
+  importPostings,
   importSheetMappings,
   stagedImportRows,
   transactionAllocations,
@@ -21,6 +22,7 @@ import {
   debtTermInsertSchema,
   debtTransactionInsertSchema,
   importBatchInsertSchema,
+  importPostingInsertSchema,
   importSheetMappingInsertSchema,
   stagedImportRowInsertSchema,
   transactionAllocationInsertSchema,
@@ -31,6 +33,7 @@ import {
   type DebtTermInsert,
   type DebtTransactionInsert,
   type ImportBatchInsert,
+  type ImportPostingInsert,
   type ImportSheetMappingInsert,
   type StagedImportRowInsert,
   type TransactionAllocationInsert,
@@ -44,6 +47,7 @@ export type TransactionAllocationRecord = typeof transactionAllocations.$inferSe
 export type BalanceSnapshotRecord = typeof balanceSnapshots.$inferSelect;
 export type BalanceReconciliationRecord = typeof balanceReconciliations.$inferSelect;
 export type ImportBatchRecord = typeof importBatches.$inferSelect;
+export type ImportPostingRecord = typeof importPostings.$inferSelect;
 export type ImportSheetMappingRecord = typeof importSheetMappings.$inferSelect;
 export type StagedImportRowRecord = typeof stagedImportRows.$inferSelect;
 
@@ -67,6 +71,7 @@ export interface ImportBatchWithRowsRecord {
   readonly batch: ImportBatchRecord;
   readonly sheetMappings: readonly ImportSheetMappingRecord[];
   readonly stagedRows: readonly StagedImportRowRecord[];
+  readonly postings: readonly ImportPostingRecord[];
 }
 
 export interface PostedTransactionInput {
@@ -77,6 +82,18 @@ export interface PostedTransactionInput {
 export interface CreateBalanceReconciliationRecordInput {
   readonly reconciliation: BalanceReconciliationInput;
   readonly adjustment?: PostedTransactionInput;
+  readonly auditInputs: readonly AuditEventInsert[];
+}
+
+export interface PostImportBatchRecordInput {
+  readonly batchId: string;
+  readonly updatedAtUtc: string;
+  readonly debts: readonly DebtInsert[];
+  readonly terms: readonly DebtTermInsert[];
+  readonly transactions: readonly DebtTransactionInsert[];
+  readonly allocations: readonly TransactionAllocationInsert[];
+  readonly snapshots: readonly BalanceSnapshotInsert[];
+  readonly postings: readonly ImportPostingInsert[];
   readonly auditInputs: readonly AuditEventInsert[];
 }
 
@@ -641,6 +658,12 @@ export const getImportBatchRecord = (
         asc(stagedImportRows.sourceRowNumber),
       )
       .all(),
+    postings: database
+      .select()
+      .from(importPostings)
+      .where(eq(importPostings.batchId, batchId))
+      .orderBy(asc(importPostings.postedAtUtc), asc(importPostings.liveEntityType))
+      .all(),
   };
 };
 
@@ -732,5 +755,87 @@ export const updateStagedImportRowReview = (
     }
 
     transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const postImportBatchRecord = (
+  database: AppDatabase,
+  input: PostImportBatchRecordInput,
+): void => {
+  const debtInputs = input.debts.map((debt) => debtInsertSchema.parse(debt));
+  const termInputs = input.terms.map((term) => debtTermInsertSchema.parse(term));
+  const transactionInputs = input.transactions.map((transaction) =>
+    debtTransactionInsertSchema.parse(transaction),
+  );
+  const allocationInputs = input.allocations.map((allocation) =>
+    transactionAllocationInsertSchema.parse(allocation),
+  );
+  const snapshotInputs = input.snapshots.map((snapshot) =>
+    balanceSnapshotInsertSchema.parse(snapshot),
+  );
+  const postingInputs = input.postings.map((posting) =>
+    importPostingInsertSchema.parse(posting),
+  );
+  const auditInputs = input.auditInputs.map((event) =>
+    auditEventInsertSchema.parse(event),
+  );
+
+  const allocationsByTransaction = new Map<string, TransactionAllocationInsert[]>();
+  for (const allocation of allocationInputs) {
+    const allocations = allocationsByTransaction.get(allocation.transactionId) ?? [];
+    allocations.push(allocation);
+    allocationsByTransaction.set(allocation.transactionId, allocations);
+  }
+
+  for (const transaction of transactionInputs) {
+    const errors = validateTransactionSignConvention(
+      transaction,
+      allocationsByTransaction.get(transaction.id) ?? [],
+    );
+
+    if (errors.length > 0) {
+      throw new Error(errors.join(' '));
+    }
+  }
+
+  database.transaction((transactionDb) => {
+    const existingPostings = transactionDb
+      .select({ id: importPostings.id })
+      .from(importPostings)
+      .where(eq(importPostings.batchId, input.batchId))
+      .all();
+
+    if (existingPostings.length > 0) {
+      throw new RepositoryConflictError('Import batch has already been posted.');
+    }
+
+    const batchUpdate = transactionDb
+      .update(importBatches)
+      .set({ status: 'closed', updatedAtUtc: input.updatedAtUtc })
+      .where(
+        and(eq(importBatches.id, input.batchId), ne(importBatches.status, 'closed')),
+      )
+      .run();
+
+    if (batchUpdate.changes !== 1) {
+      throw new RepositoryConflictError('Import batch is already closed or missing.');
+    }
+
+    if (debtInputs.length > 0) transactionDb.insert(debts).values(debtInputs).run();
+    if (termInputs.length > 0) transactionDb.insert(debtTerms).values(termInputs).run();
+    if (transactionInputs.length > 0) {
+      transactionDb.insert(debtTransactions).values(transactionInputs).run();
+    }
+    if (allocationInputs.length > 0) {
+      transactionDb.insert(transactionAllocations).values(allocationInputs).run();
+    }
+    if (snapshotInputs.length > 0) {
+      transactionDb.insert(balanceSnapshots).values(snapshotInputs).run();
+    }
+    if (postingInputs.length > 0) {
+      transactionDb.insert(importPostings).values(postingInputs).run();
+    }
+    if (auditInputs.length > 0)
+      transactionDb.insert(auditEvents).values(auditInputs).run();
   });
 };

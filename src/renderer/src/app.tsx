@@ -14,6 +14,8 @@ import type {
   DebtSummaryDto,
   ImportBatchDto,
   ImportBatchSummaryDto,
+  ImportPostingPreviewDto,
+  ImportPostingResultDto,
   UpdateDebtRequest,
   ReverseDebtTransactionRequest,
 } from '../../shared/debt-contracts';
@@ -88,6 +90,10 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [selectedImportBatch, setSelectedImportBatch] = useState<ImportBatchDto | null>(
     null,
   );
+  const [importPostingPreview, setImportPostingPreview] =
+    useState<ImportPostingPreviewDto | null>(null);
+  const [importPostingResult, setImportPostingResult] =
+    useState<ImportPostingResultDto | null>(null);
   const [debts, setDebts] = useState<readonly DebtSummaryDto[]>([]);
   const [selectedDebt, setSelectedDebt] = useState<DebtDetailDto | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -153,6 +159,14 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setSelectedImportBatch(result.value);
+      const preview = await invokeBridge(() =>
+        bridge.previewImportBatchPosting({ batchId: id }),
+      );
+      if (preview.ok) {
+        setImportPostingPreview(preview.value);
+      } else {
+        setError(preview.error);
+      }
     } else {
       setError(result.error);
     }
@@ -211,6 +225,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setReverseTarget(null);
     setError(null);
     setFieldErrors(undefined);
+    setImportPostingResult(null);
     void loadImportBatches();
   };
 
@@ -222,7 +237,13 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       if (result.value) {
-        setSelectedImportBatch(result.value);
+        const selectedBatch = result.value;
+        setSelectedImportBatch(selectedBatch);
+        const preview = await invokeBridge(() =>
+          bridge.previewImportBatchPosting({ batchId: selectedBatch.id }),
+        );
+        if (preview.ok) setImportPostingPreview(preview.value);
+        setImportPostingResult(null);
         setSuccessMessage('Workbook rows were staged for review.');
       }
       await loadImportBatches();
@@ -254,6 +275,10 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setSelectedImportBatch(result.value);
+      const preview = await invokeBridge(() =>
+        bridge.previewImportBatchPosting({ batchId: selectedImportBatch.id }),
+      );
+      if (preview.ok) setImportPostingPreview(preview.value);
       setSuccessMessage('Sheet mapping review was saved.');
       await loadImportBatches();
     } else {
@@ -285,8 +310,37 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setSelectedImportBatch(result.value);
+      const preview = await invokeBridge(() =>
+        bridge.previewImportBatchPosting({ batchId: selectedImportBatch.id }),
+      );
+      if (preview.ok) setImportPostingPreview(preview.value);
       setSuccessMessage('Staged row review was saved.');
       await loadImportBatches();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
+  const postSelectedImportBatch = async (): Promise<void> => {
+    if (!selectedImportBatch) return;
+
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() =>
+      bridge.postImportBatch({ batchId: selectedImportBatch.id, confirmed: true }),
+    );
+
+    if (result.ok) {
+      setImportPostingResult(result.value);
+      setImportPostingPreview(result.value);
+      await loadImportBatch(selectedImportBatch.id);
+      await loadImportBatches();
+      await loadDebts();
+      await loadDashboard();
+      setSuccessMessage('Approved workbook rows were posted transactionally.');
     } else {
       handleFailure(result.error);
     }
@@ -676,8 +730,11 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onReviewRow={(row, reviewStatus) =>
                 void reviewImportRow(row, reviewStatus)
               }
+              onPostBatch={() => void postSelectedImportBatch()}
               onSelectBatch={(id) => void loadImportBatch(id)}
               onSelectWorkbook={() => void selectWorkbookForImport()}
+              postingPreview={importPostingPreview}
+              postingResult={importPostingResult}
               saving={saving}
               selectedBatch={selectedImportBatch}
             />

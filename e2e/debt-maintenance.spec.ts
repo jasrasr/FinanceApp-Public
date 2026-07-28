@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.7.0')).toBeVisible();
+    await expect(window.getByText('Version 0.8.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -32,9 +32,7 @@ test('completes the manual debt-maintenance workflow', async () => {
       window.getByRole('heading', { name: 'Stage and map workbook rows' }),
     ).toBeVisible();
     await expect(window.getByText(/No staged workbook imports yet/)).toBeVisible();
-    await expect(
-      window.getByText(/staged for review before a future posting/),
-    ).toBeVisible();
+    await expect(window.getByText(/staged for review before posting/)).toBeVisible();
 
     await window.getByRole('button', { name: 'Debts' }).click();
     await expect(

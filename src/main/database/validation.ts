@@ -47,6 +47,13 @@ export const IMPORT_REVIEW_STATUSES = [
   'deferred',
 ] as const;
 export const IMPORT_ROW_CLASSIFICATIONS = ['actual', 'projected', 'ambiguous'] as const;
+export const IMPORT_POSTING_ENTITY_TYPES = [
+  'debt',
+  'debt_term',
+  'debt_transaction',
+  'transaction_allocation',
+  'balance_snapshot',
+] as const;
 
 export const debtInsertSchema = z
   .object({
@@ -288,6 +295,16 @@ export const stagedImportRowInsertSchema = z.object({
   updatedAtUtc: utcTimestampSchema,
 });
 
+export const importPostingInsertSchema = z.object({
+  id: idSchema,
+  batchId: idSchema,
+  stagedRowId: idSchema,
+  liveEntityType: z.enum(IMPORT_POSTING_ENTITY_TYPES),
+  liveEntityId: idSchema,
+  postedAtUtc: utcTimestampSchema,
+  createdAtUtc: utcTimestampSchema,
+});
+
 export type DebtInsert = z.infer<typeof debtInsertSchema>;
 export type DebtTermInsert = z.infer<typeof debtTermInsertSchema>;
 export type DebtTransactionInsert = z.infer<typeof debtTransactionInsertSchema>;
@@ -302,3 +319,4 @@ export type AuditEventInsert = z.infer<typeof auditEventInsertSchema>;
 export type ImportBatchInsert = z.infer<typeof importBatchInsertSchema>;
 export type ImportSheetMappingInsert = z.infer<typeof importSheetMappingInsertSchema>;
 export type StagedImportRowInsert = z.infer<typeof stagedImportRowInsertSchema>;
+export type ImportPostingInsert = z.infer<typeof importPostingInsertSchema>;

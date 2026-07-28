@@ -15,7 +15,11 @@ import type {
   GetImportBatchRequest,
   ImportBatchDto,
   ImportBatchSummaryDto,
+  ImportPostingPreviewDto,
+  ImportPostingResultDto,
   ListDebtsRequest,
+  PostImportBatchRequest,
+  PreviewImportBatchPostingRequest,
   ReverseDebtTransactionRequest,
   RestoreDebtRequest,
   SelectWorkbookForImportRequest,
@@ -40,8 +44,21 @@ import {
   selectWorkbookForImportRequestSchema,
   updateImportSheetMappingRequestSchema,
   updateStagedImportRowReviewRequestSchema,
+  postImportBatchRequestSchema,
+  previewImportBatchPostingRequestSchema,
   updateDebtRequestSchema,
 } from '../../shared/debt-contracts';
+import {
+  ALLOCATION_TYPES,
+  DAY_COUNT_CONVENTIONS,
+  DEBT_STATUSES,
+  DEBT_TYPES,
+  INTEREST_CALCULATION_CONVENTIONS,
+  INTEREST_RATE_TYPES,
+  PAYMENT_FREQUENCIES,
+  POSTED_ACTIVITY_TRANSACTION_TYPES,
+  TAX_CATEGORIES,
+} from '../../shared/debt-options';
 import type { AppDatabase } from '../database/connection';
 import {
   calculateLedgerBalanceThroughDate,
@@ -57,6 +74,7 @@ import {
   listImportBatchRecords,
   listActiveDebtActivityRecords,
   listDebtRecords,
+  postImportBatchRecord,
   RepositoryConflictError,
   RepositoryNotFoundError,
   setDebtArchivedState,
@@ -71,6 +89,7 @@ import {
   type DebtWithActivityRecord,
   type ImportBatchRecord,
   type ImportBatchWithRowsRecord,
+  type ImportPostingRecord,
   type ImportSheetMappingRecord,
   type StagedImportRowRecord,
 } from '../database/debt-maintenance-repository';
@@ -78,9 +97,11 @@ import { reversePostedTransaction } from '../database/repository';
 import type {
   AuditEventInsert,
   BalanceReconciliationInput,
+  BalanceSnapshotInsert,
   DebtInsert,
   DebtTermInsert,
   DebtTransactionInsert,
+  ImportPostingInsert,
   ImportSheetMappingInsert,
   StagedImportRowInsert,
   TransactionAllocationInsert,
@@ -117,6 +138,10 @@ export interface DebtMaintenanceService {
   updateStagedImportRowReview(
     request: UpdateStagedImportRowReviewRequest,
   ): ImportBatchDto;
+  previewImportBatchPosting(
+    request: PreviewImportBatchPostingRequest,
+  ): ImportPostingPreviewDto;
+  postImportBatch(request: PostImportBatchRequest): ImportPostingResultDto;
   getDebt(request: GetDebtRequest): DebtDetailDto;
   createDebt(request: CreateDebtRequest): DebtDetailDto;
   updateDebt(request: UpdateDebtRequest): DebtDetailDto;
@@ -982,6 +1007,707 @@ const getImportBatchOrThrow = (
   return record;
 };
 
+const fieldValue = (
+  values: Readonly<Record<string, string | null>>,
+  names: readonly string[],
+): string | null => {
+  for (const name of names) {
+    const value = values[name];
+    if (typeof value === 'string' && value.trim() !== '') return value.trim();
+  }
+
+  return null;
+};
+
+const requiredFieldValue = (
+  row: StagedImportRowRecord,
+  values: Readonly<Record<string, string | null>>,
+  names: readonly string[],
+  label: string,
+): string => {
+  const value = fieldValue(values, names);
+
+  if (!value) {
+    throw new ApplicationServiceError('validation', 'Import row cannot be posted.', {
+      [`row.${row.id}`]: [`Missing required ${label}.`],
+    });
+  }
+
+  return value;
+};
+
+const enumValue = <T extends string>(
+  row: StagedImportRowRecord,
+  values: Readonly<Record<string, string | null>>,
+  names: readonly string[],
+  allowed: readonly T[],
+  label: string,
+): T => {
+  const value = requiredFieldValue(row, values, names, label);
+  if ((allowed as readonly string[]).includes(value)) return value as T;
+
+  throw new ApplicationServiceError('validation', 'Import row cannot be posted.', {
+    [`row.${row.id}`]: [
+      `${label} must be one of: ${allowed.join(', ')}. Received ${value}.`,
+    ],
+  });
+};
+
+const optionalDate = (
+  row: StagedImportRowRecord,
+  values: Readonly<Record<string, string | null>>,
+  names: readonly string[],
+  label: string,
+): string | null => {
+  const value = fieldValue(values, names);
+  return value ? ensureCalendarDate(`row.${row.id}.${label}`, value) : null;
+};
+
+const importSourceReference = (batchId: string, rowId: string): string =>
+  `import:${batchId}:${rowId}`;
+
+const liveRecordLabel = (
+  entityType: ImportPostingInsert['liveEntityType'],
+  entityId: string,
+): string => `${entityType.replaceAll('_', ' ')} ${entityId}`;
+
+const postingRecordDto = (
+  posting: ImportPostingRecord,
+): ImportPostingPreviewDto['rowResults'][number]['createdRecords'][number] => ({
+  entityType: posting.liveEntityType,
+  entityId: posting.liveEntityId,
+  label: liveRecordLabel(posting.liveEntityType, posting.liveEntityId),
+});
+
+const mappingApprovedForRow = (
+  batch: ImportBatchWithRowsRecord,
+  row: StagedImportRowRecord,
+): boolean =>
+  batch.sheetMappings.some(
+    (mapping) =>
+      mapping.id === row.sheetMappingId &&
+      mapping.reviewStatus === 'approved' &&
+      mapping.proposedRecordType === row.proposedRecordType,
+  );
+
+const validateRowForPosting = (
+  batch: ImportBatchWithRowsRecord,
+  row: StagedImportRowRecord,
+): string[] => {
+  const messages: string[] = [];
+
+  if (!mappingApprovedForRow(batch, row)) {
+    messages.push('Sheet mapping must be approved for this row type.');
+  }
+  if (row.reviewStatus !== 'approved') {
+    messages.push('Staged row must be explicitly approved before posting.');
+  }
+  if (row.proposedRecordType === 'unknown') {
+    messages.push('Unknown rows cannot be posted.');
+  }
+  if (row.activityClassification !== 'actual') {
+    messages.push('Only approved actual rows can be posted to live records.');
+  }
+  if (parseStringArray(row.validationMessagesJson).length > 0) {
+    messages.push(...parseStringArray(row.validationMessagesJson));
+  }
+  if (row.duplicateCandidateJson) {
+    messages.push('Duplicate candidate must be resolved before posting.');
+  }
+  if (row.reconciliationExceptionJson) {
+    messages.push('Reconciliation exception must be resolved before posting.');
+  }
+
+  return messages;
+};
+
+const previewImportPosting = (
+  batch: ImportBatchWithRowsRecord,
+): ImportPostingPreviewDto => {
+  const postingsByRow = new Map<string, ImportPostingRecord[]>();
+  for (const posting of batch.postings) {
+    const postings = postingsByRow.get(posting.stagedRowId) ?? [];
+    postings.push(posting);
+    postingsByRow.set(posting.stagedRowId, postings);
+  }
+
+  const rowResults = batch.stagedRows.map((row) => {
+    const validationMessages =
+      batch.batch.status === 'closed' ? [] : validateRowForPosting(batch, row);
+
+    return {
+      stagedRowId: row.id,
+      sourceSheetName: row.sourceSheetName,
+      sourceRowNumber: row.sourceRowNumber,
+      proposedRecordType: row.proposedRecordType,
+      reviewStatus: row.reviewStatus,
+      canPost:
+        batch.batch.status !== 'closed' &&
+        row.reviewStatus === 'approved' &&
+        validationMessages.length === 0,
+      validationMessages,
+      createdRecords: (postingsByRow.get(row.id) ?? []).map(postingRecordDto),
+    };
+  });
+
+  const approvedMappings = batch.sheetMappings.filter(
+    (mapping) => mapping.reviewStatus === 'approved',
+  ).length;
+  const unapprovedMappings = batch.sheetMappings.length - approvedMappings;
+
+  return {
+    batchId: batch.batch.id,
+    batchStatus: batch.batch.status,
+    approvedMappings,
+    unapprovedMappings,
+    approvedRows: batch.stagedRows.filter((row) => row.reviewStatus === 'approved')
+      .length,
+    rejectedRows: batch.stagedRows.filter((row) => row.reviewStatus === 'rejected')
+      .length,
+    deferredRows: batch.stagedRows.filter((row) => row.reviewStatus === 'deferred')
+      .length,
+    postableRows: rowResults.filter((row) => row.canPost).length,
+    exceptionRows: rowResults.filter((row) => row.validationMessages.length > 0).length,
+    alreadyPosted: batch.batch.status === 'closed' || batch.postings.length > 0,
+    rowResults,
+  };
+};
+
+interface ImportPostingBuildResult {
+  readonly debts: readonly DebtInsert[];
+  readonly terms: readonly DebtTermInsert[];
+  readonly transactions: readonly DebtTransactionInsert[];
+  readonly allocations: readonly TransactionAllocationInsert[];
+  readonly snapshots: readonly BalanceSnapshotInsert[];
+  readonly postings: readonly ImportPostingInsert[];
+  readonly audits: readonly AuditEventInsert[];
+  readonly createdRecordsByRow: ReadonlyMap<
+    string,
+    readonly ImportPostingPreviewDto['rowResults'][number]['createdRecords'][number][]
+  >;
+}
+
+const buildImportPostingRecords = (
+  batch: ImportBatchWithRowsRecord,
+  createId: () => string,
+  timestamp: string,
+  existingDebts: readonly DebtWithTermsRecord[],
+): ImportPostingBuildResult => {
+  const debtsToInsert: DebtInsert[] = [];
+  const termsToInsert: DebtTermInsert[] = [];
+  const transactionsToInsert: DebtTransactionInsert[] = [];
+  const allocationsToInsert: TransactionAllocationInsert[] = [];
+  const snapshotsToInsert: BalanceSnapshotInsert[] = [];
+  const postingsToInsert: ImportPostingInsert[] = [];
+  const auditsToInsert: AuditEventInsert[] = [];
+  const createdRecordsByRow = new Map<
+    string,
+    ImportPostingPreviewDto['rowResults'][number]['createdRecords'][number][]
+  >();
+  const debtIdsByName = new Map(
+    existingDebts.map((record) => [record.debt.name, record.debt.id]),
+  );
+  const termPeriodsByDebt = new Map<
+    string,
+    { readonly start: string; readonly end: string | null }[]
+  >(
+    existingDebts.map((record) => [
+      record.debt.id,
+      record.terms.map((term) => ({
+        start: term.effectiveStartDate,
+        end: term.effectiveEndDate,
+      })),
+    ]),
+  );
+
+  const remember = (
+    row: StagedImportRowRecord,
+    entityType: ImportPostingInsert['liveEntityType'],
+    entityId: string,
+  ) => {
+    postingsToInsert.push({
+      id: createId(),
+      batchId: batch.batch.id,
+      stagedRowId: row.id,
+      liveEntityType: entityType,
+      liveEntityId: entityId,
+      postedAtUtc: timestamp,
+      createdAtUtc: timestamp,
+    });
+    const records = createdRecordsByRow.get(row.id) ?? [];
+    records.push({
+      entityType,
+      entityId,
+      label: liveRecordLabel(entityType, entityId),
+    });
+    createdRecordsByRow.set(row.id, records);
+  };
+
+  const debtIdForRow = (
+    row: StagedImportRowRecord,
+    values: Readonly<Record<string, string | null>>,
+  ): string => {
+    const debtId = fieldValue(values, ['debt_id']);
+    if (debtId) return debtId;
+
+    const debtName = requiredFieldValue(
+      row,
+      values,
+      ['debt_name', 'name'],
+      'debt name',
+    );
+    const resolved = debtIdsByName.get(debtName);
+    if (!resolved) {
+      throw new ApplicationServiceError('validation', 'Import row cannot be posted.', {
+        [`row.${row.id}`]: [
+          `No existing or imported debt named ${debtName} was found.`,
+        ],
+      });
+    }
+
+    return resolved;
+  };
+
+  const addTermPeriod = (row: StagedImportRowRecord, term: DebtTermInsert): void => {
+    const periods = termPeriodsByDebt.get(term.debtId) ?? [];
+    const newEnd = term.effectiveEndDate ?? '9999-12-31';
+
+    const overlaps = periods.some((period) => {
+      const existingEnd = period.end ?? '9999-12-31';
+      return term.effectiveStartDate <= existingEnd && period.start <= newEnd;
+    });
+
+    if (overlaps) {
+      throw new ApplicationServiceError('validation', 'Import row cannot be posted.', {
+        [`row.${row.id}`]: ['Imported debt term overlaps an existing term period.'],
+      });
+    }
+
+    periods.push({
+      start: term.effectiveStartDate,
+      end: term.effectiveEndDate ?? null,
+    });
+    termPeriodsByDebt.set(term.debtId, periods);
+  };
+
+  for (const row of batch.stagedRows.filter(
+    (candidate) => candidate.reviewStatus === 'approved',
+  )) {
+    const rowMessages = validateRowForPosting(batch, row);
+    if (rowMessages.length > 0) {
+      throw new ApplicationServiceError(
+        'validation',
+        'Import batch is not ready to post.',
+        {
+          [`row.${row.id}`]: rowMessages,
+        },
+      );
+    }
+
+    const values = parseNullableStringRecord(row.normalizedValuesJson);
+    const sourceReference = importSourceReference(batch.batch.id, row.id);
+
+    if (row.proposedRecordType === 'debt') {
+      const debtId = createId();
+      const termId = createId();
+      const originationDate = ensureCalendarDate(
+        `row.${row.id}.origination_date`,
+        requiredFieldValue(row, values, ['origination_date'], 'origination date'),
+      );
+      const debt: DebtInsert = {
+        id: debtId,
+        name: requiredFieldValue(row, values, ['name', 'debt_name'], 'debt name'),
+        creditor: requiredFieldValue(row, values, ['creditor'], 'creditor'),
+        ownerEntity: requiredFieldValue(
+          row,
+          values,
+          ['owner_entity', 'owner'],
+          'owner or entity',
+        ),
+        debtType: enumValue(row, values, ['debt_type'], DEBT_TYPES, 'debt type'),
+        purpose: requiredFieldValue(row, values, ['purpose'], 'purpose'),
+        status: enumValue(row, values, ['status'], DEBT_STATUSES, 'debt status'),
+        originalPrincipalCents: convertMoney(
+          `row.${row.id}.original_principal`,
+          requiredFieldValue(
+            row,
+            values,
+            ['original_principal', 'principal'],
+            'original principal',
+          ),
+        ),
+        originationDate,
+        maturityDate: optionalDate(row, values, ['maturity_date'], 'maturity_date'),
+        minimumPaymentCents: convertMoney(
+          `row.${row.id}.minimum_payment`,
+          requiredFieldValue(row, values, ['minimum_payment'], 'minimum payment'),
+        ),
+        paymentFrequency: enumValue(
+          row,
+          values,
+          ['payment_frequency'],
+          PAYMENT_FREQUENCIES,
+          'payment frequency',
+        ),
+        creditLimitCents: fieldValue(values, ['credit_limit'])
+          ? convertMoney(
+              `row.${row.id}.credit_limit`,
+              fieldValue(values, ['credit_limit'])!,
+            )
+          : null,
+        collateralDescription: nullableText(
+          fieldValue(values, ['collateral_description']),
+        ),
+        taxCategory: enumValue(
+          row,
+          values,
+          ['tax_category'],
+          TAX_CATEGORIES,
+          'tax category',
+        ),
+        deductiblePercentageBps: convertPercentage(
+          `row.${row.id}.deductible_percentage`,
+          requiredFieldValue(
+            row,
+            values,
+            ['deductible_percentage'],
+            'deductible percentage',
+          ),
+        ),
+        notes: nullableText(fieldValue(values, ['notes'])),
+        createdAtUtc: timestamp,
+        updatedAtUtc: timestamp,
+        archivedAtUtc: null,
+      };
+      const termRateType = enumValue(
+        row,
+        values,
+        ['interest_rate_type'],
+        INTEREST_RATE_TYPES,
+        'interest rate type',
+      );
+      const term: DebtTermInsert = {
+        id: termId,
+        debtId,
+        effectiveStartDate: ensureCalendarDate(
+          `row.${row.id}.term_effective_start_date`,
+          requiredFieldValue(
+            row,
+            values,
+            ['term_effective_start_date', 'effective_start_date'],
+            'initial term effective start date',
+          ),
+        ),
+        effectiveEndDate: null,
+        interestRateType: termRateType,
+        interestRateMicros: convertRate(
+          `row.${row.id}.annual_interest_rate`,
+          requiredFieldValue(
+            row,
+            values,
+            ['annual_interest_rate', 'interest_rate'],
+            'annual interest rate',
+          ),
+        ),
+        dayCountConvention: enumValue(
+          row,
+          values,
+          ['day_count_convention'],
+          DAY_COUNT_CONVENTIONS,
+          'day-count convention',
+        ),
+        calculationConvention: enumValue(
+          row,
+          values,
+          ['calculation_convention'],
+          INTEREST_CALCULATION_CONVENTIONS,
+          'calculation convention',
+        ),
+        requiredPaymentCents: convertMoney(
+          `row.${row.id}.required_payment`,
+          requiredFieldValue(row, values, ['required_payment'], 'required payment'),
+        ),
+        paymentFrequency: enumValue(
+          row,
+          values,
+          ['term_payment_frequency', 'payment_frequency'],
+          PAYMENT_FREQUENCIES,
+          'term payment frequency',
+        ),
+        notes: nullableText(fieldValue(values, ['term_notes'])),
+        createdAtUtc: timestamp,
+        updatedAtUtc: timestamp,
+      };
+      if (term.interestRateType === 'zero' && term.interestRateMicros !== 0) {
+        throw new ApplicationServiceError(
+          'validation',
+          'Import row cannot be posted.',
+          {
+            [`row.${row.id}`]: ['Zero-rate debt terms must use 0% annual interest.'],
+          },
+        );
+      }
+      debtsToInsert.push(debt);
+      termsToInsert.push(term);
+      debtIdsByName.set(debt.name, debt.id);
+      termPeriodsByDebt.set(debt.id, [
+        { start: term.effectiveStartDate, end: term.effectiveEndDate ?? null },
+      ]);
+      remember(row, 'debt', debt.id);
+      remember(row, 'debt_term', term.id);
+      auditsToInsert.push(
+        createDebtAudit(
+          createId(),
+          debt.id,
+          'import_debt_posted',
+          'import_post',
+          timestamp,
+          'Approved workbook debt row was posted.',
+          ['importBatchId', 'stagedRowId'],
+        ),
+      );
+      continue;
+    }
+
+    if (row.proposedRecordType === 'term') {
+      const debtId = debtIdForRow(row, values);
+      const rateType = enumValue(
+        row,
+        values,
+        ['interest_rate_type'],
+        INTEREST_RATE_TYPES,
+        'interest rate type',
+      );
+      const term: DebtTermInsert = {
+        id: createId(),
+        debtId,
+        effectiveStartDate: ensureCalendarDate(
+          `row.${row.id}.effective_start_date`,
+          requiredFieldValue(
+            row,
+            values,
+            ['effective_start_date'],
+            'effective start date',
+          ),
+        ),
+        effectiveEndDate: optionalDate(
+          row,
+          values,
+          ['effective_end_date'],
+          'effective_end_date',
+        ),
+        interestRateType: rateType,
+        interestRateMicros: convertRate(
+          `row.${row.id}.annual_interest_rate`,
+          requiredFieldValue(
+            row,
+            values,
+            ['annual_interest_rate', 'interest_rate'],
+            'annual interest rate',
+          ),
+        ),
+        dayCountConvention: enumValue(
+          row,
+          values,
+          ['day_count_convention'],
+          DAY_COUNT_CONVENTIONS,
+          'day-count convention',
+        ),
+        calculationConvention: enumValue(
+          row,
+          values,
+          ['calculation_convention'],
+          INTEREST_CALCULATION_CONVENTIONS,
+          'calculation convention',
+        ),
+        requiredPaymentCents: convertMoney(
+          `row.${row.id}.required_payment`,
+          requiredFieldValue(row, values, ['required_payment'], 'required payment'),
+        ),
+        paymentFrequency: enumValue(
+          row,
+          values,
+          ['payment_frequency'],
+          PAYMENT_FREQUENCIES,
+          'payment frequency',
+        ),
+        notes: nullableText(fieldValue(values, ['notes'])),
+        createdAtUtc: timestamp,
+        updatedAtUtc: timestamp,
+      };
+      addTermPeriod(row, term);
+      termsToInsert.push(term);
+      remember(row, 'debt_term', term.id);
+      auditsToInsert.push(
+        createDebtAudit(
+          createId(),
+          debtId,
+          'import_debt_term_posted',
+          'import_post',
+          timestamp,
+          'Approved workbook debt-term row was posted.',
+          ['importBatchId', 'stagedRowId'],
+        ),
+      );
+      continue;
+    }
+
+    if (row.proposedRecordType === 'transaction') {
+      const debtId = debtIdForRow(row, values);
+      const transactionId = createId();
+      const totalAmountCents = convertSignedMoney(
+        `row.${row.id}.amount`,
+        requiredFieldValue(row, values, ['amount', 'payment'], 'transaction amount'),
+      );
+      const transaction: DebtTransactionInsert = {
+        id: transactionId,
+        debtId,
+        transactionType: enumValue(
+          row,
+          values,
+          ['transaction_type'],
+          POSTED_ACTIVITY_TRANSACTION_TYPES,
+          'transaction type',
+        ),
+        effectiveDate: ensureCalendarDate(
+          `row.${row.id}.effective_date`,
+          requiredFieldValue(row, values, ['effective_date', 'date'], 'effective date'),
+        ),
+        postingDate: ensureCalendarDate(
+          `row.${row.id}.posting_date`,
+          fieldValue(values, ['posting_date']) ??
+            requiredFieldValue(row, values, ['effective_date', 'date'], 'posting date'),
+        ),
+        totalAmountCents,
+        status: 'posted',
+        description: requiredFieldValue(row, values, ['description'], 'description'),
+        sourceType: 'import',
+        sourceReference,
+        reversalOfTransactionId: null,
+        supersedesTransactionId: null,
+        createdAtUtc: timestamp,
+        updatedAtUtc: timestamp,
+      };
+      const allocationType = enumValue(
+        row,
+        values,
+        ['allocation_type'],
+        ALLOCATION_TYPES,
+        'allocation type',
+      );
+      const allocation: TransactionAllocationInsert = {
+        id: createId(),
+        transactionId,
+        allocationType,
+        amountCents: totalAmountCents,
+        notes: null,
+        createdAtUtc: timestamp,
+        updatedAtUtc: timestamp,
+      };
+      const signErrors = validateTransactionSignConvention(transaction, [allocation]);
+      if (signErrors.length > 0) {
+        throw new ApplicationServiceError(
+          'validation',
+          'Import row cannot be posted.',
+          {
+            [`row.${row.id}`]: signErrors,
+          },
+        );
+      }
+      transactionsToInsert.push(transaction);
+      allocationsToInsert.push(allocation);
+      remember(row, 'debt_transaction', transaction.id);
+      remember(row, 'transaction_allocation', allocation.id);
+      auditsToInsert.push(
+        createTransactionAudit(
+          createId(),
+          transaction.id,
+          'import_transaction_posted',
+          'import_post',
+          timestamp,
+          'Approved workbook transaction row was posted.',
+          {
+            importBatchId: batch.batch.id,
+            stagedRowId: row.id,
+            allocationTypes: [allocation.allocationType],
+          },
+        ),
+      );
+      continue;
+    }
+
+    if (row.proposedRecordType === 'balance_snapshot') {
+      const debtId = debtIdForRow(row, values);
+      const snapshot: BalanceSnapshotInsert = {
+        id: createId(),
+        debtId,
+        effectiveDate: ensureCalendarDate(
+          `row.${row.id}.effective_date`,
+          requiredFieldValue(
+            row,
+            values,
+            ['effective_date', 'statement_date', 'date'],
+            'snapshot effective date',
+          ),
+        ),
+        confirmedBalanceCents: convertMoney(
+          `row.${row.id}.confirmed_balance`,
+          requiredFieldValue(
+            row,
+            values,
+            ['confirmed_balance', 'ending_balance', 'balance'],
+            'confirmed balance',
+          ),
+        ),
+        sourceType: 'import',
+        sourceReference,
+        notes: nullableText(fieldValue(values, ['notes'])),
+        createdAtUtc: timestamp,
+        updatedAtUtc: timestamp,
+      };
+      snapshotsToInsert.push(snapshot);
+      remember(row, 'balance_snapshot', snapshot.id);
+      auditsToInsert.push(
+        createSnapshotAudit(
+          createId(),
+          snapshot.id,
+          'import_balance_snapshot_posted',
+          'import_post',
+          timestamp,
+          'Approved workbook balance-snapshot row was posted.',
+          { importBatchId: batch.batch.id, stagedRowId: row.id },
+        ),
+      );
+    }
+  }
+
+  auditsToInsert.push(
+    createImportAudit(
+      createId(),
+      batch.batch.id,
+      'workbook_import_posted',
+      'import_post',
+      timestamp,
+      'Approved workbook import batch was posted transactionally.',
+      {
+        postedRowCount: createdRecordsByRow.size,
+        createdRecordCount: postingsToInsert.length,
+      },
+    ),
+  );
+
+  return {
+    debts: debtsToInsert,
+    terms: termsToInsert,
+    transactions: transactionsToInsert,
+    allocations: allocationsToInsert,
+    snapshots: snapshotsToInsert,
+    postings: postingsToInsert,
+    audits: auditsToInsert,
+    createdRecordsByRow,
+  };
+};
+
 const normalizeError = (error: unknown): never => {
   if (error instanceof ApplicationServiceError) {
     throw error;
@@ -1164,6 +1890,81 @@ export const createDebtMaintenanceService = ({
       try {
         const parsed = getImportBatchRequestSchema.parse(request);
         return mapImportBatch(getImportBatchOrThrow(database, parsed.id));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    previewImportBatchPosting: (request) => {
+      try {
+        const parsed = previewImportBatchPostingRequestSchema.parse(request);
+        return previewImportPosting(getImportBatchOrThrow(database, parsed.batchId));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    postImportBatch: (request) => {
+      try {
+        const parsed = postImportBatchRequestSchema.parse(request);
+        const batch = getImportBatchOrThrow(database, parsed.batchId);
+        const existingPreview = previewImportPosting(batch);
+
+        if (existingPreview.alreadyPosted) {
+          return {
+            ...existingPreview,
+            postedAtUtc:
+              batch.postings[0]?.postedAtUtc ?? batch.batch.updatedAtUtc ?? null,
+            createdRecordCount: batch.postings.length,
+          };
+        }
+
+        if (existingPreview.exceptionRows > 0) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Resolve import posting exceptions before posting the batch.',
+            Object.fromEntries(
+              existingPreview.rowResults
+                .filter((row) => row.validationMessages.length > 0)
+                .map((row) => [`row.${row.stagedRowId}`, row.validationMessages]),
+            ),
+          );
+        }
+
+        if (existingPreview.postableRows === 0) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Approve at least one valid staged row before posting.',
+          );
+        }
+
+        const timestamp = currentUtcTimestampSchema(now());
+        const built = buildImportPostingRecords(
+          batch,
+          createId,
+          timestamp,
+          listDebtRecords(database, true),
+        );
+
+        postImportBatchRecord(database, {
+          batchId: parsed.batchId,
+          updatedAtUtc: timestamp,
+          debts: built.debts,
+          terms: built.terms,
+          transactions: built.transactions,
+          allocations: built.allocations,
+          snapshots: built.snapshots,
+          postings: built.postings,
+          auditInputs: built.audits,
+        });
+
+        const postedBatch = getImportBatchOrThrow(database, parsed.batchId);
+        const postedPreview = previewImportPosting(postedBatch);
+        return {
+          ...postedPreview,
+          postedAtUtc: timestamp,
+          createdRecordCount: built.postings.length,
+        };
       } catch (error) {
         return normalizeError(error);
       }

@@ -16,8 +16,12 @@ import {
   importBatchOrNullResultSchema,
   importBatchResultSchema,
   importBatchSummaryListResultSchema,
+  importPostingPreviewResultSchema,
+  importPostingResultSchema,
   listImportBatchesRequestSchema,
   listDebtsRequestSchema,
+  postImportBatchRequestSchema,
+  previewImportBatchPostingRequestSchema,
   reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
   selectWorkbookForImportRequestSchema,
@@ -34,6 +38,8 @@ import {
   type GetDebtRequest,
   type GetImportBatchRequest,
   type ListDebtsRequest,
+  type PostImportBatchRequest,
+  type PreviewImportBatchPostingRequest,
   type ReverseDebtTransactionRequest,
   type RestoreDebtRequest,
   type SelectWorkbookForImportRequest,
@@ -49,7 +55,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 7,
+    bridgeVersion: 8,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -74,6 +80,20 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.listImportBatches,
           listImportBatchesRequestSchema.parse({}),
+        ),
+      ),
+    previewImportBatchPosting: async (request: PreviewImportBatchPostingRequest) =>
+      importPostingPreviewResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.previewImportBatchPosting,
+          previewImportBatchPostingRequestSchema.parse(request),
+        ),
+      ),
+    postImportBatch: async (request: PostImportBatchRequest) =>
+      importPostingResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.postImportBatch,
+          postImportBatchRequestSchema.parse(request),
         ),
       ),
     getImportBatch: async (request: GetImportBatchRequest) =>

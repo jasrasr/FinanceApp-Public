@@ -228,8 +228,9 @@ Stores user-reviewable sheet-level mapping proposals for a batch.
 | `created_at_utc`       | text |   Yes    | UTC timestamp                                         |
 | `updated_at_utc`       | text |   Yes    | UTC timestamp                                         |
 
-Sheet name is unique per batch. Approving a sheet mapping confirms review only;
-it does not post staged rows.
+Sheet name is unique per batch. Approving a sheet mapping confirms the sheet can
+participate in reviewed posting. It still does not post staged rows until the
+separate batch-posting action is confirmed.
 
 ## `staged_import_rows`
 
@@ -259,8 +260,30 @@ financial records.
 | `updated_at_utc`                |    text |   Yes    | UTC timestamp                                         |
 
 Batch, sheet, and row number are unique. Staged rows are not ledger rows, debt
-rows, term rows, balance snapshots, or reconciliations. A future posting workflow
-must explicitly create posted records from approved staged rows.
+rows, term rows, balance snapshots, or reconciliations. Reviewed posting
+explicitly creates live records from approved actual staged rows and preserves
+the staged source values separately from the normalized posted values.
+
+## `import_postings`
+
+Maps each live record created by reviewed workbook posting back to its source
+batch and staged row.
+
+| Column             | Type | Required | Rule                                                                   |
+| ------------------ | ---: | :------: | ---------------------------------------------------------------------- |
+| `id`               | text |   Yes    | Primary key; UUID                                                      |
+| `batch_id`         | text |   Yes    | Foreign key to `import_batches`                                        |
+| `staged_row_id`    | text |   Yes    | Foreign key to `staged_import_rows`                                    |
+| `live_entity_type` | text |   Yes    | Debt, debt term, debt transaction, transaction allocation, or snapshot |
+| `live_entity_id`   | text |   Yes    | UUID of the live record created from the staged row                    |
+| `posted_at_utc`    | text |   Yes    | UTC timestamp for the reviewed posting action                          |
+| `created_at_utc`   | text |   Yes    | UTC timestamp                                                          |
+
+`live_entity_type, live_entity_id` is unique so a live record can have only one
+workbook-import provenance row. Indexes support batch and staged-row lookup.
+Completed posting closes the import batch. Re-running a closed batch returns the
+existing posting provenance rather than inserting duplicate debts, terms,
+transactions, allocations, or snapshots.
 
 ## Settings
 

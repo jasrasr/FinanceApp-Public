@@ -5,8 +5,8 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.7.0`, aligned
-to the seven completed feature phases. Earlier phase entries did not record an
+phase seven on 2026-07-28. The current application version is `0.8.0`, aligned
+to the eight completed feature phases. Earlier phase entries did not record an
 application version at the time they were completed.
 
 ## Phase 1: Application Foundation
@@ -294,4 +294,49 @@ application version at the time they were completed.
   - Import approval is review-only; no staged row can be posted yet.
   - No payoff projections, advanced reports, backups, exports, or packaging.
 - Recommended next phase:
-  - Phase 8: Projection and payoff engine.
+  - Phase 8: Reviewed workbook import posting.
+
+## Phase 8: Reviewed Workbook Import Posting
+
+- Completion date: 2026-07-28
+- Application version: 0.8.0
+- Features implemented:
+  - Preview of approved staged workbook rows eligible for posting.
+  - Explicit confirmed posting of approved actual rows into debts, debt terms,
+    posted transactions, transaction allocations, and balance snapshots.
+  - Posting results showing which live records were created from each staged row.
+  - Safe retry behavior for closed posted batches.
+  - Import posting audit events.
+- Material architecture and accounting decisions:
+  - Posting is all-or-nothing for a batch.
+  - Staged rows require approved mappings, approved row review, actual
+    classification, and no unresolved validation, duplicate, or reconciliation
+    exception flags.
+  - Import posting does not create reconciliations.
+  - Original workbook displayed values and formulas remain in staging; live
+    financial records contain normalized application values.
+- Database schema or migration changes:
+  - Added `drizzle/0002_foamy_betty_ross.sql`.
+  - Added `import_postings` to link each created live record back to the import
+    batch and staged row.
+- New or changed IPC operations:
+  - Added typed `previewImportBatchPosting`.
+  - Added typed `postImportBatch`.
+  - Preload bridge advanced to version 8.
+- New UI screens or workflows:
+  - Posting preview panel on the workbook import screen.
+  - Explicit post-approved-rows action with disabled states for exceptions,
+    empty posting sets, and already-posted batches.
+  - Posting-result display showing created live records by source row.
+- Validation and smoke-test results:
+  - Integration tests cover successful reviewed posting with provenance, safe
+    retry without duplicates, and rollback on failed batch posting.
+  - Database migration tests and database check include `import_postings`.
+- Known limitations and technical debt:
+  - Posting requires normalized fields to be present on approved staged rows; the
+    UI does not yet provide full inline normalized-field editing.
+  - Posting remains conservative and does not resolve duplicate candidates or
+    reconciliation exceptions automatically.
+  - No payoff projections, advanced reports, backups, exports, or packaging.
+- Recommended next phase:
+  - Phase 9: Projection and payoff engine.

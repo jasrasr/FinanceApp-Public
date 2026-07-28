@@ -79,9 +79,10 @@ Implement the application in this order:
 5. Account-detail and reconciliation screen.
 6. Basic dashboard.
 7. Workbook import staging and mapping.
-8. Projection and payoff engine.
-9. Advanced reports.
-10. Backup, restore, export, and packaging.
+8. Reviewed workbook import posting.
+9. Projection and payoff engine.
+10. Advanced reports.
+11. Backup, restore, export, and packaging.
 
 Do not build the workbook importer before the core manual workflows are
 working. The database and accounting rules must first be proven through
@@ -311,6 +312,7 @@ The workbook is an import source, not the application calculation engine.
 - Do not build the importer before the manual debt, activity, snapshot, and
   reconciliation workflows are functioning.
 - Import into staging tables first.
+- Post only through a separate reviewed posting workflow.
 - Preserve the source sheet, row, cell references, and original displayed
   values where practical.
 - Validate and normalize staged values before posting.
@@ -321,6 +323,12 @@ The workbook is an import source, not the application calculation engine.
 - Flag every ambiguous row for review.
 - Do not post ambiguous activity until its classification and effective date
   have been approved.
+- No staged row may post unless its sheet mapping and row review are explicitly
+  approved and valid.
+- Import posting must be all-or-nothing for a batch unless a future documented
+  batch-partition design is explicitly approved.
+- Re-running a completed import batch must not create duplicate live records.
+- Preserve posted-record provenance through `import_postings`.
 - Treat formulas, hard-coded values, and displayed results as distinct source
   characteristics where relevant.
 - Do not translate legacy workbook formulas directly into production

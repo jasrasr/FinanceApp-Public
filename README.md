@@ -25,6 +25,9 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Workbook import staging and mapping for Excel files, including source
   provenance, sheet and row review, formulas as source metadata, ambiguous-row
   flags, control totals, and review-only approve/reject/defer states.
+- Reviewed workbook import posting for approved actual rows into debts, debt
+  terms, posted transactions, allocations, and balance snapshots, with batch
+  previews, all-or-nothing posting, safe retry behavior, and source provenance.
 - Restrained in-app display of the current package version and automatically
   generated last-changed timestamp.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
@@ -32,8 +35,8 @@ for maintaining debts and supporting future debt-paydown analysis.
   user-data directory.
 - Playwright-controlled Electron testing against disposable user-data directories.
 
-Posting imported rows, payoff scenario, reporting, backup, export, and packaging
-workflows have not been implemented.
+Payoff scenario, reporting, backup, export, and packaging workflows have not
+been implemented.
 
 ## Prerequisites
 
@@ -170,8 +173,13 @@ Electron user-data directory that it removes after the workflow.
 - Workbook selection and parsing occur only in the Electron main process.
 - Excel workbooks are treated as untrusted input and are never modified by Debt
   Tracker.
-- Import creates batches, sheet mappings, and staged rows only. It does not post
-  debts, terms, transactions, snapshots, reconciliations, or adjustments.
+- Import first creates batches, sheet mappings, and staged rows. Posting is a
+  separate reviewed action.
+- Reviewed posting may create debts, terms, posted transactions, allocations,
+  and balance snapshots from approved actual staged rows.
+- Import posting does not create reconciliations or payoff projections.
+- Posting is all-or-nothing for a batch. Failed posting leaves no partial live
+  records, and retrying a completed batch does not create duplicates.
 - Source workbook name, fingerprint, sheet, row, cell references, displayed
   values, formulas, and import timestamps are preserved as import provenance.
 - Original source values remain separate from normalized proposed values.

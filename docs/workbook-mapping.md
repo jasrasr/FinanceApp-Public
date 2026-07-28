@@ -1,8 +1,7 @@
 # Workbook Mapping
 
-Workbook import is implemented as a staging and review workflow only. It does
-not post imported rows to debts, debt terms, transactions, balance snapshots, or
-reconciliations.
+Workbook import is implemented as staged review followed by explicit reviewed
+posting. It never posts automatically.
 
 ## Source Handling
 
@@ -52,8 +51,9 @@ The importer proposes sheet types using conservative header heuristics:
 | `debt`             | Creditor, principal, origination, debt, loan, or account  |
 | `unknown`          | No reliable header pattern                                |
 
-Detected sheet mappings start with `needs_review` status. Approval confirms only
-that the proposed staging mapping was reviewed; it does not post rows.
+Detected sheet mappings start with `needs_review` status. Approval confirms that
+the proposed mapping can participate in reviewed posting; it does not post rows
+by itself.
 
 ## Row Detection and Review
 
@@ -76,8 +76,9 @@ Available review states are:
 - `rejected`
 - `deferred`
 
-These states are review-only. They do not create or change posted ledger,
-snapshot, reconciliation, debt, or term records.
+These states do not create or change posted ledger, snapshot, reconciliation,
+debt, or term records by themselves. Reviewed posting is a separate confirmed
+batch operation.
 
 ## Control Totals and Exceptions
 
@@ -95,14 +96,39 @@ The import review screen shows:
 Control totals are import-review aids. They are not ledger balances and do not
 replace reconciliation.
 
-## Future Posting Mapping
+## Reviewed Posting Mapping
 
-Posting imported rows is intentionally out of scope for phase seven. A future
-posting phase must:
+Reviewed posting requires:
 
-- Require explicit user approval before posting.
-- Convert approved staged rows through the same validation and accounting helpers
-  used by manual workflows.
-- Preserve source import provenance on posted records.
-- Reject or defer ambiguous actual-versus-projected rows.
-- Never overwrite posted ledger activity or confirmed snapshots silently.
+- Approved sheet mappings.
+- Approved staged rows.
+- Actual activity classification.
+- No unresolved validation messages.
+- No unresolved duplicate-candidate flag.
+- No unresolved reconciliation exception.
+
+Supported live targets are:
+
+- `debts`
+- `debt_terms`
+- `debt_transactions`
+- `transaction_allocations`
+- `balance_snapshots`
+
+Posting does not create balance reconciliations. It does not modify or delete the
+source workbook.
+
+Each posted transaction or snapshot receives a source reference using:
+
+```text
+import:<batch-id>:<staged-row-id>
+```
+
+Each live record created from a staged row is also linked through
+`import_postings`, which preserves the exact batch and staged-row provenance.
+Original source values and formulas remain in staging; normalized posted values
+are stored only in the live record fields appropriate for the target table.
+
+Posting is all-or-nothing for the batch. A failed posting rolls back live records
+and provenance rows. A completed batch is closed, and retrying it reports the
+existing created records without inserting duplicates.

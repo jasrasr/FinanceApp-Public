@@ -237,6 +237,12 @@ export const selectWorkbookForImportRequestSchema = z.object({}).strict();
 export const listImportBatchesRequestSchema = z.object({}).strict();
 
 export const getImportBatchRequestSchema = z.object({ id: uuidSchema }).strict();
+export const previewImportBatchPostingRequestSchema = z
+  .object({ batchId: uuidSchema })
+  .strict();
+export const postImportBatchRequestSchema = z
+  .object({ batchId: uuidSchema, confirmed: z.literal(true) })
+  .strict();
 
 export const updateImportSheetMappingRequestSchema = z
   .object({
@@ -552,6 +558,56 @@ export const importBatchDtoSchema = importBatchSummaryDtoSchema
   })
   .strict();
 
+export const importPostingLiveRecordDtoSchema = z
+  .object({
+    entityType: z.enum([
+      'debt',
+      'debt_term',
+      'debt_transaction',
+      'transaction_allocation',
+      'balance_snapshot',
+    ]),
+    entityId: uuidSchema,
+    label: z.string(),
+  })
+  .strict();
+
+export const importPostingRowResultDtoSchema = z
+  .object({
+    stagedRowId: uuidSchema,
+    sourceSheetName: z.string(),
+    sourceRowNumber: z.number().int().positive(),
+    proposedRecordType: importRecordTypeSchema,
+    reviewStatus: importReviewStatusSchema,
+    canPost: z.boolean(),
+    validationMessages: z.array(z.string()),
+    createdRecords: z.array(importPostingLiveRecordDtoSchema),
+  })
+  .strict();
+
+export const importPostingPreviewDtoSchema = z
+  .object({
+    batchId: uuidSchema,
+    batchStatus: z.enum(['open', 'reviewed', 'closed']),
+    approvedMappings: z.number().int().nonnegative(),
+    unapprovedMappings: z.number().int().nonnegative(),
+    approvedRows: z.number().int().nonnegative(),
+    rejectedRows: z.number().int().nonnegative(),
+    deferredRows: z.number().int().nonnegative(),
+    postableRows: z.number().int().nonnegative(),
+    exceptionRows: z.number().int().nonnegative(),
+    alreadyPosted: z.boolean(),
+    rowResults: z.array(importPostingRowResultDtoSchema),
+  })
+  .strict();
+
+export const importPostingResultDtoSchema = importPostingPreviewDtoSchema
+  .extend({
+    postedAtUtc: utcTimestampSchema.nullable(),
+    createdRecordCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const applicationErrorSchema = z
   .object({
     code: z.enum([
@@ -584,6 +640,12 @@ export const importBatchOrNullResultSchema = applicationResultSchema(
 export const importBatchSummaryListResultSchema = applicationResultSchema(
   z.array(importBatchSummaryDtoSchema),
 );
+export const importPostingPreviewResultSchema = applicationResultSchema(
+  importPostingPreviewDtoSchema,
+);
+export const importPostingResultSchema = applicationResultSchema(
+  importPostingResultDtoSchema,
+);
 
 export type CreateDebtRequest = z.infer<typeof createDebtRequestSchema>;
 export type DebtCoreInput = z.infer<typeof debtCoreInputSchema>;
@@ -609,6 +671,10 @@ export type SelectWorkbookForImportRequest = z.infer<
 >;
 export type ListImportBatchesRequest = z.infer<typeof listImportBatchesRequestSchema>;
 export type GetImportBatchRequest = z.infer<typeof getImportBatchRequestSchema>;
+export type PreviewImportBatchPostingRequest = z.infer<
+  typeof previewImportBatchPostingRequestSchema
+>;
+export type PostImportBatchRequest = z.infer<typeof postImportBatchRequestSchema>;
 export type UpdateImportSheetMappingRequest = z.infer<
   typeof updateImportSheetMappingRequestSchema
 >;
@@ -631,6 +697,8 @@ export type ImportBatchSummaryDto = z.infer<typeof importBatchSummaryDtoSchema>;
 export type ImportBatchDto = z.infer<typeof importBatchDtoSchema>;
 export type ImportSheetMappingDto = z.infer<typeof importSheetMappingDtoSchema>;
 export type StagedImportRowDto = z.infer<typeof stagedImportRowDtoSchema>;
+export type ImportPostingPreviewDto = z.infer<typeof importPostingPreviewDtoSchema>;
+export type ImportPostingResultDto = z.infer<typeof importPostingResultDtoSchema>;
 export type ApplicationError = z.infer<typeof applicationErrorSchema>;
 export type ApplicationResult<T> =
   | { readonly ok: true; readonly value: T }

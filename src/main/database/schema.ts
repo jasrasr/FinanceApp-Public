@@ -46,6 +46,13 @@ const IMPORT_REVIEW_STATUSES = [
   'deferred',
 ] as const;
 const IMPORT_ROW_CLASSIFICATIONS = ['actual', 'projected', 'ambiguous'] as const;
+const IMPORT_POSTING_ENTITY_TYPES = [
+  'debt',
+  'debt_term',
+  'debt_transaction',
+  'transaction_allocation',
+  'balance_snapshot',
+] as const;
 
 export const debts = sqliteTable(
   'debts',
@@ -590,6 +597,47 @@ export const stagedImportRows = sqliteTable(
   ],
 );
 
+export const importPostings = sqliteTable(
+  'import_postings',
+  {
+    id: text('id').primaryKey(),
+    batchId: text('batch_id')
+      .notNull()
+      .references(() => importBatches.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
+    stagedRowId: text('staged_row_id')
+      .notNull()
+      .references(() => stagedImportRows.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
+    liveEntityType: text('live_entity_type', {
+      enum: IMPORT_POSTING_ENTITY_TYPES,
+    }).notNull(),
+    liveEntityId: text('live_entity_id').notNull(),
+    postedAtUtc: text('posted_at_utc').notNull(),
+    createdAtUtc: text('created_at_utc').notNull(),
+  },
+  (table) => [
+    uniqueIndex('import_postings_live_entity_uq').on(
+      table.liveEntityType,
+      table.liveEntityId,
+    ),
+    index('import_postings_batch_idx').on(table.batchId),
+    index('import_postings_staged_row_idx').on(table.stagedRowId),
+    check(
+      'import_postings_entity_type_valid',
+      sql`${table.liveEntityType} IN (${sqlList(IMPORT_POSTING_ENTITY_TYPES)})`,
+    ),
+    check(
+      'import_postings_timestamp_format',
+      sql`${table.postedAtUtc} LIKE '%Z' AND ${table.createdAtUtc} LIKE '%Z'`,
+    ),
+  ],
+);
+
 export const schema = {
   auditEvents,
   balanceReconciliations,
@@ -598,6 +646,7 @@ export const schema = {
   debtTransactions,
   debts,
   importBatches,
+  importPostings,
   importSheetMappings,
   stagedImportRows,
   transactionAllocations,

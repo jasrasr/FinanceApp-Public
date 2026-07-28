@@ -1,6 +1,8 @@
 import type {
   ImportBatchDto,
   ImportBatchSummaryDto,
+  ImportPostingPreviewDto,
+  ImportPostingResultDto,
   ImportSheetMappingDto,
   StagedImportRowDto,
 } from '../../../shared/debt-contracts';
@@ -51,6 +53,9 @@ export interface WorkbookImportProps {
     row: StagedImportRowDto,
     reviewStatus: 'approved' | 'rejected' | 'deferred',
   ) => void;
+  readonly onPostBatch: () => void;
+  readonly postingPreview: ImportPostingPreviewDto | null;
+  readonly postingResult: ImportPostingResultDto | null;
 }
 
 export const WorkbookImport = ({
@@ -62,6 +67,9 @@ export const WorkbookImport = ({
   onSelectBatch,
   onReviewMapping,
   onReviewRow,
+  onPostBatch,
+  postingPreview,
+  postingResult,
 }: WorkbookImportProps): React.JSX.Element => (
   <section className="space-y-6">
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
@@ -72,10 +80,10 @@ export const WorkbookImport = ({
             Stage and map workbook rows
           </h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-            Imported workbook rows are staged for review only. This workflow does not
-            post debts, terms, transactions, balance snapshots, or reconciliations.
-            Formulas are preserved as source metadata and are not translated into
-            application calculation logic.
+            Imported workbook rows are staged first. Only explicitly approved and valid
+            rows can be posted later to debts, terms, transactions, allocations, or
+            balance snapshots. Formulas are preserved as source metadata and are not
+            translated into application calculation logic.
           </p>
         </div>
         <button
@@ -172,6 +180,127 @@ export const WorkbookImport = ({
                 </dd>
               </div>
             </dl>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="text-base font-semibold">Posting preview</h3>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                  Posting is all-or-nothing for the batch. Approved actual rows with
+                  approved mappings and no exceptions are eligible. Rejected and
+                  deferred rows are preserved but not posted.
+                </p>
+              </div>
+              <button
+                className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                disabled={
+                  saving ||
+                  !postingPreview ||
+                  postingPreview.postableRows === 0 ||
+                  postingPreview.exceptionRows > 0 ||
+                  postingPreview.alreadyPosted
+                }
+                onClick={onPostBatch}
+                type="button"
+              >
+                {saving ? 'Posting…' : 'Post approved rows'}
+              </button>
+            </div>
+
+            {postingPreview ? (
+              <>
+                <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <dt className="text-xs font-semibold text-slate-500 uppercase">
+                      Postable
+                    </dt>
+                    <dd className="mt-1 text-2xl font-semibold">
+                      {postingPreview.postableRows}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <dt className="text-xs font-semibold text-slate-500 uppercase">
+                      Exceptions
+                    </dt>
+                    <dd className="mt-1 text-2xl font-semibold">
+                      {postingPreview.exceptionRows}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <dt className="text-xs font-semibold text-slate-500 uppercase">
+                      Approved mappings
+                    </dt>
+                    <dd className="mt-1 text-2xl font-semibold">
+                      {postingPreview.approvedMappings}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <dt className="text-xs font-semibold text-slate-500 uppercase">
+                      Rejected rows
+                    </dt>
+                    <dd className="mt-1 text-2xl font-semibold">
+                      {postingPreview.rejectedRows}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <dt className="text-xs font-semibold text-slate-500 uppercase">
+                      Status
+                    </dt>
+                    <dd className="mt-2">
+                      <ReviewBadge>
+                        {postingPreview.alreadyPosted ? 'Posted' : 'Not posted'}
+                      </ReviewBadge>
+                    </dd>
+                  </div>
+                </dl>
+
+                {postingResult ? (
+                  <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                    Posted {postingResult.createdRecordCount} live records
+                    {postingResult.postedAtUtc
+                      ? ` at ${postingResult.postedAtUtc}`
+                      : ''}
+                    . Source provenance remains linked to the staged rows below.
+                  </p>
+                ) : null}
+
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase">
+                      <tr>
+                        <th className="py-2 pr-4">Source row</th>
+                        <th className="py-2 pr-4">Can post</th>
+                        <th className="py-2 pr-4">Exceptions</th>
+                        <th className="py-2 pr-4">Created live records</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {postingPreview.rowResults.slice(0, 100).map((row) => (
+                        <tr key={row.stagedRowId}>
+                          <td className="py-3 pr-4 font-medium">
+                            {row.sourceSheetName} row {row.sourceRowNumber}
+                          </td>
+                          <td className="py-3 pr-4">{row.canPost ? 'Yes' : 'No'}</td>
+                          <td className="py-3 pr-4 text-slate-700">
+                            {row.validationMessages.join('; ') || 'No exceptions'}
+                          </td>
+                          <td className="py-3 pr-4 text-slate-700">
+                            {row.createdRecords
+                              .map((record) => record.label)
+                              .join('; ') || 'Not posted'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <p className="mt-4 text-sm text-slate-600">
+                Select a batch to calculate posting eligibility.
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -311,8 +440,7 @@ export const WorkbookImport = ({
           <h3 className="text-xl font-semibold">No import batch selected</h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
             Select a staged batch or choose a workbook. Any workbook selected here is
-            treated as untrusted input and staged for review before a future posting
-            workflow can use it.
+            treated as untrusted input and staged for review before posting can use it.
           </p>
         </section>
       )}
