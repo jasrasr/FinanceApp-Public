@@ -1466,6 +1466,18 @@ describe('debt maintenance', () => {
       effectiveStartDate: '2026-01-01',
       annualInterestRatePercent: '5.75',
     });
+    expect(updated.currentTerm).toMatchObject({
+      effectiveStartDate: '2026-01-01',
+      annualInterestRatePercent: '5.75',
+      requiredPayment: '2500.00',
+    });
+    expect(service.listDebts({ includeArchived: false })[0]?.currentTerm).toMatchObject(
+      {
+        effectiveStartDate: '2026-01-01',
+        annualInterestRatePercent: '5.75',
+        requiredPayment: '2500.00',
+      },
+    );
   });
 
   it('rejects an overlapping or nonchronological term', () => {

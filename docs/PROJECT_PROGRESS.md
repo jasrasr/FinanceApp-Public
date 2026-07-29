@@ -5,7 +5,7 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.15.0`. Earlier
+phase seven on 2026-07-28. The current application version is `0.16.0`. Earlier
 phase entries did not record an application version at the time they were
 completed.
 
@@ -790,3 +790,60 @@ completed.
 - Recommended next phase:
   - Continue user acceptance testing before deciding whether the malformed
     reversal repair wizard is needed for production data.
+
+## Phase 16: Dashboard and Debt-Detail Usability Refinement
+
+- Completion date: 2026-07-29
+- Application version: 0.16.0
+- Features implemented:
+  - Made the Total active debt dashboard card navigate to the Debts screen.
+  - Made the Current escrow balance dashboard card navigate to a focused escrow
+    detail view.
+  - Added escrow detail rows showing current escrow balances and posted escrow
+    activity by applicable debt.
+  - Swapped dashboard card order so Interest activity YTD appears before New
+    borrowings YTD.
+  - Removed visible dashboard explanatory paragraphs while preserving accounting
+    basis text in accessible context and service contracts.
+  - Added a combined user-facing debt label using debt name and creditor.
+  - Simplified debt cards to show current principal balance, current effective
+    rate, current required payment, and concise maturity/status information.
+  - Simplified the normal debt-detail core information section and hid
+    technical effective-term and confirmed-snapshot history sections.
+- Material architecture and accounting decisions:
+  - Debt name and creditor remain separate database, import, report, and export
+    fields; the combined label is renderer presentation only.
+  - Current rate and required payment are selected in the main-process service
+    from the effective-dated term applicable as of the service effective date.
+  - Confirmed balance snapshots and effective-dated terms remain preserved for
+    reconciliation, audit, and calculations even though they are hidden from the
+    normal debt-detail view.
+  - Dashboard metric basis strings remain available through typed DTOs and
+    accessible text; the normal visual dashboard is intentionally cleaner.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - No new IPC operations.
+  - Debt summary and detail DTOs now include `currentTerm`.
+  - Bridge contract version increased to 16.
+- New UI screens or workflows:
+  - Added dashboard-to-debts card navigation.
+  - Added dashboard-to-escrow-detail card navigation.
+  - Added Escrow balances and activity detail view.
+  - Updated debt list and debt detail primary labels to use the combined
+    name-creditor label.
+- Validation and smoke-test results:
+  - Added or updated renderer and service tests for dashboard navigation, card
+    ordering, hidden explanatory dashboard text, combined debt labels, current
+    term selection, simplified debt detail, and escrow detail display.
+  - Final validation and smoke-test results should be recorded in the completion
+    report for this phase.
+- Known limitations and technical debt:
+  - Effective-term editing remains available through the existing Add term
+    workflow, but the full term-history table is no longer displayed in the
+    normal debt-detail view.
+  - Escrow detail reuses existing debt-detail retrieval rather than introducing
+    a separate escrow-only service query.
+- Recommended next phase:
+  - Continue focused user acceptance testing of the simplified dashboard, debt
+    list, debt detail, and escrow navigation before adding unrelated workflows.

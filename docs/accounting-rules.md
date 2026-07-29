@@ -8,8 +8,15 @@ are distinct concepts.
 
 - Original principal is an opening fact and is never treated as a mutable current
   balance.
+- Normal user-facing debt cards and debt detail emphasize the
+  application-calculated current principal balance and current effective terms.
+  Original principal remains preserved as historical data but is not displayed as
+  a current-balance substitute.
 - Posted transactions contain actual activity only.
 - Confirmed balance snapshots are evidence as of an effective date.
+- Confirmed balance snapshots remain available to reconciliation and audit
+  workflows even when standalone snapshot history is hidden from the normal
+  debt-detail view.
 - A calculated balance is not confirmed until reconciled.
 - A calculated current balance may be displayed as of an explicit effective date,
   but it is not a confirmed lender balance.

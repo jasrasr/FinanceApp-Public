@@ -1,4 +1,5 @@
 import type { DebtSummaryDto } from '../../../shared/debt-contracts';
+import { combinedDebtLabel } from './debt-label';
 import { formatDollarString } from './display-format';
 import { labelFromValue } from './form-utils';
 
@@ -24,10 +25,6 @@ export const DebtList = ({
         <h2 className="mt-1 text-3xl font-semibold tracking-tight" id="debts-heading">
           Debts
         </h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Original principal and initial terms are shown below. Current balances will be
-          introduced only after posted-activity workflows exist.
-        </p>
       </div>
       <button
         className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 focus:ring-2 focus:ring-blue-300 focus:outline-none"
@@ -67,8 +64,8 @@ export const DebtList = ({
       <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full border-collapse text-sm">
           <caption className="sr-only">
-            Debt records with original principal and initial effective terms. Select a
-            row to open debt detail.
+            Debt records with current calculated balances and current effective terms.
+            Select a row to open debt detail.
           </caption>
           <thead className="bg-slate-50 text-left text-xs tracking-wide text-slate-600 uppercase">
             <tr>
@@ -79,26 +76,23 @@ export const DebtList = ({
                 Type
               </th>
               <th className="px-4 py-3 font-semibold" scope="col">
-                Status
+                Current principal
               </th>
               <th className="px-4 py-3 text-right font-semibold" scope="col">
-                Current balance
+                Current rate
+              </th>
+              <th className="px-4 py-3 text-right font-semibold" scope="col">
+                Current payment
               </th>
               <th className="px-4 py-3 font-semibold" scope="col">
-                Dates
-              </th>
-              <th className="px-4 py-3 text-right font-semibold" scope="col">
-                Initial rate
-              </th>
-              <th className="px-4 py-3 text-right font-semibold" scope="col">
-                Initial required payment
+                Maturity
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {debts.map((debt) => (
               <tr
-                aria-label={`Open ${debt.name}`}
+                aria-label={`Open ${combinedDebtLabel(debt)}`}
                 className="cursor-pointer align-top hover:bg-slate-50 focus:bg-slate-50 focus:outline focus:outline-2 focus:outline-blue-500"
                 key={debt.id}
                 onClick={() => onSelect(debt.id)}
@@ -113,9 +107,8 @@ export const DebtList = ({
               >
                 <td className="px-4 py-4">
                   <span className="block font-semibold text-slate-950">
-                    {debt.name}
+                    {combinedDebtLabel(debt)}
                   </span>
-                  <span className="mt-1 block text-slate-600">{debt.creditor}</span>
                   {debt.archivedAtUtc ? (
                     <span className="mt-2 inline-flex rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
                       Archived
@@ -124,9 +117,6 @@ export const DebtList = ({
                 </td>
                 <td className="px-4 py-4 text-slate-700">
                   {labelFromValue(debt.debtType)}
-                </td>
-                <td className="px-4 py-4 text-slate-700">
-                  {labelFromValue(debt.status)}
                 </td>
                 <td className="px-4 py-4 text-right font-variant-numeric tabular-nums">
                   {formatDollarString(debt.currentBalance)}
@@ -139,25 +129,20 @@ export const DebtList = ({
                     </span>
                   ) : null}
                 </td>
+                <td className="px-4 py-4 text-right tabular-nums">
+                  {debt.currentTerm.annualInterestRatePercent}%
+                  <span className="block text-xs text-slate-500">
+                    from {debt.currentTerm.effectiveStartDate}
+                  </span>
+                </td>
+                <td className="px-4 py-4 text-right tabular-nums">
+                  {formatDollarString(debt.currentTerm.requiredPayment)}
+                  <span className="block text-xs text-slate-500">
+                    {labelFromValue(debt.currentTerm.paymentFrequency)}
+                  </span>
+                </td>
                 <td className="px-4 py-4 text-slate-700">
-                  <span className="block">Originated {debt.originationDate}</span>
-                  <span className="mt-1 block">
-                    {debt.maturityDate
-                      ? `Matures ${debt.maturityDate}`
-                      : 'No maturity date'}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-right tabular-nums">
-                  {debt.initialTerm.annualInterestRatePercent}%
-                  <span className="block text-xs text-slate-500">
-                    from {debt.initialTerm.effectiveStartDate}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-right tabular-nums">
-                  {formatDollarString(debt.initialTerm.requiredPayment)}
-                  <span className="block text-xs text-slate-500">
-                    {labelFromValue(debt.initialTerm.paymentFrequency)}
-                  </span>
+                  {debt.maturityDate ?? labelFromValue(debt.status)}
                 </td>
               </tr>
             ))}

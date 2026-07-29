@@ -876,6 +876,31 @@ const requireInitialTerm = (record: DebtWithTermsRecord): DebtTermRecord => {
   return initialTerm;
 };
 
+const currentTermForDate = (
+  terms: readonly DebtTermRecord[],
+  effectiveDate: string,
+): DebtTermRecord => {
+  const currentTerm = terms.find(
+    (term) =>
+      term.effectiveStartDate <= effectiveDate &&
+      (term.effectiveEndDate === null || term.effectiveEndDate >= effectiveDate),
+  );
+
+  if (currentTerm) return currentTerm;
+
+  const priorTerms = terms.filter((term) => term.effectiveStartDate <= effectiveDate);
+  const fallbackTerm = priorTerms.at(-1) ?? terms[0];
+
+  if (!fallbackTerm) {
+    throw new ApplicationServiceError(
+      'internal',
+      'This debt is missing its required initial terms record.',
+    );
+  }
+
+  return fallbackTerm;
+};
+
 const mapSummary = (
   database: AppDatabase,
   record: DebtWithActivityRecord,
@@ -899,6 +924,7 @@ const mapSummary = (
     originationDate: debt.originationDate,
     maturityDate: debt.maturityDate,
     initialTerm: mapTerm(requireInitialTerm(record)),
+    currentTerm: mapTerm(currentTermForDate(record.terms, effectiveDate)),
     archivedAtUtc: debt.archivedAtUtc,
   };
 };
@@ -911,6 +937,7 @@ const mapDetail = (
   const debt = record.debt;
 
   requireInitialTerm(record);
+  const currentTerm = currentTermForDate(record.terms, effectiveDate);
 
   return {
     id: debt.id,
@@ -935,6 +962,7 @@ const mapDetail = (
     taxCategory: debt.taxCategory,
     deductiblePercentage: basisPointsToPercentString(debt.deductiblePercentageBps),
     notes: debt.notes,
+    currentTerm: mapTerm(currentTerm),
     terms: record.terms.map(mapTerm),
     transactions: record.transactions.map(mapTransaction),
     balanceSnapshots: record.balanceSnapshots.map(mapBalanceSnapshot),
@@ -964,31 +992,6 @@ const addMonths = (financialDate: string, months: number): string => {
 
 const isWithinDateRange = (date: string, startDate: string, endDate: string): boolean =>
   date >= startDate && date <= endDate;
-
-const currentTermForDate = (
-  terms: readonly DebtTermRecord[],
-  effectiveDate: string,
-): DebtTermRecord => {
-  const currentTerm = terms.find(
-    (term) =>
-      term.effectiveStartDate <= effectiveDate &&
-      (term.effectiveEndDate === null || term.effectiveEndDate >= effectiveDate),
-  );
-
-  if (currentTerm) return currentTerm;
-
-  const priorTerms = terms.filter((term) => term.effectiveStartDate <= effectiveDate);
-  const fallbackTerm = priorTerms.at(-1) ?? terms[0];
-
-  if (!fallbackTerm) {
-    throw new ApplicationServiceError(
-      'internal',
-      'This debt is missing its required initial terms record.',
-    );
-  }
-
-  return fallbackTerm;
-};
 
 const roundRatio = (numerator: bigint, denominator: bigint): number => {
   if (denominator === 0n) return 0;

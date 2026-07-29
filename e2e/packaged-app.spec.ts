@@ -38,7 +38,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.15.0')).toBeVisible();
+      await expect(window.getByText('Version 0.16.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();
@@ -125,6 +125,12 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
   await window.getByRole('button', { name: 'Dashboard' }).click();
   await expect(window.getByText('Total active debt')).toBeVisible();
   await expectDashboardMetric(window, 'Total active debt', '$100,000.00');
+  await expectDashboardBasisHidden(
+    window,
+    'Total active debt',
+    '$100,000.00',
+    /Application-calculated ledger balances for active debts/i,
+  );
 
   await window.getByRole('button', { name: 'Debts' }).click();
   await window
@@ -151,11 +157,12 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
   await expectDashboardMetric(window, 'Interest activity YTD', '$0.00');
   await expectDashboardMetric(window, 'Current escrow balance', '$300.00');
   await expect(window.getByRole('heading', { name: 'Escrow balances' })).toHaveCount(0);
-  await expect(
-    window
-      .getByText(/posted non-superseded activity dated 2026-01-01 through 2026-07-29/i)
-      .first(),
-  ).toBeVisible();
+  await expectDashboardBasisHidden(
+    window,
+    'Principal reduction YTD',
+    '$0.00',
+    /posted non-superseded activity dated 2026-01-01 through 2026-07-29/i,
+  );
 
   await window.getByRole('button', { name: 'Debts' }).click();
   await window
@@ -175,7 +182,7 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
     .click();
   await expect(window.getByText('Transaction was reversed.')).toBeVisible();
   await expect(
-    window.getByLabel('Core debt information').getByText('$0.00'),
+    window.getByLabel('Core debt information').getByText('$100,000.00'),
   ).toBeVisible();
 
   await window.getByRole('button', { name: 'Dashboard' }).click();
@@ -183,9 +190,12 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
   await expectDashboardMetric(window, 'Principal reduction YTD', '$0.00');
   await expectDashboardMetric(window, 'Interest activity YTD', '$0.00');
   await expectDashboardMetric(window, 'Current escrow balance', '$0.00');
-  await expect(
-    window.getByText(/dated 2026-01-01 through 2026-07-29/i).first(),
-  ).toBeVisible();
+  await expectDashboardBasisHidden(
+    window,
+    'Interest activity YTD',
+    '$0.00',
+    /dated 2026-01-01 through 2026-07-29/i,
+  );
 
   await window.getByRole('button', { name: 'Debts' }).click();
   await window
@@ -230,11 +240,31 @@ const expectDashboardMetric = async (
   await expect(
     window
       .getByText(label, { exact: true })
-      .locator('xpath=ancestor::section[1]')
+      .locator('xpath=ancestor::*[self::section or self::button][1]')
       .getByText(value, {
         exact: true,
       }),
   ).toBeVisible();
+};
+
+const expectDashboardBasisHidden = async (
+  window: Page,
+  label: string,
+  value: string,
+  basis: RegExp,
+): Promise<void> => {
+  const effectiveDate = '2026-07-29';
+  const accessibleName = `${label}: ${value} as of ${effectiveDate}`;
+  const dashboard = window.locator('section[aria-labelledby="dashboard-heading"]');
+  const card =
+    label === 'Total active debt' || label === 'Current escrow balance'
+      ? dashboard.getByRole('button', { name: accessibleName })
+      : dashboard.getByRole('region', { name: accessibleName });
+
+  await expect(card).toBeVisible();
+  await expect(card).not.toHaveAccessibleName(basis);
+  await expect(card.locator('.sr-only').filter({ hasText: basis })).toHaveCount(1);
+  await expect(dashboard.locator('p').filter({ hasText: basis })).toHaveCount(0);
 };
 
 const createGeneratedMortgage = async (window: Page): Promise<void> => {
@@ -260,7 +290,9 @@ const createGeneratedMortgage = async (window: Page): Promise<void> => {
   await window.getByLabel('Required payment').fill('1500.00');
   await window.getByRole('button', { name: 'Create debt' }).click();
   await expect(
-    window.getByRole('heading', { name: 'Packaged Historical Mortgage' }),
+    window.getByRole('heading', {
+      name: 'Packaged Historical Mortgage — Packaged Smoke Fictional Mortgage Co.',
+    }),
   ).toBeVisible();
 };
 
@@ -382,5 +414,9 @@ const createGeneratedDebt = async (
   await window.getByLabel('Annual interest rate (%)').fill('4.25');
   await window.getByLabel('Required payment').fill(payment);
   await window.getByRole('button', { name: 'Create debt' }).click();
-  await expect(window.getByRole('heading', { name })).toBeVisible();
+  await expect(
+    window.getByRole('heading', {
+      name: `${name} — Packaged Smoke Fictional Credit Union`,
+    }),
+  ).toBeVisible();
 };

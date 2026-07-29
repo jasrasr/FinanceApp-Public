@@ -460,12 +460,13 @@ export const debtSummaryDtoSchema = z
     originationDate: financialDateInputSchema,
     maturityDate: financialDateInputSchema.nullable(),
     initialTerm: debtTermDtoSchema,
+    currentTerm: debtTermDtoSchema,
     archivedAtUtc: utcTimestampSchema.nullable(),
   })
   .strict();
 
 export const debtDetailDtoSchema = debtSummaryDtoSchema
-  .omit({ initialTerm: true })
+  .omit({ initialTerm: true, currentTerm: true })
   .extend({
     purpose: z.string(),
     minimumPayment: z.string(),
@@ -475,6 +476,7 @@ export const debtDetailDtoSchema = debtSummaryDtoSchema
     taxCategory: z.enum(TAX_CATEGORIES),
     deductiblePercentage: z.string(),
     notes: z.string().nullable(),
+    currentTerm: debtTermDtoSchema,
     terms: z.array(debtTermDtoSchema).min(1),
     transactions: z.array(debtTransactionDtoSchema),
     balanceSnapshots: z.array(balanceSnapshotDtoSchema),

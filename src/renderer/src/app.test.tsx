@@ -19,9 +19,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 15,
+  bridgeVersion: 16,
   appMetadata: {
-    version: '0.15.0',
+    version: '0.16.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -526,11 +526,25 @@ const sampleDebtDetail: DebtDetailDto = {
   taxCategory: 'business',
   deductiblePercentage: '37.25',
   notes: 'Fictional detail record.',
+  currentTerm: {
+    id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c012',
+    effectiveStartDate: '2026-01-01',
+    effectiveEndDate: null,
+    interestRateType: 'fixed',
+    annualInterestRatePercent: '5.75',
+    dayCountConvention: 'actual_365',
+    calculationConvention: 'simple_daily',
+    requiredPayment: '2500.00',
+    paymentFrequency: 'monthly',
+    notes: 'Current terms.',
+    createdAtUtc: '2026-07-27T13:00:00.000Z',
+    updatedAtUtc: '2026-07-27T13:00:00.000Z',
+  },
   terms: [
     {
       id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c011',
       effectiveStartDate: '2025-01-15',
-      effectiveEndDate: null,
+      effectiveEndDate: '2025-12-31',
       interestRateType: 'fixed',
       annualInterestRatePercent: '5.49',
       dayCountConvention: 'actual_365',
@@ -538,6 +552,20 @@ const sampleDebtDetail: DebtDetailDto = {
       requiredPayment: '2450.00',
       paymentFrequency: 'monthly',
       notes: 'Opening terms.',
+      createdAtUtc: '2026-07-27T13:00:00.000Z',
+      updatedAtUtc: '2026-07-27T13:00:00.000Z',
+    },
+    {
+      id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c012',
+      effectiveStartDate: '2026-01-01',
+      effectiveEndDate: null,
+      interestRateType: 'fixed',
+      annualInterestRatePercent: '5.75',
+      dayCountConvention: 'actual_365',
+      calculationConvention: 'simple_daily',
+      requiredPayment: '2500.00',
+      paymentFrequency: 'monthly',
+      notes: 'Current terms.',
       createdAtUtc: '2026-07-27T13:00:00.000Z',
       updatedAtUtc: '2026-07-27T13:00:00.000Z',
     },
@@ -633,6 +661,7 @@ const sampleDebtSummary: DebtSummaryDto = {
   originationDate: sampleDebtDetail.originationDate,
   maturityDate: sampleDebtDetail.maturityDate,
   initialTerm: sampleDebtDetail.terms[0]!,
+  currentTerm: sampleDebtDetail.currentTerm,
   archivedAtUtc: sampleDebtDetail.archivedAtUtc,
 };
 
@@ -669,7 +698,29 @@ describe('debt maintenance application', () => {
     expect(screen.getByRole('button', { name: 'Create debt' })).toBeVisible();
   });
 
-  it('renders posted-activity and snapshot sections on the debt detail screen', async () => {
+  it('shows combined labels and current term values on debt cards', async () => {
+    const bridge = createBridge();
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [sampleDebtSummary],
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
+
+    expect(
+      await screen.findByText('Fictional Equipment Note — Harbor Ridge Cooperative'),
+    ).toBeVisible();
+    expect(screen.queryByText('Harbor Ridge Cooperative')).toBeNull();
+    expect(screen.getByText('$124,600.00')).toBeVisible();
+    expect(screen.getByText('5.75%')).toBeVisible();
+    expect(screen.getByText('$2,500.00')).toBeVisible();
+    expect(screen.queryByText('Initial rate')).toBeNull();
+    expect(screen.queryByText('Initial required payment')).toBeNull();
+    expect(screen.queryByText('$125,000.00')).toBeNull();
+  });
+
+  it('renders simplified debt detail and hides technical history sections', async () => {
     const bridge = createBridge();
     bridge.listDebts = vi.fn(async () => ({
       ok: true as const,
@@ -684,17 +735,32 @@ describe('debt maintenance application', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
     fireEvent.click(
-      await screen.findByRole('button', { name: /Open Fictional Equipment Note/ }),
+      await screen.findByRole('button', {
+        name: /Open Fictional Equipment Note — Harbor Ridge Cooperative/,
+      }),
     );
     expect(
-      await screen.findByRole('heading', { name: sampleDebtDetail.name }),
+      await screen.findByRole('heading', {
+        name: 'Fictional Equipment Note — Harbor Ridge Cooperative',
+      }),
     ).toBeVisible();
 
+    expect(screen.getByText('$124,600.00 as of 2026-07-28')).toBeVisible();
+    expect(screen.getByText('5.75%')).toBeVisible();
+    expect(screen.getByText('$2,500.00 Monthly')).toBeVisible();
+    expect(screen.queryByText('Original principal')).toBeNull();
+    expect(screen.queryByText('Purpose')).toBeNull();
+    expect(screen.queryByText('Collateral')).toBeNull();
+    expect(screen.queryByText('Created')).toBeNull();
+    expect(screen.queryByText('Last updated')).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Effective-dated debt terms' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Confirmed balance snapshots' }),
+    ).toBeNull();
     expect(
       await screen.findByRole('heading', { name: 'Posted transactions' }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('heading', { name: 'Confirmed balance snapshots' }),
     ).toBeVisible();
     expect(
       screen.getByRole('heading', { name: 'Balance reconciliations' }),
@@ -710,11 +776,102 @@ describe('debt maintenance application', () => {
     expect(await screen.findByRole('heading', { name: 'Debt overview' })).toBeVisible();
     expect(screen.getByText('$124,500.00')).toBeVisible();
     expect(screen.getByText('Principal reduction YTD')).toBeVisible();
+    expect(screen.queryByText(/Metrics use active debts only/)).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: 'Total active debt: $124,500.00 as of 2026-07-28',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('region', {
+        name: 'Principal reduction YTD: $400.00 as of 2026-07-28',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', {
+        name: /Application-calculated ledger balances/,
+      }),
+    ).toBeNull();
+    expect(screen.getByText(/Application-calculated ledger balances/)).toHaveClass(
+      'sr-only',
+    );
     expect(
       screen.getByText(
         'No unreconciled, in-progress, or exception reconciliation items for active debts.',
       ),
     ).toBeVisible();
+  });
+
+  it('navigates from dashboard total active debt to debts', async () => {
+    const bridge = createBridge();
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Total active debt/ }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'No debts to display' }),
+    ).toBeVisible();
+    expect(bridge.listDebts).toHaveBeenCalledWith({ includeArchived: false });
+  });
+
+  it('navigates from dashboard current escrow balance to escrow detail', async () => {
+    const bridge = createBridge();
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        ...sampleDebtDetail,
+        calculatedEscrowBalance: '300.00',
+        transactions: [
+          {
+            ...sampleDebtDetail.transactions[0]!,
+            allocations: [
+              ...sampleDebtDetail.transactions[0]!.allocations,
+              {
+                id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c033',
+                allocationType: 'escrow' as const,
+                amount: '-300.00',
+                notes: null,
+                createdAtUtc: '2026-07-27T13:00:00.000Z',
+                updatedAtUtc: '2026-07-27T13:00:00.000Z',
+              },
+            ],
+          },
+        ],
+      },
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Current escrow balance/ }),
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Escrow balances and activity' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', {
+        name: 'Fictional Equipment Note — Harbor Ridge Cooperative',
+      }),
+    ).toBeVisible();
+    expect(screen.getByText('Generated payment.')).toBeVisible();
+    expect(screen.getAllByText('$300.00').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('orders dashboard cards with interest activity before new borrowings', async () => {
+    render(<App bridge={createBridge()} />);
+
+    await screen.findByRole('heading', { name: 'Debt overview' });
+    const cardLabels = screen
+      .getAllByRole('heading', { level: 3 })
+      .slice(0, 4)
+      .map((heading) => heading.textContent);
+
+    expect(cardLabels).toEqual([
+      'Total active debt',
+      'Principal reduction YTD',
+      'Interest activity YTD',
+      'New borrowings YTD',
+    ]);
   });
 
   it('renders dashboard data-integrity exceptions for malformed reversals', async () => {
@@ -753,14 +910,16 @@ describe('debt maintenance application', () => {
       ),
     ).toBeVisible();
     expect(screen.getByText('Source generated-malformed-reversal')).toBeVisible();
-    expect(screen.getByText(/Data-integrity exceptions are present/)).toBeVisible();
+    expect(screen.getByText(/Data-integrity exceptions are present/)).toHaveClass(
+      'sr-only',
+    );
   });
 
   it('renders application version and local last-changed metadata', async () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.15.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.16.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,

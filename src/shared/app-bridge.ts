@@ -120,6 +120,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 15;
+  readonly bridgeVersion: 16;
   readonly appMetadata: AppMetadataDto;
 }

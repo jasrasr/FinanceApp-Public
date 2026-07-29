@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.15.0')).toBeVisible();
+    await expect(window.getByText('Version 0.16.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -54,7 +54,9 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Create debt' }).click();
 
     await expect(
-      window.getByRole('heading', { name: 'Fictional Harbor Mortgage Note' }),
+      window.getByRole('heading', {
+        name: 'Fictional Harbor Mortgage Note — Harbor Ridge Cooperative',
+      }),
     ).toBeVisible();
     await expect(
       window.getByText('Debt and initial effective-dated terms were created.'),
@@ -75,7 +77,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Save changes' }).click();
     await expect(
       window.getByRole('heading', {
-        name: 'Updated Fictional Harbor Mortgage Note',
+        name: 'Updated Fictional Harbor Mortgage Note — Harbor Ridge Cooperative',
       }),
     ).toBeVisible();
 
@@ -87,8 +89,8 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(
       window.getByText('A new effective-dated term period was added.'),
     ).toBeVisible();
-    await expect(window.getByText('through 2025-12-31')).toBeVisible();
     await expect(window.getByText('5.75%')).toBeVisible();
+    await expect(window.getByText('$2,500.00 Monthly')).toBeVisible();
 
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await window.getByLabel('Transaction type').selectOption('payment');
@@ -131,10 +133,8 @@ test('completes the manual debt-maintenance workflow', async () => {
     ).toBeVisible();
     await expect(window.getByText('Reconciled')).toBeVisible();
     await expect(
-      window
-        .getByLabel('Confirmed balance snapshots')
-        .getByRole('cell', { name: '$123,600.00' }),
-    ).toBeVisible();
+      window.getByRole('heading', { name: 'Confirmed balance snapshots' }),
+    ).toHaveCount(0);
 
     await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
     await window.locator('[name="reconciliation.statementDate"]').fill('2026-02-01');

@@ -23,7 +23,8 @@ for maintaining debts and supporting future debt-paydown analysis.
   reconciliations.
 - Basic dashboard with active-debt totals, year-to-date posted activity metrics,
   current escrow balance, current-term payment and rate summaries, upcoming
-  maturities, and open reconciliation attention items.
+  maturities, open reconciliation attention items, and drill-through navigation
+  to debt and escrow detail.
 - Workbook import staging and mapping for Excel files, including source
   provenance, sheet and row review, formulas as source metadata, ambiguous-row
   flags, control totals, and review-only approve/reject/defer states.
@@ -189,8 +190,19 @@ Electron user-data directory that it removes after the workflow.
 - A new term is appended after the latest term; an open prior term is closed on
   the day before the new effective date.
 - Archive and restore preserve every term and create audit events.
-- Debt cards show the application-calculated current balance as of the displayed
-  effective date. Debt detail still shows original principal separately.
+- Debt names and creditors are retained as separate internal fields but are
+  presented together in primary navigation displays, for example
+  `Generated Mortgage — Fictional Credit Union`.
+- Debt cards show the application-calculated current principal balance as of the
+  displayed effective date, plus the current effective interest rate and
+  required payment. They do not label original principal or initial terms as
+  current values.
+- Normal debt detail emphasizes current principal balance, current effective
+  rate and payment, debt type, origination date, maturity date, escrow balance
+  when applicable, and status. Original principal, notes, collateral, purpose,
+  audit timestamps, technical term history, and standalone confirmed snapshots
+  remain preserved in the data model but are not part of the normal detail
+  summary.
 - Calculated debt balances use principal-related allocations and explicitly
   balance-affecting charges. Payment interest and escrow allocations do not
   reduce debt principal.
@@ -221,8 +233,10 @@ Electron user-data directory that it removes after the workflow.
 
 - Dashboard metrics exclude archived debts.
 - Total active debt uses application-calculated ledger balances as of the
-  displayed dashboard effective date.
+  displayed dashboard effective date and links to the Debts screen.
 - Current escrow balance is displayed separately from debt principal balance.
+  Its dashboard card links to an escrow detail view showing balances and posted
+  escrow activity by applicable debt.
 - Year-to-date metrics use posted non-superseded activity from January 1 through
   the dashboard effective date based on transaction effective dates, not created,
   updated, import, audit, or system timestamps.

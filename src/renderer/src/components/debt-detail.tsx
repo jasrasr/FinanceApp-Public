@@ -1,9 +1,9 @@
 import type {
   BalanceReconciliationDto,
-  BalanceSnapshotDto,
   DebtDetailDto,
   DebtTransactionDto,
 } from '../../../shared/debt-contracts';
+import { combinedDebtLabel } from './debt-label';
 import {
   formatAbsoluteDollarString,
   formatDollarString,
@@ -71,7 +71,7 @@ export const DebtDetail = ({
             className="text-3xl font-semibold tracking-tight"
             id="debt-detail-heading"
           >
-            {debt.name}
+            {combinedDebtLabel(debt)}
           </h2>
           {debt.archivedAtUtc ? (
             <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -79,7 +79,6 @@ export const DebtDetail = ({
             </span>
           ) : null}
         </div>
-        <p className="mt-2 text-slate-600">{debt.creditor}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {!debt.archivedAtUtc ? (
@@ -133,7 +132,7 @@ export const DebtDetail = ({
       </div>
     </div>
 
-    <div className="mt-8 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+    <div className="mt-8">
       <section
         className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
         aria-labelledby="core-information-heading"
@@ -142,132 +141,38 @@ export const DebtDetail = ({
           Core debt information
         </h3>
         <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
-          <Definition label="Debt type" value={labelFromValue(debt.debtType)} />
-          <Definition label="Status" value={labelFromValue(debt.status)} />
-          <Definition label="Purpose" value={debt.purpose} />
+          <Definition label="Debt" value={combinedDebtLabel(debt)} />
           <Definition
-            label="Original principal"
-            value={formatDollarString(debt.originalPrincipal)}
+            label="Current principal balance"
+            value={`${formatDollarString(debt.currentBalance)} as of ${debt.currentBalanceEffectiveDate}`}
           />
+          <Definition
+            label="Current interest rate"
+            value={`${debt.currentTerm.annualInterestRatePercent}%`}
+          />
+          <Definition
+            label="Current required payment"
+            value={`${formatDollarString(debt.currentTerm.requiredPayment)} ${labelFromValue(debt.currentTerm.paymentFrequency)}`}
+          />
+          <Definition label="Debt type" value={labelFromValue(debt.debtType)} />
           <Definition label="Origination date" value={debt.originationDate} />
           <Definition
             label="Maturity date"
             value={debt.maturityDate ?? 'Not provided'}
           />
-          <Definition
-            label="Calculated escrow balance"
-            value={formatDollarString(debt.calculatedEscrowBalance)}
-          />
-          <Definition
-            label="Credit limit"
-            value={
-              debt.creditLimit ? formatDollarString(debt.creditLimit) : 'Not applicable'
-            }
-          />
-          <Definition
-            label="Collateral"
-            value={debt.collateralDescription ?? 'Not provided'}
-          />
-          <Definition label="Tax category" value={labelFromValue(debt.taxCategory)} />
-          <Definition
-            label="Deductible percentage"
-            value={`${debt.deductiblePercentage}%`}
-          />
-          <Definition label="Notes" value={debt.notes ?? 'No notes'} />
-          <Definition label="Created" value={formatTimestamp(debt.createdAtUtc)} />
-          <Definition label="Last updated" value={formatTimestamp(debt.updatedAtUtc)} />
+          {debt.calculatedEscrowBalance !== '0.00' ? (
+            <Definition
+              label="Current escrow balance"
+              value={formatDollarString(debt.calculatedEscrowBalance)}
+            />
+          ) : null}
+          <Definition label="Status" value={labelFromValue(debt.status)} />
           {debt.archivedAtUtc ? (
             <Definition label="Archived" value={formatTimestamp(debt.archivedAtUtc)} />
           ) : null}
         </dl>
       </section>
-
-      <aside className="rounded-xl border border-blue-200 bg-blue-50 p-6">
-        <h3 className="font-semibold text-blue-950">Balance information</h3>
-        <p className="mt-2 text-sm leading-6 text-blue-900">
-          Reconciliations calculate a debt ledger balance as of the statement date.
-          Escrow deposits and disbursements are tracked separately from mortgage
-          principal.
-        </p>
-        <p className="mt-4 text-sm leading-6 text-blue-900">
-          Statement balances, calculated balances, confirmed snapshots, and posted
-          transactions remain separate records.
-        </p>
-      </aside>
     </div>
-
-    <section
-      className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-      aria-labelledby="terms-heading"
-    >
-      <div>
-        <h3 className="text-lg font-semibold" id="terms-heading">
-          Effective-dated debt terms
-        </h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Historical periods are preserved. End dates are inclusive.
-        </p>
-      </div>
-      <div className="mt-5 overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
-            <tr>
-              <th className="py-3 pr-4 font-semibold" scope="col">
-                Effective period
-              </th>
-              <th className="px-4 py-3 font-semibold" scope="col">
-                Rate
-              </th>
-              <th className="px-4 py-3 font-semibold" scope="col">
-                Conventions
-              </th>
-              <th className="px-4 py-3 text-right font-semibold" scope="col">
-                Required payment
-              </th>
-              <th className="py-3 pl-4 font-semibold" scope="col">
-                Notes
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {debt.terms.map((term, index) => (
-              <tr key={term.id}>
-                <td className="py-4 pr-4">
-                  <span className="font-medium">{term.effectiveStartDate}</span>
-                  <span className="block text-slate-500">
-                    through {term.effectiveEndDate ?? 'open'}
-                  </span>
-                  {index === 0 ? (
-                    <span className="mt-1 block text-xs font-semibold text-slate-500">
-                      Initial term
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-4 py-4 tabular-nums">
-                  {term.annualInterestRatePercent}%
-                  <span className="block text-slate-500">
-                    {labelFromValue(term.interestRateType)}
-                  </span>
-                </td>
-                <td className="px-4 py-4">
-                  {labelFromValue(term.dayCountConvention)}
-                  <span className="block text-slate-500">
-                    {labelFromValue(term.calculationConvention)}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-right tabular-nums">
-                  {formatDollarString(term.requiredPayment)}
-                  <span className="block text-slate-500">
-                    {labelFromValue(term.paymentFrequency)}
-                  </span>
-                </td>
-                <td className="py-4 pl-4 text-slate-600">{term.notes ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
 
     <section
       className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
@@ -500,74 +405,6 @@ export const DebtDetail = ({
                     ) : (
                       <span className="text-xs text-slate-400">Not available</span>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-
-    <section
-      className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-      aria-labelledby="snapshots-heading"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold" id="snapshots-heading">
-            Confirmed balance snapshots
-          </h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Confirmed balances remain evidence as of an effective date and never
-            overwrite the posted ledger.
-          </p>
-        </div>
-      </div>
-
-      {debt.balanceSnapshots.length === 0 ? (
-        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-8 py-12 text-center">
-          <h4 className="text-base font-semibold text-slate-900">
-            No confirmed balance snapshots yet
-          </h4>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-            Confirmed balances are now created by the combined Reconcile balance
-            workflow.
-          </p>
-        </div>
-      ) : (
-        <div className="mt-5 overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
-              <tr>
-                <th className="py-3 pr-4 font-semibold" scope="col">
-                  Effective date
-                </th>
-                <th className="px-4 py-3 text-right font-semibold" scope="col">
-                  Confirmed balance
-                </th>
-                <th className="px-4 py-3 font-semibold" scope="col">
-                  Source
-                </th>
-                <th className="px-4 py-3 font-semibold" scope="col">
-                  Notes
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {debt.balanceSnapshots.map((snapshot: BalanceSnapshotDto) => (
-                <tr key={snapshot.id}>
-                  <td className="py-4 pr-4 align-top font-medium text-slate-900">
-                    {snapshot.effectiveDate}
-                  </td>
-                  <td className="px-4 py-4 align-top text-right tabular-nums">
-                    {formatDollarString(snapshot.confirmedBalance)}
-                  </td>
-                  <td className="px-4 py-4 align-top text-slate-700">
-                    {labelFromValue(snapshot.sourceType)}
-                  </td>
-                  <td className="px-4 py-4 align-top text-slate-700">
-                    {snapshot.notes ?? '—'}
                   </td>
                 </tr>
               ))}

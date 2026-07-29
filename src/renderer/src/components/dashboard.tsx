@@ -1,27 +1,66 @@
 import type { DashboardDto } from '../../../shared/debt-contracts';
+import { combinedDebtLabel } from './debt-label';
 import { formatDollarString } from './display-format';
 import { labelFromValue } from './form-utils';
 
 export interface DashboardProps {
   readonly dashboard: DashboardDto;
   readonly onSelectDebt: (id: string) => void;
+  readonly onShowDebts: () => void;
+  readonly onShowEscrowDetail: () => void;
 }
 
 const MetricCard = ({
   basis,
+  effectiveDate,
   label,
+  onClick,
   value,
 }: {
   readonly basis: string;
+  readonly effectiveDate?: string;
   readonly label: string;
+  readonly onClick?: () => void;
   readonly value: string;
-}): React.JSX.Element => (
-  <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-    <h3 className="text-sm font-semibold text-slate-600">{label}</h3>
-    <p className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
-    <p className="mt-3 text-xs leading-5 text-slate-500">{basis}</p>
-  </section>
-);
+}): React.JSX.Element => {
+  const accessibleLabel = `${label}: ${value}${effectiveDate ? ` as of ${effectiveDate}` : ''}`;
+  const content = (
+    <>
+      <h3 className="text-sm font-semibold text-slate-600">{label}</h3>
+      <span className="mt-3 block text-2xl font-semibold tracking-tight text-slate-950">
+        {value}
+      </span>
+      {effectiveDate ? (
+        <span className="mt-2 block text-xs font-medium text-slate-500">
+          As of {effectiveDate}
+        </span>
+      ) : null}
+      <span className="sr-only">{basis}</span>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        aria-label={accessibleLabel}
+        className="rounded-lg border border-slate-200 bg-white p-5 text-left shadow-sm hover:border-blue-300 hover:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
+        onClick={onClick}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <section
+      aria-label={accessibleLabel}
+      className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+    >
+      {content}
+    </section>
+  );
+};
 
 const DebtLinkButton = ({
   children,
@@ -44,32 +83,41 @@ const DebtLinkButton = ({
 export const Dashboard = ({
   dashboard,
   onSelectDebt,
+  onShowDebts,
+  onShowEscrowDetail,
 }: DashboardProps): React.JSX.Element => {
   const metricCards = [
     {
       label: 'Total active debt',
       value: formatDollarString(dashboard.totals.activeDebt),
       basis: dashboard.metricBasis.activeDebt,
+      effectiveDate: dashboard.effectiveDate,
+      onClick: onShowDebts,
     },
     {
       label: 'Principal reduction YTD',
       value: formatDollarString(dashboard.totals.principalReductionYtd),
       basis: dashboard.metricBasis.principalReductionYtd,
-    },
-    {
-      label: 'New borrowings YTD',
-      value: formatDollarString(dashboard.totals.newBorrowingsYtd),
-      basis: dashboard.metricBasis.newBorrowingsYtd,
+      effectiveDate: dashboard.effectiveDate,
     },
     {
       label: 'Interest activity YTD',
       value: formatDollarString(dashboard.totals.interestActivityYtd),
       basis: dashboard.metricBasis.interestActivityYtd,
+      effectiveDate: dashboard.effectiveDate,
+    },
+    {
+      label: 'New borrowings YTD',
+      value: formatDollarString(dashboard.totals.newBorrowingsYtd),
+      basis: dashboard.metricBasis.newBorrowingsYtd,
+      effectiveDate: dashboard.effectiveDate,
     },
     {
       label: 'Current escrow balance',
       value: formatDollarString(dashboard.totals.escrowBalance),
       basis: dashboard.metricBasis.escrowBalance,
+      effectiveDate: dashboard.effectiveDate,
+      onClick: onShowEscrowDetail,
     },
     {
       label: 'Required monthly payments',
@@ -95,11 +143,6 @@ export const Dashboard = ({
         >
           Debt overview
         </h2>
-        <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
-          Metrics use active debts only and are effective as of{' '}
-          {dashboard.effectiveDate}. Year-to-date values begin{' '}
-          {dashboard.yearToDateStartDate}.
-        </p>
       </div>
 
       {dashboard.activeDebtCount === 0 ? (
@@ -117,8 +160,10 @@ export const Dashboard = ({
             {metricCards.map((metric) => (
               <MetricCard
                 basis={metric.basis}
+                effectiveDate={metric.effectiveDate}
                 key={metric.label}
                 label={metric.label}
+                onClick={metric.onClick}
                 value={metric.value}
               />
             ))}
@@ -166,11 +211,11 @@ export const Dashboard = ({
                             debtId={item.debtId}
                             onSelectDebt={onSelectDebt}
                           >
-                            {item.debtName}
+                            {combinedDebtLabel({
+                              creditor: item.creditor,
+                              name: item.debtName,
+                            })}
                           </DebtLinkButton>
-                          <span className="mt-1 block text-slate-500">
-                            {item.creditor}
-                          </span>
                         </td>
                         <td className="px-4 py-4 align-top tabular-nums">
                           {item.statementDate}
@@ -235,11 +280,11 @@ export const Dashboard = ({
                             debtId={item.debtId}
                             onSelectDebt={onSelectDebt}
                           >
-                            {item.debtName}
+                            {combinedDebtLabel({
+                              creditor: item.creditor,
+                              name: item.debtName,
+                            })}
                           </DebtLinkButton>
-                          <span className="mt-1 block text-slate-500">
-                            {item.creditor}
-                          </span>
                         </td>
                         <td className="px-4 py-4 align-top tabular-nums">
                           {item.effectiveDate}

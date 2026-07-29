@@ -35,7 +35,9 @@ import { Dashboard } from './components/dashboard';
 import { DataManagement } from './components/data-management';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
+import { combinedDebtLabel } from './components/debt-label';
 import { EditDebtForm } from './components/edit-debt-form';
+import { EscrowDetail } from './components/escrow-detail';
 import { formatLastChanged } from './components/display-format';
 import { PayoffScenarios } from './components/payoff-scenarios';
 import { RecordTransactionForm } from './components/record-transaction-form';
@@ -51,6 +53,7 @@ type View =
   | 'import'
   | 'payoff'
   | 'reports'
+  | 'escrow-detail'
   | 'data-management';
 type DetailPanel = 'overview' | 'transaction' | 'reconciliation';
 type Confirmation = 'archive' | 'restore' | 'reverse' | 'void-reconciliation' | null;
@@ -126,6 +129,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     [],
   );
   const [debts, setDebts] = useState<readonly DebtSummaryDto[]>([]);
+  const [escrowDebts, setEscrowDebts] = useState<readonly DebtDetailDto[]>([]);
   const [selectedDebt, setSelectedDebt] = useState<DebtDetailDto | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [detailPanel, setDetailPanel] = useState<DetailPanel>('overview');
@@ -168,6 +172,42 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setError(result.error);
     }
 
+    setLoading(false);
+  };
+
+  const loadEscrowDetail = async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const dashboardResult = await invokeBridge(() => bridge.getDashboard({}));
+
+    if (!dashboardResult.ok) {
+      setError(dashboardResult.error);
+      setLoading(false);
+      return;
+    }
+
+    setDashboard(dashboardResult.value);
+    const detailResults = await Promise.all(
+      dashboardResult.value.escrowBalances.map((escrowBalance) =>
+        invokeBridge(() => bridge.getDebt({ id: escrowBalance.debtId })),
+      ),
+    );
+    const failed = detailResults.find((result) => !result.ok);
+
+    if (failed && !failed.ok) {
+      setError(failed.error);
+      setLoading(false);
+      return;
+    }
+
+    setEscrowDebts(
+      detailResults
+        .filter(
+          (result): result is { readonly ok: true; readonly value: DebtDetailDto } =>
+            result.ok,
+        )
+        .map((result) => result.value),
+    );
     setLoading(false);
   };
 
@@ -290,6 +330,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setError(null);
     setFieldErrors(undefined);
     void loadDashboard();
+  };
+
+  const showEscrowDetail = (): void => {
+    setView('escrow-detail');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setConfirmation(null);
+    setReverseTarget(null);
+    setError(null);
+    setFieldErrors(undefined);
+    void loadEscrowDetail();
   };
 
   const showList = (): void => {
@@ -974,7 +1025,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                             ? () => void loadReports()
                             : view === 'data-management'
                               ? () => void loadDataManagementStatus()
-                              : undefined
+                              : view === 'escrow-detail'
+                                ? () => void loadEscrowDetail()
+                                : undefined
                 }
               />
             </div>
@@ -1001,6 +1054,18 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           {!loading && view === 'dashboard' && dashboard ? (
             <Dashboard
               dashboard={dashboard}
+              onSelectDebt={(id) => void selectDebt(id)}
+              onShowDebts={showList}
+              onShowEscrowDetail={showEscrowDetail}
+            />
+          ) : null}
+
+          {view === 'escrow-detail' && dashboard ? (
+            <EscrowDetail
+              debts={escrowDebts}
+              effectiveDate={dashboard.effectiveDate}
+              loading={loading}
+              onBackToDashboard={showDashboard}
               onSelectDebt={(id) => void selectDebt(id)}
             />
           ) : null}
@@ -1110,7 +1175,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   aria-labelledby="transaction-workflow-heading"
                 >
                   <p className="text-sm font-medium text-slate-500">
-                    {selectedDebt.name}
+                    {combinedDebtLabel(selectedDebt)}
                   </p>
                   <h2
                     className="mt-1 text-3xl font-semibold tracking-tight"
@@ -1140,7 +1205,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   aria-labelledby="reconciliation-workflow-heading"
                 >
                   <p className="text-sm font-medium text-slate-500">
-                    {selectedDebt.name}
+                    {combinedDebtLabel(selectedDebt)}
                   </p>
                   <h2
                     className="mt-1 text-3xl font-semibold tracking-tight"
@@ -1209,7 +1274,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
               aria-labelledby="workflow-heading"
             >
-              <p className="text-sm font-medium text-slate-500">{selectedDebt.name}</p>
+              <p className="text-sm font-medium text-slate-500">
+                {combinedDebtLabel(selectedDebt)}
+              </p>
               <h2
                 className="mt-1 text-3xl font-semibold tracking-tight"
                 id="workflow-heading"
@@ -1233,7 +1300,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
               aria-labelledby="workflow-heading"
             >
-              <p className="text-sm font-medium text-slate-500">{selectedDebt.name}</p>
+              <p className="text-sm font-medium text-slate-500">
+                {combinedDebtLabel(selectedDebt)}
+              </p>
               <h2
                 className="mt-1 text-3xl font-semibold tracking-tight"
                 id="workflow-heading"
