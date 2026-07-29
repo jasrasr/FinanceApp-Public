@@ -1051,6 +1051,16 @@ const openingPrincipalRepresentedByBorrowingTransaction = (
       transaction.totalAmountCents === record.debt.originalPrincipalCents,
   );
 
+const openingPrincipalBorrowingCents = (
+  record: DebtWithActivityRecord,
+  startDate: string,
+  endDate: string,
+): number =>
+  isWithinDateRange(record.debt.originationDate, startDate, endDate) &&
+  !openingPrincipalRepresentedByBorrowingTransaction(record, startDate, endDate)
+    ? record.debt.originalPrincipalCents
+    : 0;
+
 const createDashboard = (
   database: AppDatabase,
   records: readonly DebtWithActivityRecord[],
@@ -1117,16 +1127,11 @@ const createDashboard = (
       ]),
     );
 
-    if (
-      isWithinDateRange(record.debt.originationDate, ytdStart, effectiveDate) &&
-      !openingPrincipalRepresentedByBorrowingTransaction(
-        record,
-        ytdStart,
-        effectiveDate,
-      )
-    ) {
-      newBorrowingsYtdCents += record.debt.originalPrincipalCents;
-    }
+    newBorrowingsYtdCents += openingPrincipalBorrowingCents(
+      record,
+      ytdStart,
+      effectiveDate,
+    );
 
     for (const { transaction, allocations } of postedActualTransactionsThrough(
       record,
@@ -1494,6 +1499,7 @@ const createRollforward = (
           entry.transaction.transactionType,
         ]),
       );
+      borrowings += openingPrincipalBorrowingCents(record, start, end);
       for (const { transaction, allocations } of postedActualTransactionsThrough(
         record,
         start,
@@ -1546,6 +1552,44 @@ const createRollforward = (
     };
   });
 
+const createBalanceTrendRows = (
+  monthlyRows: DebtReportsDto['monthlyRollforward']['rows'],
+  annualRows: DebtReportsDto['annualRollforward']['rows'],
+): DebtReportsDto['balanceTrends']['rows'] => {
+  const rows = monthlyRows.length > 36 ? annualRows : monthlyRows;
+  let priorEndingBalance: number | null = null;
+
+  return rows.map((row) => {
+    const endingBalance = Number(row.endingBalance);
+    const change =
+      priorEndingBalance === null ? null : endingBalance - priorEndingBalance;
+    priorEndingBalance = endingBalance;
+    const isAnnual = /^\d{4}$/.test(row.period);
+    return {
+      period: row.period,
+      periodEndDate: isAnnual
+        ? `${row.period}-12-31`
+        : periodEnd(row.period, 'monthly'),
+      grouping: 'Total debt',
+      endingBalance: row.endingBalance,
+      changeFromPriorPeriod:
+        change === null ? null : centsToDollars(Math.round(change * 100)),
+    };
+  });
+};
+
+const monthsBetweenDates = (
+  startDate: string | null,
+  endDate: string | null,
+): number | null => {
+  if (!startDate || !endDate) return null;
+  return (
+    (Number(endDate.slice(0, 4)) - Number(startDate.slice(0, 4))) * 12 +
+    Number(endDate.slice(5, 7)) -
+    Number(startDate.slice(5, 7))
+  );
+};
+
 const createReportPayoffInputs = (
   database: AppDatabase,
   records: readonly DebtWithActivityRecord[],
@@ -1597,23 +1641,31 @@ const createSensitivityRows = (
   startDate: string,
   kind: 'rate' | 'extra',
 ): DebtReportsDto['interestRateSensitivity']['rows'] => {
-  if (inputs.length === 0) return [];
+  const sensitivityInputs =
+    kind === 'rate'
+      ? inputs.filter((input) =>
+          input.terms.some((term) => term.interestRateType === 'variable'),
+        )
+      : inputs;
+  if (sensitivityInputs.length === 0) return [];
 
   const cases =
     kind === 'rate'
       ? [
           { label: 'Rates -1.00%', rateChange: -10_000, extra: 0 },
-          { label: 'Current rates', rateChange: 0, extra: 0 },
+          { label: 'Baseline', rateChange: 0, extra: 0 },
           { label: 'Rates +1.00%', rateChange: 10_000, extra: 0 },
+          { label: 'Rates +2.00%', rateChange: 20_000, extra: 0 },
         ]
       : [
           { label: 'No extra payment', rateChange: 0, extra: 0 },
+          { label: 'Extra $100/month', rateChange: 0, extra: 10_000 },
           { label: 'Extra $250/month', rateChange: 0, extra: 25_000 },
           { label: 'Extra $500/month', rateChange: 0, extra: 50_000 },
         ];
 
-  return cases.map((item) => {
-    const adjustedInputs = inputs.map((debt) => ({
+  const runCase = (item: (typeof cases)[number]): PayoffProjectionResult => {
+    const adjustedInputs = sensitivityInputs.map((debt) => ({
       ...debt,
       terms: debt.terms.map((term) => ({
         ...term,
@@ -1623,7 +1675,7 @@ const createSensitivityRows = (
             : Math.max(0, term.interestRateMicros + item.rateChange),
       })),
     }));
-    const result = projectPayoffScenario(adjustedInputs, {
+    return projectPayoffScenario(adjustedInputs, {
       scenarioStartDate: startDate,
       strategy: 'avalanche',
       extraMonthlyPaymentCents: item.extra,
@@ -1635,15 +1687,52 @@ const createSensitivityRows = (
       ),
       maxProjectionMonths: 360,
     });
+  };
+
+  const baselineCase = cases.find((item) => item.rateChange === 0 && item.extra === 0);
+  if (!baselineCase) return [];
+  const baselineResult = runCase(baselineCase);
+  const baselineVariableRateMicros =
+    kind === 'rate'
+      ? records
+          .map((record) => currentTermForDate(record.terms, startDate))
+          .find((term) => term.interestRateType === 'variable')?.interestRateMicros
+      : null;
+
+  return cases.map((item) => {
+    const result = runCase(item);
+    const interestChange =
+      result.totalProjectedInterestCents - baselineResult.totalProjectedInterestCents;
+    const timingChange = monthsBetweenDates(
+      baselineResult.projectedPayoffDate,
+      result.projectedPayoffDate,
+    );
 
     return {
       scenarioLabel: item.label,
       assumption:
         kind === 'rate'
-          ? 'Rate sensitivity adjusts supported fixed/promotional rates and supplies explicit current-rate assumptions for variable-rate debts.'
-          : 'Extra-payment sensitivity reuses the payoff engine with avalanche priority and the stated extra monthly payment.',
+          ? 'How would projected interest cost and payoff timing change if variable rates increase or decrease? Only variable-rate debts are included.'
+          : 'How much interest and time would be saved by applying additional monthly payments? Uses avalanche priority and the stated extra payment.',
+      baselineRate:
+        baselineVariableRateMicros === null || baselineVariableRateMicros === undefined
+          ? null
+          : rateMicrosToPercentString(baselineVariableRateMicros),
+      rateChange:
+        kind === 'rate'
+          ? `${item.rateChange >= 0 ? '+' : '-'}${rateMicrosToPercentString(Math.abs(item.rateChange))}%`
+          : null,
       projectedPayoffDate: result.projectedPayoffDate,
+      payoffTimingChangeMonths: timingChange,
       totalProjectedInterest: centsToDollars(result.totalProjectedInterestCents),
+      changeFromBaselineInterest: centsToDollars(interestChange),
+      interestSaved:
+        kind === 'extra'
+          ? centsToDollars(
+              baselineResult.totalProjectedInterestCents -
+                result.totalProjectedInterestCents,
+            )
+          : null,
       monthlyCashRequirement: centsToDollars(result.monthlyCashRequirementCents),
       warnings: [...result.warnings],
     };
@@ -1726,6 +1815,7 @@ const createDebtReports = (
     endDate,
     'monthly',
   );
+  const annualRows = createRollforward(database, records, startDate, endDate, 'annual');
   const trendRows = monthlyRows.map((row) => ({
     period: row.period,
     principalReduction: row.principalReduction,
@@ -1865,7 +1955,7 @@ const createDebtReports = (
         effectiveDate,
         baseAssumptions,
       ),
-      rows: createRollforward(database, records, startDate, endDate, 'annual'),
+      rows: annualRows,
     },
     balanceHistory: {
       basis: reportBasis(
@@ -1879,13 +1969,20 @@ const createDebtReports = (
     },
     activityTrends: {
       basis: reportBasis(
-        'Principal, interest, borrowing, and payment trends',
+        'Interest expense analysis',
         startDate,
         endDate,
         effectiveDate,
         baseAssumptions,
       ),
       rows: trendRows,
+    },
+    balanceTrends: {
+      basis: reportBasis('Debt balance trend', startDate, endDate, effectiveDate, [
+        ...baseAssumptions,
+        'Trend rows show application-calculated ending principal balance at period end.',
+      ]),
+      rows: createBalanceTrendRows(monthlyRows, annualRows),
     },
     maturitySchedule: {
       basis: reportBasis(

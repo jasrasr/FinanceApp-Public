@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.17.0')).toBeVisible();
+    await expect(window.getByText('Version 0.18.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -252,19 +252,24 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(
       window.getByText('Actual-versus-plan variance using saved payoff scenarios'),
     ).toBeVisible();
-    await window
-      .getByText('Principal, interest, borrowing, and payment trends')
-      .click();
+    await window.getByText('Debt balance trend').click();
     await expect(
       window.getByRole('img', {
-        name: /Bar chart of principal reduction and interest expense/i,
+        name: /Line chart of ending principal balance/i,
       }),
     ).toBeVisible();
-    await window.getByLabel('Line chart').check();
+    await window.getByRole('radio', { name: 'Bar chart' }).check();
     await expect(
       window.getByRole('img', {
-        name: /Line chart of principal reduction and interest expense/i,
+        name: /Bar chart of ending principal balance/i,
       }),
+    ).toBeVisible();
+    await window.getByText('Interest expense analysis').click();
+    await expect(
+      window.getByRole('img', { name: /Line chart of monthly interest expense/i }),
+    ).toBeVisible();
+    await expect(
+      window.getByRole('img', { name: /Bar chart of annual interest expense/i }),
     ).toBeVisible();
 
     await window.getByRole('button', { name: 'Data management' }).click();

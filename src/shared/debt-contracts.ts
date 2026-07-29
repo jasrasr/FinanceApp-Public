@@ -643,6 +643,16 @@ const trendRowDtoSchema = z
   })
   .strict();
 
+const balanceTrendRowDtoSchema = z
+  .object({
+    period: z.string(),
+    periodEndDate: financialDateInputSchema,
+    grouping: z.string(),
+    endingBalance: z.string(),
+    changeFromPriorPeriod: z.string().nullable(),
+  })
+  .strict();
+
 const scheduleRowDtoSchema = z
   .object({
     debtId: uuidSchema,
@@ -663,8 +673,13 @@ const sensitivityRowDtoSchema = z
   .object({
     scenarioLabel: z.string(),
     assumption: z.string(),
+    baselineRate: z.string().nullable(),
+    rateChange: z.string().nullable(),
     projectedPayoffDate: financialDateInputSchema.nullable(),
+    payoffTimingChangeMonths: z.number().int().nullable(),
     totalProjectedInterest: z.string(),
+    changeFromBaselineInterest: z.string().nullable(),
+    interestSaved: z.string().nullable(),
     monthlyCashRequirement: z.string(),
     warnings: z.array(z.string()),
   })
@@ -713,6 +728,9 @@ export const debtReportsDtoSchema = z
       .strict(),
     activityTrends: z
       .object({ basis: reportBasisDtoSchema, rows: z.array(trendRowDtoSchema) })
+      .strict(),
+    balanceTrends: z
+      .object({ basis: reportBasisDtoSchema, rows: z.array(balanceTrendRowDtoSchema) })
       .strict(),
     maturitySchedule: z
       .object({ basis: reportBasisDtoSchema, rows: z.array(scheduleRowDtoSchema) })

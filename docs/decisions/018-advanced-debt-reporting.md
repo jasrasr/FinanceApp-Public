@@ -39,15 +39,25 @@ January 1, 2019. Requests for All activity or custom ranges before that date are
 clamped for reporting only; older underlying financial records are preserved.
 
 Rollforward and balance-history reports use application-calculated ledger
-balances. Confirmed snapshots are displayed separately. Interest-rate and
-extra-payment sensitivity reports reuse the payoff scenario engine rather than
-duplicating projection logic. Unsupported payoff terms inherit the engine's
-warnings.
+balances. Rollforward borrowings use the same basis as the dashboard: opening
+principal for debts originated during the period plus posted borrowing/draw
+transactions, with duplicate prevention for explicit same-date opening draws.
+Confirmed snapshots are displayed separately. Interest-rate and extra-payment
+sensitivity reports reuse the payoff scenario engine rather than duplicating
+projection logic. Unsupported payoff terms inherit the engine's warnings.
 
-Principal and interest trend visuals are renderer presentation of the existing
-activity-trend rows. They provide bar and line options for the same report date
-range and filters, display principal reduction and interest expense as positive
-user-facing activity series, and remain paired with tabular detail.
+Debt balance trend visuals show application-calculated ending principal balances
+at month-end or year-end, default to a continuous line chart, and remain paired
+with period-end balance and change tables. Interest analysis is a separate
+report section with monthly interest expense trends and annual interest
+comparison charts. Interest is displayed as a positive user-facing expense and
+must reconcile to the tabular report detail.
+
+Interest-rate sensitivity is framed around variable-rate decision analysis and
+includes only debts where rate sensitivity is meaningful. Extra-payment
+sensitivity is framed around additional monthly payment scenarios. Both are
+derived from payoff-engine results and must show unavailable states when the
+current data cannot produce reliable output.
 
 Actual-versus-plan variance uses saved payoff scenarios as the plan source. Since
 saved scenario records currently do not persist monthly planned balances, the
@@ -62,6 +72,8 @@ be determined from saved results.
   services, but it is not a persisted report snapshot.
 - The narrow IPC model is preserved.
 - Sensitivity reporting stays aligned with the tested projection engine.
+- Balance and interest charting is renderer presentation of service-computed
+  report rows; chart values must reconcile to accessible tables.
 - More precise actual-versus-plan reporting will require a future scenario
   result shape that stores period-by-period plan balances or a separate planned
   activity model.

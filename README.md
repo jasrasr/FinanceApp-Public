@@ -298,9 +298,16 @@ Electron user-data directory that it removes after the workflow.
 - All activity and custom report ranges currently start no earlier than
   January 1, 2019. Older underlying records are preserved but excluded from
   report periods until a future configurable history-start date is approved.
-- Principal and interest trend charts support bar and line views, use the active
-  report date range and filters, and remain paired with accessible tabular
-  detail.
+- Monthly and annual rollforwards use the same borrowing basis as the dashboard:
+  opening principal for debts originated in the period plus posted borrowing and
+  draw transactions, with duplicate prevention for explicit same-date opening
+  draws.
+- Debt balance trend charts show application-calculated ending principal balance
+  at month-end or year-end, default to a continuous line chart, and remain paired
+  with accessible tabular detail.
+- Interest analysis separates monthly interest expense trends from annual
+  interest comparisons. Interest expense is displayed as a positive amount and
+  reconciles to the underlying report table.
 - Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
   engine and inherit its unsupported-term warnings.
 - Actual-versus-plan variance uses saved payoff scenarios. Because saved

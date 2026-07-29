@@ -1156,10 +1156,25 @@ describe('debt maintenance', () => {
     const created = service.createDebt(request);
 
     const dashboard = service.getDashboard({});
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-12-31',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
 
     expect(created.currentBalance).toBe('125000.13');
     expect(dashboard.totals.newBorrowingsYtd).toBe('125000.13');
     expect(dashboard.metricBasis.newBorrowingsYtd).toContain('Opening principal');
+    expect(
+      reports.monthlyRollforward.rows.find((row) => row.period === '2026-03')
+        ?.borrowings,
+    ).toBe('125000.13');
+    expect(reports.annualRollforward.rows[0]?.borrowings).toBe(
+      dashboard.totals.newBorrowingsYtd,
+    );
   });
 
   it('excludes prior-year originated debt opening principal from new borrowings YTD', () => {
@@ -1228,7 +1243,19 @@ describe('debt maintenance', () => {
       },
     });
 
-    expect(service.getDashboard({}).totals.newBorrowingsYtd).toBe('125000.13');
+    const dashboard = service.getDashboard({});
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-12-31',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(dashboard.totals.newBorrowingsYtd).toBe('125000.13');
+    expect(reports.monthlyRollforward.rows[2]?.borrowings).toBe('125000.13');
+    expect(reports.annualRollforward.rows[0]?.borrowings).toBe('125000.13');
   });
 
   it('uses principal-only balance impact and excludes prior-year activity from current-year dashboard metrics', () => {
@@ -1389,10 +1416,22 @@ describe('debt maintenance', () => {
     expect(reports.monthlyRollforward.rows[0]).toMatchObject({
       period: '2026-01',
       beginningBalance: '125000.13',
+      borrowings: '0.00',
       payments: '500.00',
       principalReduction: '400.00',
       interestActivity: '100.00',
       endingBalance: '124600.13',
+    });
+    expect(reports.balanceTrends.rows[0]).toMatchObject({
+      period: '2026-01',
+      periodEndDate: '2026-01-31',
+      grouping: 'Total debt',
+      endingBalance: '124600.13',
+      changeFromPriorPeriod: null,
+    });
+    expect(reports.activityTrends.rows[0]).toMatchObject({
+      period: '2026-01',
+      interestActivity: '100.00',
     });
     expect(
       reports.balanceHistory.rows.find((row) => row.effectiveDate === '2026-07-28'),
@@ -1488,8 +1527,8 @@ describe('debt maintenance', () => {
       status: null,
     });
 
-    expect(reports.interestRateSensitivity.rows).toHaveLength(3);
-    expect(reports.extraPaymentSensitivity.rows).toHaveLength(3);
+    expect(reports.interestRateSensitivity.rows).toHaveLength(0);
+    expect(reports.extraPaymentSensitivity.rows).toHaveLength(4);
     expect(reports.actualVersusPlanVariance.rows[0]).toMatchObject({
       scenarioName: 'Generated report variance scenario',
       debtId: debt.id,
@@ -1499,6 +1538,44 @@ describe('debt maintenance', () => {
     });
     expect(reports.actualVersusPlanVariance.rows[0]?.warnings.join(' ')).toContain(
       'monthly plan balances',
+    );
+  });
+
+  it('reports meaningful rate and extra-payment sensitivity output from payoff inputs', () => {
+    const request = validRequest('Generated Variable Rate Sensitivity Loan');
+    request.initialTerm.interestRateType = 'variable';
+    request.initialTerm.annualInterestRatePercent = '6.00';
+    service.createDebt(request);
+
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-07-28',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(
+      reports.interestRateSensitivity.rows.map((row) => row.scenarioLabel),
+    ).toEqual(['Rates -1.00%', 'Baseline', 'Rates +1.00%', 'Rates +2.00%']);
+    expect(reports.interestRateSensitivity.rows[1]).toMatchObject({
+      baselineRate: '6',
+      rateChange: '+0%',
+      changeFromBaselineInterest: '0.00',
+    });
+    expect(
+      reports.extraPaymentSensitivity.rows.map((row) => row.scenarioLabel),
+    ).toEqual([
+      'No extra payment',
+      'Extra $100/month',
+      'Extra $250/month',
+      'Extra $500/month',
+    ]);
+    expect(
+      Number(reports.extraPaymentSensitivity.rows[3]?.monthlyCashRequirement),
+    ).toBe(
+      Number(reports.extraPaymentSensitivity.rows[0]?.monthlyCashRequirement) + 500,
     );
   });
 

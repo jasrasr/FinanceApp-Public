@@ -902,3 +902,56 @@ completed.
   - Continue user acceptance testing of escrow activity, dashboard borrowing
     metrics, and report chart usefulness before adding unrelated reporting or
     configuration features.
+
+## Phase 18: Debt Reporting Redesign for Financial Analysis
+
+- Completion date: 2026-07-29
+- Application version: 0.18.0
+- Features implemented:
+  - Updated monthly and annual rollforward borrowings to include opening
+    principal for debts originated during the report period.
+  - Preserved duplicate prevention when an equivalent same-date borrowing/draw
+    transaction represents opening principal.
+  - Replaced the principal-reduction chart with a debt balance trend showing
+    application-calculated ending principal balance by period.
+  - Added separate monthly and annual interest expense analysis charts.
+  - Redesigned sensitivity rows to show baseline/change fields, payoff timing
+    changes, interest changes, and monthly cash requirements.
+  - Replaced misleading actual-versus-plan table display with an unavailable
+    state when saved scenarios lack period-level planned balances.
+- Material architecture and accounting decisions:
+  - Dashboard, monthly rollforward, and annual rollforward now use the same
+    borrowing definition.
+  - Balance trends use period-end application-calculated principal balances,
+    not original principal, confirmed snapshots, or scenario balances.
+  - Interest analysis remains positive user-facing expense reporting and
+    reconciles to the accessible tabular detail.
+  - Actual-versus-plan variance requires future period-level scenario baseline
+    persistence before it can present reliable planned ending balances.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - No new IPC operations.
+  - Existing `getDebtReports` returns expanded typed report rows.
+- New UI screens or workflows:
+  - Advanced reports now include Debt balance trend and Interest expense
+    analysis sections.
+  - Sensitivity sections show unavailable states when reliable output cannot be
+    produced from current data.
+- Validation and smoke-test results:
+  - Added service regression tests for opening principal rollforward borrowing,
+    duplicate prevention, month-end balances, report-history clamping, and
+    sensitivity output.
+  - Added renderer and Electron E2E assertions for redesigned balance and
+    interest chart sections.
+  - Final command results should be recorded in the completion report for this
+    phase.
+- Known limitations and technical debt:
+  - Balance trend grouping is currently total debt; individual-debt and debt-type
+    chart grouping remain future refinements.
+  - Actual-versus-plan variance remains unavailable until saved scenarios
+    persist period-level planned balances and reductions.
+- Recommended next phase:
+  - Validate the redesigned reports with representative fictional scenarios and
+    decide whether period-level scenario baselines should be added before further
+    variance reporting work.

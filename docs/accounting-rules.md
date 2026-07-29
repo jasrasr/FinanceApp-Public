@@ -408,7 +408,10 @@ Monthly and annual rollforwards use:
 - Beginning balance: application-calculated ledger balance as of the day before
   the period start.
 - Ending balance: application-calculated ledger balance as of the period end.
-- Borrowings: posted borrowing/draw transaction totals.
+- Borrowings: opening principal for debts originated in the period plus posted
+  borrowing/draw transaction totals. Opening principal is not double-counted
+  when an equivalent same-date borrowing/draw already represents the original
+  principal.
 - Payments: positive display of posted payment transaction totals.
 - Principal reduction: positive display of negative principal and
   extra-principal allocations.
@@ -417,10 +420,15 @@ Monthly and annual rollforwards use:
 - Adjustments and other: residual posted activity not classified as borrowings
   or payments.
 
-Principal and interest trend charts use the active report date range and filters,
-show principal reduction and interest expense as separate positive activity
-series, and remain paired with the rollforward/trend tables for accessible
-detail.
+Debt balance trend charts use the active report date range and filters and show
+application-calculated ending principal balance at each month-end or year-end.
+The default visualization is a continuous line chart, with an optional bar chart
+where the aggregation remains useful. The table paired with the chart provides
+period-end balances and period-over-period changes.
+
+Interest analysis is separate from debt balance trends. Monthly interest expense
+trends and annual interest comparisons display interest expense as positive
+user-facing amounts and must reconcile to the accessible tabular detail.
 
 Balance-history reporting shows calculated ledger balances and latest confirmed
 snapshots separately. It does not treat the latest confirmed snapshot as the
@@ -431,7 +439,11 @@ Maturity and required-payment schedules use current effective terms as of the
 report effective date. Required payments are normalized to monthly equivalents
 using the same helper used by the dashboard.
 
-Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
+Interest-rate sensitivity answers how projected interest cost and payoff timing
+would change if variable rates increase or decrease. It includes only debts where
+rate sensitivity is meaningful and uses explicit variable-rate assumptions.
+Extra-payment sensitivity answers how projected interest and payoff timing would
+change with additional monthly payments. Both reports reuse the payoff scenario
 engine. Unsupported payment schedules, unsupported calculation conventions,
 variable-rate debts without explicit assumptions, and balloon maturity limits
 produce warnings from that engine rather than deceptively precise payoff dates or

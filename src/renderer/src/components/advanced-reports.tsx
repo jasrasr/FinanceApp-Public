@@ -107,74 +107,69 @@ const EmptyState = (): React.JSX.Element => (
   </p>
 );
 
-const TrendChart = ({
+const periodLabel = (period: string): string => {
+  if (/^\d{4}$/.test(period)) return period;
+  const [year, month] = period.split('-');
+  return new Date(Date.UTC(Number(year), Number(month) - 1, 1)).toLocaleDateString(
+    undefined,
+    { month: 'short', year: 'numeric', timeZone: 'UTC' },
+  );
+};
+
+const BalanceTrendChart = ({
   chartType,
   rows,
 }: {
   readonly chartType: 'bar' | 'line';
-  readonly rows: DebtReportsDto['activityTrends']['rows'];
+  readonly rows: DebtReportsDto['balanceTrends']['rows'];
 }): React.JSX.Element | null => {
   if (rows.length === 0) return null;
-  const values = rows.flatMap((row) => [
-    Number(row.principalReduction),
-    Number(row.interestActivity),
-  ]);
+  const values = rows.map((row) => Number(row.endingBalance));
   const maximum = Math.max(...values, 1);
-  const width = Math.max(360, rows.length * 72);
+  const width = 720;
   const height = 220;
   const chartTop = 20;
   const chartBottom = 170;
   const chartHeight = chartBottom - chartTop;
   const xFor = (index: number): number =>
-    rows.length === 1 ? 48 : 48 + (index * (width - 96)) / (rows.length - 1);
+    rows.length === 1 ? 72 : 72 + (index * (width - 120)) / (rows.length - 1);
   const yFor = (value: string): number =>
     chartBottom - (Number(value) / maximum) * chartHeight;
-  const principalPoints = rows
-    .map((row, index) => `${xFor(index)},${yFor(row.principalReduction)}`)
-    .join(' ');
-  const interestPoints = rows
-    .map((row, index) => `${xFor(index)},${yFor(row.interestActivity)}`)
+  const points = rows
+    .map((row, index) => `${xFor(index)},${yFor(row.endingBalance)}`)
     .join(' ');
 
-  const barWidth = Math.max(8, Math.min(22, (width - 120) / rows.length / 3));
+  const barWidth = Math.max(10, Math.min(28, (width - 140) / rows.length / 2));
 
   return (
     <div
-      className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white p-4"
+      className="mt-4 rounded-lg border border-slate-200 bg-white p-4"
       role="img"
-      aria-label={`${chartType === 'line' ? 'Line' : 'Bar'} chart of principal reduction and interest expense by period from ${rows.at(0)?.period} through ${rows.at(-1)?.period}. Tabular detail follows.`}
+      aria-label={`${chartType === 'line' ? 'Line' : 'Bar'} chart of ending principal balance from ${periodLabel(rows.at(0)?.period ?? '')} through ${periodLabel(rows.at(-1)?.period ?? '')}. Tabular detail follows.`}
     >
       <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-700">
         <span className="inline-flex items-center gap-2">
           <span className="h-0.5 w-5 bg-blue-700" aria-hidden="true" />
-          Principal reduction
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <span
-            className="h-0.5 w-5 border-t-2 border-dashed border-amber-700"
-            aria-hidden="true"
-          />
-          Interest expense
+          Ending principal balance
         </span>
       </div>
       <svg
-        className="min-w-full"
+        aria-hidden="true"
+        className="h-auto w-full"
+        focusable="false"
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         width={width}
       >
-        <title>
-          Principal and interest activity by period, displayed as positive user-facing
-          activity amounts.
-        </title>
+        <title>Application-calculated ending principal balance by period.</title>
         <desc>
-          X axis is report period. Y axis is dollars. Principal reduction and interest
-          expense are separate series.
+          X axis is period end. Y axis is dollars. Tooltips identify period-end date,
+          balance, and change from prior period.
         </desc>
         <line
           stroke="#cbd5e1"
           strokeWidth="1"
-          x1="48"
+          x1="72"
           x2={width - 24}
           y1={chartBottom}
           y2={chartBottom}
@@ -182,8 +177,8 @@ const TrendChart = ({
         <line
           stroke="#cbd5e1"
           strokeWidth="1"
-          x1="48"
-          x2="48"
+          x1="72"
+          x2="72"
           y1={chartTop}
           y2={chartBottom}
         />
@@ -198,34 +193,15 @@ const TrendChart = ({
         </text>
         {chartType === 'line' ? (
           <>
-            <polyline
-              fill="none"
-              points={principalPoints}
-              stroke="#1d4ed8"
-              strokeWidth="3"
-            />
-            <polyline
-              fill="none"
-              points={interestPoints}
-              stroke="#b45309"
-              strokeDasharray="6 4"
-              strokeWidth="3"
-            />
+            <polyline fill="none" points={points} stroke="#1d4ed8" strokeWidth="3" />
             {rows.map((row, index) => (
               <g key={row.period}>
+                <title>{`${row.periodEndDate}: ${formatDollarString(row.endingBalance)} ending principal balance; change ${row.changeFromPriorPeriod ? formatDollarString(row.changeFromPriorPeriod) : 'not applicable'}.`}</title>
                 <circle
                   cx={xFor(index)}
-                  cy={yFor(row.principalReduction)}
+                  cy={yFor(row.endingBalance)}
                   fill="#1d4ed8"
                   r="3"
-                />
-                <circle
-                  cx={xFor(index)}
-                  cy={yFor(row.interestActivity)}
-                  fill="#fff7ed"
-                  r="3"
-                  stroke="#b45309"
-                  strokeWidth="2"
                 />
                 <text
                   fill="#475569"
@@ -234,7 +210,7 @@ const TrendChart = ({
                   x={xFor(index)}
                   y={chartBottom + 16}
                 >
-                  {row.period.slice(-2)}
+                  {periodLabel(row.period)}
                 </text>
               </g>
             ))}
@@ -243,26 +219,17 @@ const TrendChart = ({
           <>
             {rows.map((row, index) => {
               const x = xFor(index);
-              const principalY = yFor(row.principalReduction);
-              const interestY = yFor(row.interestActivity);
+              const y = yFor(row.endingBalance);
 
               return (
                 <g key={row.period}>
+                  <title>{`${row.periodEndDate}: ${formatDollarString(row.endingBalance)} ending principal balance; change ${row.changeFromPriorPeriod ? formatDollarString(row.changeFromPriorPeriod) : 'not applicable'}.`}</title>
                   <rect
                     fill="#1d4ed8"
-                    height={chartBottom - principalY}
+                    height={chartBottom - y}
                     width={barWidth}
-                    x={x - barWidth - 2}
-                    y={principalY}
-                  />
-                  <rect
-                    fill="#fef3c7"
-                    height={chartBottom - interestY}
-                    stroke="#b45309"
-                    strokeDasharray="3 2"
-                    width={barWidth}
-                    x={x + 2}
-                    y={interestY}
+                    x={x - barWidth / 2}
+                    y={y}
                   />
                   <text
                     fill="#475569"
@@ -271,7 +238,7 @@ const TrendChart = ({
                     x={x}
                     y={chartBottom + 16}
                   >
-                    {row.period.slice(-2)}
+                    {periodLabel(row.period)}
                   </text>
                 </g>
               );
@@ -280,9 +247,105 @@ const TrendChart = ({
         )}
       </svg>
       <p className="mt-2 text-xs text-slate-500">
-        Principal reduction and interest expense are displayed as positive activity
-        values. The table below provides the accessible detail for each period.
+        Ending balance is application-calculated principal at period end. The table
+        below provides exact values and period-over-period changes.
       </p>
+    </div>
+  );
+};
+
+const InterestMiniChart = ({
+  chartType,
+  label,
+  rows,
+}: {
+  readonly chartType: 'bar' | 'line';
+  readonly label: string;
+  readonly rows: readonly { readonly label: string; readonly value: string }[];
+}): React.JSX.Element | null => {
+  if (rows.length === 0) return null;
+  const width = 520;
+  const height = 180;
+  const chartTop = 20;
+  const chartBottom = 132;
+  const maximum = Math.max(...rows.map((row) => Number(row.value)), 1);
+  const xFor = (index: number): number =>
+    rows.length === 1 ? 64 : 64 + (index * (width - 108)) / (rows.length - 1);
+  const yFor = (value: string): number =>
+    chartBottom - (Number(value) / maximum) * (chartBottom - chartTop);
+  const points = rows
+    .map((row, index) => `${xFor(index)},${yFor(row.value)}`)
+    .join(' ');
+  const barWidth = Math.max(10, Math.min(26, (width - 120) / rows.length / 2));
+
+  return (
+    <div className="mt-3" role="img" aria-label={`${label}. Tabular detail follows.`}>
+      <svg
+        aria-hidden="true"
+        className="h-auto w-full"
+        focusable="false"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+      >
+        <title>{label}</title>
+        <line
+          stroke="#cbd5e1"
+          strokeWidth="1"
+          x1="64"
+          x2={width - 20}
+          y1={chartBottom}
+          y2={chartBottom}
+        />
+        <line
+          stroke="#cbd5e1"
+          strokeWidth="1"
+          x1="64"
+          x2="64"
+          y1={chartTop}
+          y2={chartBottom}
+        />
+        <text fill="#475569" fontSize="11" x="4" y="16">
+          Dollars
+        </text>
+        <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
+          {formatDollarString(maximum.toFixed(2))}
+        </text>
+        {chartType === 'line' ? (
+          <polyline fill="none" points={points} stroke="#b45309" strokeWidth="3" />
+        ) : null}
+        {rows.map((row, index) => {
+          const x = xFor(index);
+          const y = yFor(row.value);
+          return (
+            <g key={row.label}>
+              <title>{`${row.label}: ${formatDollarString(row.value)} interest expense.`}</title>
+              {chartType === 'bar' ? (
+                <rect
+                  fill="#fef3c7"
+                  height={chartBottom - y}
+                  stroke="#b45309"
+                  width={barWidth}
+                  x={x - barWidth / 2}
+                  y={y}
+                />
+              ) : (
+                <circle
+                  cx={x}
+                  cy={y}
+                  fill="#fff7ed"
+                  r="3"
+                  stroke="#b45309"
+                  strokeWidth="2"
+                />
+              )}
+              <text fill="#475569" fontSize="10" textAnchor="middle" x={x} y="152">
+                {row.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 };
@@ -298,7 +361,7 @@ export const AdvancedReports = ({
   const [datePreset, setDatePreset] = useState<DatePreset>('current_year');
   const [debtType, setDebtType] = useState('');
   const [status, setStatus] = useState('');
-  const [trendChartType, setTrendChartType] = useState<'bar' | 'line'>('bar');
+  const [balanceChartType, setBalanceChartType] = useState<'bar' | 'line'>('line');
 
   const apply = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -443,11 +506,12 @@ export const AdvancedReports = ({
             section={reports.annualRollforward}
           />
           <ReportBalanceHistory reports={reports} onSelectDebt={onSelectDebt} />
-          <ReportTrends
-            chartType={trendChartType}
-            onChartTypeChange={setTrendChartType}
+          <ReportBalanceTrends
+            chartType={balanceChartType}
+            onChartTypeChange={setBalanceChartType}
             reports={reports}
           />
+          <ReportInterestAnalysis reports={reports} />
           <ReportSchedule reports={reports} onSelectDebt={onSelectDebt} />
           <ReportSensitivity
             title="Interest-rate sensitivity"
@@ -597,7 +661,7 @@ const ReportBalanceHistory = ({
   </ReportShell>
 );
 
-const ReportTrends = ({
+const ReportBalanceTrends = ({
   chartType,
   onChartTypeChange,
   reports,
@@ -606,18 +670,15 @@ const ReportTrends = ({
   readonly onChartTypeChange: (chartType: 'bar' | 'line') => void;
   readonly reports: DebtReportsDto;
 }): React.JSX.Element => (
-  <ReportShell
-    basis={reports.activityTrends.basis}
-    title="Principal, interest, borrowing, and payment trends"
-  >
+  <ReportShell basis={reports.balanceTrends.basis} title="Debt balance trend">
     <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h4 className="text-sm font-semibold text-slate-900">
-          Principal and interest trends
+          Ending principal balance trend
         </h4>
         <p className="mt-1 text-xs text-slate-600">
-          Uses the active report date range and filters. Amounts are displayed as
-          positive activity values.
+          Total debt is shown by default using month-end or year-end
+          application-calculated principal balances.
         </p>
       </div>
       <fieldset className="flex gap-3 rounded-lg border border-slate-200 p-3 text-sm">
@@ -627,7 +688,7 @@ const ReportTrends = ({
         <label className="inline-flex items-center gap-2">
           <input
             checked={chartType === 'bar'}
-            name="trend-chart-type"
+            name="balance-trend-chart-type"
             onChange={() => onChartTypeChange('bar')}
             type="radio"
             value="bar"
@@ -637,7 +698,7 @@ const ReportTrends = ({
         <label className="inline-flex items-center gap-2">
           <input
             checked={chartType === 'line'}
-            name="trend-chart-type"
+            name="balance-trend-chart-type"
             onChange={() => onChartTypeChange('line')}
             type="radio"
             value="line"
@@ -646,28 +707,32 @@ const ReportTrends = ({
         </label>
       </fieldset>
     </div>
-    <TrendChart chartType={chartType} rows={reports.activityTrends.rows} />
-    {reports.activityTrends.rows.length === 0 ? <EmptyState /> : null}
-    {reports.activityTrends.rows.length > 0 ? (
+    <BalanceTrendChart chartType={chartType} rows={reports.balanceTrends.rows} />
+    {reports.balanceTrends.rows.length === 0 ? <EmptyState /> : null}
+    {reports.balanceTrends.rows.length > 0 ? (
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="text-left text-xs text-slate-500 uppercase">
             <tr>
               <th className="px-3 py-2">Period</th>
-              <th className="px-3 py-2 text-right">Principal</th>
-              <th className="px-3 py-2 text-right">Interest</th>
-              <th className="px-3 py-2 text-right">Borrowings</th>
-              <th className="px-3 py-2 text-right">Payments</th>
+              <th className="px-3 py-2">Period end</th>
+              <th className="px-3 py-2">Grouping</th>
+              <th className="px-3 py-2 text-right">Ending balance</th>
+              <th className="px-3 py-2 text-right">Change</th>
             </tr>
           </thead>
           <tbody>
-            {reports.activityTrends.rows.map((row) => (
+            {reports.balanceTrends.rows.map((row) => (
               <tr className="border-t border-slate-100" key={row.period}>
-                <td className="px-3 py-2">{row.period}</td>
-                <MoneyCell value={row.principalReduction} />
-                <MoneyCell value={row.interestActivity} />
-                <MoneyCell value={row.borrowings} />
-                <MoneyCell value={row.payments} />
+                <td className="px-3 py-2">{periodLabel(row.period)}</td>
+                <td className="px-3 py-2">{row.periodEndDate}</td>
+                <td className="px-3 py-2">{row.grouping}</td>
+                <MoneyCell value={row.endingBalance} />
+                <td className="px-3 py-2 text-right font-mono tabular-nums">
+                  {row.changeFromPriorPeriod
+                    ? formatDollarString(row.changeFromPriorPeriod)
+                    : '—'}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -676,6 +741,81 @@ const ReportTrends = ({
     ) : null}
   </ReportShell>
 );
+
+const ReportInterestAnalysis = ({
+  reports,
+}: {
+  readonly reports: DebtReportsDto;
+}): React.JSX.Element => {
+  const annualTotals = new Map<string, number>();
+  for (const row of reports.activityTrends.rows) {
+    const year = row.period.slice(0, 4);
+    annualTotals.set(
+      year,
+      (annualTotals.get(year) ?? 0) + Number(row.interestActivity),
+    );
+  }
+
+  return (
+    <ReportShell basis={reports.activityTrends.basis} title="Interest expense analysis">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 p-4">
+          <h4 className="text-sm font-semibold text-slate-900">
+            Monthly interest expense trend
+          </h4>
+          <InterestMiniChart
+            chartType="line"
+            label="Line chart of monthly interest expense"
+            rows={reports.activityTrends.rows.map((row) => ({
+              label: periodLabel(row.period),
+              value: row.interestActivity,
+            }))}
+          />
+        </div>
+        <div className="rounded-lg border border-slate-200 p-4">
+          <h4 className="text-sm font-semibold text-slate-900">
+            Annual interest expense comparison
+          </h4>
+          <InterestMiniChart
+            chartType="bar"
+            label="Bar chart of annual interest expense"
+            rows={[...annualTotals.entries()].map(([year, total]) => ({
+              label: year,
+              value: total.toFixed(2),
+            }))}
+          />
+        </div>
+      </div>
+      {reports.activityTrends.rows.length === 0 ? <EmptyState /> : null}
+      {reports.activityTrends.rows.length > 0 ? (
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-left text-xs text-slate-500 uppercase">
+              <tr>
+                <th className="px-3 py-2">Month</th>
+                <th className="px-3 py-2 text-right">Interest expense</th>
+                <th className="px-3 py-2 text-right">Principal reduction</th>
+                <th className="px-3 py-2 text-right">Borrowings</th>
+                <th className="px-3 py-2 text-right">Payments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.activityTrends.rows.map((row) => (
+                <tr className="border-t border-slate-100" key={row.period}>
+                  <td className="px-3 py-2">{periodLabel(row.period)}</td>
+                  <MoneyCell value={row.interestActivity} />
+                  <MoneyCell value={row.principalReduction} />
+                  <MoneyCell value={row.borrowings} />
+                  <MoneyCell value={row.payments} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </ReportShell>
+  );
+};
 
 const ReportSchedule = ({
   reports,
@@ -734,15 +874,25 @@ const ReportSensitivity = ({
   readonly title: string;
 }): React.JSX.Element => (
   <ReportShell basis={section.basis} title={title}>
-    {section.rows.length === 0 ? <EmptyState /> : null}
+    {section.rows.length === 0 ? (
+      <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+        This report is unavailable for the current data. Reliable sensitivity output
+        requires supported payoff inputs; rate sensitivity also requires at least one
+        variable-rate debt.
+      </p>
+    ) : null}
     {section.rows.length > 0 ? (
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="text-left text-xs text-slate-500 uppercase">
             <tr>
               <th className="px-3 py-2">Case</th>
+              <th className="px-3 py-2">Baseline / change</th>
               <th className="px-3 py-2">Payoff date</th>
+              <th className="px-3 py-2 text-right">Timing change</th>
               <th className="px-3 py-2 text-right">Interest</th>
+              <th className="px-3 py-2 text-right">Interest change</th>
+              <th className="px-3 py-2 text-right">Interest saved</th>
               <th className="px-3 py-2 text-right">Monthly cash</th>
               <th className="px-3 py-2">Warnings</th>
             </tr>
@@ -754,10 +904,29 @@ const ReportSensitivity = ({
                   <p className="font-semibold">{row.scenarioLabel}</p>
                   <p className="text-xs text-slate-500">{row.assumption}</p>
                 </td>
+                <td className="px-3 py-2 text-xs text-slate-600">
+                  {row.baselineRate ? `Baseline rate ${row.baselineRate}%` : '—'}
+                  {row.rateChange ? (
+                    <span className="block">Scenario change {row.rateChange}</span>
+                  ) : null}
+                </td>
                 <td className="px-3 py-2">
                   {row.projectedPayoffDate ?? 'Not reliable'}
                 </td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">
+                  {row.payoffTimingChangeMonths === null
+                    ? '—'
+                    : `${row.payoffTimingChangeMonths} mo.`}
+                </td>
                 <MoneyCell value={row.totalProjectedInterest} />
+                <td className="px-3 py-2 text-right font-mono tabular-nums">
+                  {row.changeFromBaselineInterest
+                    ? formatDollarString(row.changeFromBaselineInterest)
+                    : '—'}
+                </td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">
+                  {row.interestSaved ? formatDollarString(row.interestSaved) : '—'}
+                </td>
                 <MoneyCell value={row.monthlyCashRequirement} />
                 <td className="px-3 py-2 text-xs text-amber-800">
                   {row.warnings.join(' ') || '—'}
@@ -777,59 +946,73 @@ const ReportVariance = ({
 }: {
   readonly reports: DebtReportsDto;
   readonly onSelectDebt: (id: string) => void;
-}): React.JSX.Element => (
-  <ReportShell
-    basis={reports.actualVersusPlanVariance.basis}
-    title="Actual-versus-plan variance using saved payoff scenarios"
-  >
-    {reports.actualVersusPlanVariance.rows.length === 0 ? <EmptyState /> : null}
-    {reports.actualVersusPlanVariance.rows.length > 0 ? (
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="text-left text-xs text-slate-500 uppercase">
-            <tr>
-              <th className="px-3 py-2">Scenario</th>
-              <th className="px-3 py-2">Debt</th>
-              <th className="px-3 py-2 text-right">Actual reduction</th>
-              <th className="px-3 py-2 text-right">Planned reduction</th>
-              <th className="px-3 py-2 text-right">Variance</th>
-              <th className="px-3 py-2">Basis / warnings</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reports.actualVersusPlanVariance.rows.map((row) => (
-              <tr
-                className="border-t border-slate-100"
-                key={`${row.scenarioId}-${row.debtId}`}
-              >
-                <td className="px-3 py-2">{row.scenarioName}</td>
-                <td className="px-3 py-2">
-                  <DebtButton
-                    id={row.debtId}
-                    name={row.debtName}
-                    onSelectDebt={onSelectDebt}
-                  />
-                </td>
-                <MoneyCell value={row.actualPrincipalReduction} />
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {row.plannedPrincipalReduction
-                    ? formatDollarString(row.plannedPrincipalReduction)
-                    : 'Limited'}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {row.variance ? formatDollarString(row.variance) : 'Limited'}
-                </td>
-                <td className="px-3 py-2 text-xs text-slate-600">
-                  {row.basis} {row.warnings.join(' ')}
-                </td>
+}): React.JSX.Element => {
+  const rows = reports.actualVersusPlanVariance.rows;
+  const unavailable =
+    rows.length === 0 || rows.every((row) => row.plannedPrincipalReduction === null);
+
+  return (
+    <ReportShell
+      basis={reports.actualVersusPlanVariance.basis}
+      title="Actual-versus-plan variance using saved payoff scenarios"
+    >
+      {unavailable ? (
+        <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+          Actual-versus-plan variance is unavailable because saved payoff scenarios do
+          not currently persist period-level planned balances and principal reductions.
+          A future scenario engine enhancement must store period-level baselines before
+          this report can present reliable planned ending balances or dollar and
+          percentage variances.
+        </p>
+      ) : null}
+      {!unavailable ? (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-left text-xs text-slate-500 uppercase">
+              <tr>
+                <th className="px-3 py-2">Scenario</th>
+                <th className="px-3 py-2">Debt</th>
+                <th className="px-3 py-2 text-right">Actual reduction</th>
+                <th className="px-3 py-2 text-right">Planned reduction</th>
+                <th className="px-3 py-2 text-right">Variance</th>
+                <th className="px-3 py-2">Basis / warnings</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    ) : null}
-  </ReportShell>
-);
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr
+                  className="border-t border-slate-100"
+                  key={`${row.scenarioId}-${row.debtId}`}
+                >
+                  <td className="px-3 py-2">{row.scenarioName}</td>
+                  <td className="px-3 py-2">
+                    <DebtButton
+                      id={row.debtId}
+                      name={row.debtName}
+                      onSelectDebt={onSelectDebt}
+                    />
+                  </td>
+                  <MoneyCell value={row.actualPrincipalReduction} />
+                  <td className="px-3 py-2 text-right font-mono tabular-nums">
+                    {row.plannedPrincipalReduction
+                      ? formatDollarString(row.plannedPrincipalReduction)
+                      : 'Limited'}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums">
+                    {row.variance ? formatDollarString(row.variance) : 'Limited'}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-slate-600">
+                    {row.basis} {row.warnings.join(' ')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </ReportShell>
+  );
+};
 
 const ReportExceptions = ({
   reports,

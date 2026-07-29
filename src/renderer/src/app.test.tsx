@@ -21,7 +21,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 16,
   appMetadata: {
-    version: '0.17.0',
+    version: '0.18.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -257,9 +257,21 @@ const sampleReports: DebtReportsDto = {
       {
         period: '2026-01',
         principalReduction: '400.00',
-        interestActivity: '-100.00',
+        interestActivity: '100.00',
         borrowings: '0.00',
         payments: '500.00',
+      },
+    ],
+  },
+  balanceTrends: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        period: '2026-01',
+        periodEndDate: '2026-01-31',
+        grouping: 'Total debt',
+        endingBalance: '124500.13',
+        changeFromPriorPeriod: null,
       },
     ],
   },
@@ -285,10 +297,15 @@ const sampleReports: DebtReportsDto = {
     basis: sampleReportBasis,
     rows: [
       {
-        scenarioLabel: 'Current rates',
+        scenarioLabel: 'Baseline',
         assumption: 'Saved terms as of report effective date.',
+        baselineRate: '5.49',
+        rateChange: '+0.00%',
         projectedPayoffDate: '2030-06-28',
+        payoffTimingChangeMonths: 0,
         totalProjectedInterest: '11250.00',
+        changeFromBaselineInterest: '0.00',
+        interestSaved: null,
         monthlyCashRequirement: '2450.00',
         warnings: [],
       },
@@ -300,8 +317,13 @@ const sampleReports: DebtReportsDto = {
       {
         scenarioLabel: 'Extra $250/month',
         assumption: 'Debt avalanche strategy with generated extra payment.',
+        baselineRate: null,
+        rateChange: null,
         projectedPayoffDate: '2029-12-28',
+        payoffTimingChangeMonths: -6,
         totalProjectedInterest: '10000.00',
+        changeFromBaselineInterest: '-1250.00',
+        interestSaved: '1250.00',
         monthlyCashRequirement: '2700.00',
         warnings: [],
       },
@@ -1004,7 +1026,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.17.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.18.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1023,9 +1045,7 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
     expect(screen.getByText('Monthly debt rollforward')).toBeVisible();
     expect(screen.getByText('Debt balance history by obligation')).toBeVisible();
-    const trendsSummary = screen.getByText(
-      'Principal, interest, borrowing, and payment trends',
-    );
+    const trendsSummary = screen.getByText('Debt balance trend');
     const trendsReport = trendsSummary.closest('details');
     expect(trendsReport).not.toHaveAttribute('open');
     fireEvent.click(trendsSummary);
@@ -1037,18 +1057,30 @@ describe('debt maintenance application', () => {
     ).toBeGreaterThan(0);
     expect(
       screen.getByRole('img', {
-        name: /Bar chart of principal reduction and interest expense/i,
+        name: /Line chart of ending principal balance/i,
       }),
     ).toBeVisible();
-    expect(screen.getByText('Principal and interest trends')).toBeVisible();
-    expect(screen.getAllByText('Principal reduction').length).toBeGreaterThan(0);
-    expect(screen.getByText('Interest expense')).toBeVisible();
-    fireEvent.click(screen.getByLabelText('Line chart'));
+    expect(screen.getByText('Ending principal balance trend')).toBeVisible();
+    expect(screen.getAllByText('Ending principal balance').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('radio', { name: 'Bar chart' }));
     expect(
       screen.getByRole('img', {
-        name: /Line chart of principal reduction and interest expense/i,
+        name: /Bar chart of ending principal balance/i,
       }),
     ).toBeVisible();
+    fireEvent.click(screen.getByText('Interest expense analysis'));
+    expect(screen.getByText('Monthly interest expense trend')).toBeVisible();
+    expect(
+      screen.getByRole('img', {
+        name: /Line chart of monthly interest expense/i,
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('img', {
+        name: /Bar chart of annual interest expense/i,
+      }),
+    ).toBeVisible();
+    expect(screen.getByText('Interest expense')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Date preset'), {
       target: { value: 'all_activity' },
     });
