@@ -302,12 +302,17 @@ Electron user-data directory that it removes after the workflow.
   opening principal for debts originated in the period plus posted borrowing and
   draw transactions, with duplicate prevention for explicit same-date opening
   draws.
+- Principal rollforwards use the equation Beginning principal + Borrowings -
+  Principal reduction + Principal adjustments = Ending principal. Cash payments
+  and interest are supplemental activity columns and do not drive principal
+  balance movement.
 - Debt balance trend charts show application-calculated ending principal balance
   at month-end or year-end, default to a continuous line chart, and remain paired
   with accessible tabular detail.
 - Interest analysis separates monthly interest expense trends from annual
-  interest comparisons. Interest expense is displayed as a positive amount and
-  reconciles to the underlying report table.
+  interest comparisons. Monthly charts default to a recent readable period and
+  support month-by-month comparison across years. Interest expense is displayed
+  as a positive amount and reconciles to the underlying report table.
 - Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
   engine and inherit its unsupported-term warnings.
 - Actual-versus-plan variance uses saved payoff scenarios. Because saved

@@ -1455,6 +1455,163 @@ describe('debt maintenance', () => {
     ]);
   });
 
+  it('classifies principal rollforward activity without escrow or opening-principal offsets', () => {
+    const mortgageRequest = validRequest('Generated Rollforward Mortgage');
+    mortgageRequest.debt.debtType = 'mortgage';
+    mortgageRequest.debt.originationDate = '2026-01-15';
+    mortgageRequest.initialTerm.effectiveStartDate = '2026-01-15';
+    const mortgage = service.createDebt(mortgageRequest);
+
+    const helocRequest = validRequest('Generated Rollforward HELOC');
+    helocRequest.debt.debtType = 'heloc';
+    helocRequest.debt.originationDate = '2025-01-01';
+    helocRequest.debt.creditLimit = '200000.00';
+    helocRequest.initialTerm.effectiveStartDate = '2025-01-01';
+    const heloc = service.createDebt(helocRequest);
+
+    service.createDebtTransaction({
+      debtId: mortgage.id,
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2026-02-01',
+        postingDate: '2026-02-01',
+        status: 'posted',
+        totalAmount: '1000.00',
+        description: null,
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '700.00',
+          interest: '200.00',
+          escrow: '100.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    service.createDebtTransaction({
+      debtId: mortgage.id,
+      transaction: {
+        transactionType: 'escrow_disbursement',
+        effectiveDate: '2026-03-01',
+        postingDate: '2026-03-01',
+        status: 'posted',
+        totalAmount: '300.00',
+        description: 'Generated real estate tax escrow disbursement.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: null,
+          interest: null,
+          escrow: '300.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    service.createDebtTransaction({
+      debtId: heloc.id,
+      transaction: {
+        transactionType: 'borrowing_draw',
+        effectiveDate: '2026-04-01',
+        postingDate: '2026-04-01',
+        status: 'posted',
+        totalAmount: '2000.00',
+        description: 'Generated HELOC draw.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '2000.00',
+          interest: null,
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    service.createDebtTransaction({
+      debtId: mortgage.id,
+      transaction: {
+        transactionType: 'principal_adjustment',
+        effectiveDate: '2026-05-01',
+        postingDate: '2026-05-01',
+        status: 'posted',
+        totalAmount: '500.00',
+        description: 'Generated approved principal adjustment.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '500.00',
+          interest: null,
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-12-31',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+    const annual = reports.annualRollforward.rows[0];
+
+    expect(annual).toMatchObject({
+      beginningBalance: '125000.13',
+      borrowings: '127000.13',
+      payments: '1000.00',
+      principalReduction: '700.00',
+      interestActivity: '200.00',
+      adjustmentsAndOther: '500.00',
+      endingBalance: '251800.26',
+      rollforwardCheck: '0.00',
+    });
+    expect(
+      reports.monthlyRollforward.rows.every((row) => row.rollforwardCheck === '0.00'),
+    ).toBe(true);
+    expect(
+      reports.monthlyRollforward.rows.find((row) => row.period === '2026-01'),
+    ).toMatchObject({
+      borrowings: '125000.13',
+      adjustmentsAndOther: '0.00',
+      rollforwardCheck: '0.00',
+    });
+    expect(
+      reports.monthlyRollforward.rows.find((row) => row.period === '2026-03'),
+    ).toMatchObject({
+      borrowings: '0.00',
+      principalReduction: '0.00',
+      adjustmentsAndOther: '0.00',
+      rollforwardCheck: '0.00',
+    });
+    expect(
+      reports.monthlyRollforward.rows.find((row) => row.period === '2026-04'),
+    ).toMatchObject({
+      borrowings: '2000.00',
+      adjustmentsAndOther: '0.00',
+      rollforwardCheck: '0.00',
+    });
+    expect(
+      reports.monthlyRollforward.rows.find((row) => row.period === '2026-05'),
+    ).toMatchObject({
+      borrowings: '0.00',
+      adjustmentsAndOther: '500.00',
+      rollforwardCheck: '0.00',
+    });
+  });
+
   it('clamps advanced report activity to the configured reporting history start date', () => {
     const request = validRequest('Fictional Pre-History Loan');
     request.debt.originationDate = '2018-01-01';

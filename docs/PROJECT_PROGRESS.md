@@ -955,3 +955,56 @@ completed.
   - Validate the redesigned reports with representative fictional scenarios and
     decide whether period-level scenario baselines should be added before further
     variance reporting work.
+
+## Phase 19: Rollforward Classification and Interest Chart Acceptance Corrections
+
+- Completion date: 2026-07-29
+- Application version: 0.19.0
+- Features implemented:
+  - Corrected monthly and annual principal rollforward classification.
+  - Added an explicit rollforward check column.
+  - Retained cash payments as supplemental activity information rather than a
+    principal-balance driver.
+  - Redesigned monthly interest analysis to avoid plotting every zero month in
+    long report ranges.
+  - Added month-by-month interest comparison across years.
+  - Improved annual interest comparison with zero-year omission and annual
+    change tables.
+- Material architecture and accounting decisions:
+  - Principal rollforward now follows Beginning principal + Borrowings -
+    Principal reduction + Principal adjustments = Ending principal.
+  - Opening principal appears once in Borrowings and does not create an
+    offsetting principal adjustment.
+  - Escrow deposits, escrow disbursements, escrow refunds, escrow adjustments,
+    interest allocations, fees, and penalties do not enter principal
+    adjustments merely because they are nonprincipal activity.
+  - Cash payments remain visible for review but are not part of the principal
+    rollforward equation.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - No new IPC operations.
+  - Existing `getDebtReports` returns a rollforward check value on rollforward
+    rows.
+- New UI screens or workflows:
+  - Monthly and annual rollforward tables now show Cash payments, Principal
+    adjustments, and Check.
+  - Interest expense analysis now has compact basis disclosure, chronological
+    trend, and cross-year monthly comparison modes.
+- Validation and smoke-test results:
+  - Added service regression coverage for new-loan opening principal, normal
+    split payments, escrow deposit/disbursement, HELOC draw, true principal
+    adjustment, and monthly/annual rollforward checks.
+  - Added renderer and Electron E2E assertions for rollforward labels/checks and
+    interest comparison mode.
+  - Final command results should be recorded in the completion report for this
+    phase.
+- Known limitations and technical debt:
+  - Cash-payment activity remains in the rollforward table as supplemental
+    information; if user testing still finds this confusing, it should move to a
+    separate cash-payment report.
+  - Interest charts use lightweight SVG rendering rather than a dedicated chart
+    library.
+- Recommended next phase:
+  - Review report outputs with additional representative fictional debt
+    portfolios before adding further report types.

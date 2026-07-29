@@ -38,20 +38,27 @@ Report period generation is bounded by the current reporting-history start date,
 January 1, 2019. Requests for All activity or custom ranges before that date are
 clamped for reporting only; older underlying financial records are preserved.
 
-Rollforward and balance-history reports use application-calculated ledger
-balances. Rollforward borrowings use the same basis as the dashboard: opening
+Rollforward and balance-history reports use application-calculated balances.
+Principal rollforward borrowings use the same basis as the dashboard: opening
 principal for debts originated during the period plus posted borrowing/draw
-transactions, with duplicate prevention for explicit same-date opening draws.
-Confirmed snapshots are displayed separately. Interest-rate and extra-payment
-sensitivity reports reuse the payoff scenario engine rather than duplicating
-projection logic. Unsupported payoff terms inherit the engine's warnings.
+principal allocations, with duplicate prevention for explicit same-date opening
+draws. The principal rollforward equation is Beginning principal + Borrowings -
+Principal reduction + Principal adjustments = Ending principal. Cash payments
+and interest activity are retained only as supplemental columns; they do not
+drive the principal equation. Escrow deposits, escrow disbursements, escrow
+refunds, and escrow adjustments do not enter principal adjustments. Confirmed
+snapshots are displayed separately. Interest-rate and extra-payment sensitivity
+reports reuse the payoff scenario engine rather than duplicating projection
+logic. Unsupported payoff terms inherit the engine's warnings.
 
 Debt balance trend visuals show application-calculated ending principal balances
 at month-end or year-end, default to a continuous line chart, and remain paired
 with period-end balance and change tables. Interest analysis is a separate
-report section with monthly interest expense trends and annual interest
-comparison charts. Interest is displayed as a positive user-facing expense and
-must reconcile to the tabular report detail.
+report section with monthly interest expense trends, month-by-month cross-year
+comparison, and annual interest comparison charts. Interest charts omit
+zero-only periods when they add no analytical value, use readable month-year or
+year labels, and display interest as a positive user-facing expense that must
+reconcile to the tabular report detail.
 
 Interest-rate sensitivity is framed around variable-rate decision analysis and
 includes only debts where rate sensitivity is meaningful. Extra-payment

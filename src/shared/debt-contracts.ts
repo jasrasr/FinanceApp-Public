@@ -617,6 +617,7 @@ const rollforwardRowDtoSchema = z
     principalReduction: z.string(),
     interestActivity: z.string(),
     adjustmentsAndOther: z.string(),
+    rollforwardCheck: z.string(),
     endingBalance: z.string(),
   })
   .strict();

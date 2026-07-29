@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.18.0')).toBeVisible();
+    await expect(window.getByText('Version 0.19.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -250,6 +250,15 @@ test('completes the manual debt-maintenance workflow', async () => {
       window.getByText(/Application-calculated ledger balances/).first(),
     ).toBeVisible();
     await expect(
+      window.getByRole('columnheader', { name: 'Cash payments' }).first(),
+    ).toBeVisible();
+    await expect(
+      window.getByRole('columnheader', { name: 'Principal adjustments' }).first(),
+    ).toBeVisible();
+    await expect(
+      window.getByRole('columnheader', { name: 'Check' }).first(),
+    ).toBeVisible();
+    await expect(
       window.getByText('Actual-versus-plan variance using saved payoff scenarios'),
     ).toBeVisible();
     await window.getByText('Debt balance trend').click();
@@ -270,6 +279,12 @@ test('completes the manual debt-maintenance workflow', async () => {
     ).toBeVisible();
     await expect(
       window.getByRole('img', { name: /Bar chart of annual interest expense/i }),
+    ).toBeVisible();
+    await window.getByRole('radio', { name: 'Compare months across years' }).check();
+    await expect(
+      window.getByRole('img', {
+        name: /Grouped bar chart comparing monthly interest expense across years/i,
+      }),
     ).toBeVisible();
 
     await window.getByRole('button', { name: 'Data management' }).click();

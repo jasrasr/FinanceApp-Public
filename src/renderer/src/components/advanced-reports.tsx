@@ -350,6 +350,124 @@ const InterestMiniChart = ({
   );
 };
 
+const monthName = (monthIndex: number): string =>
+  new Date(Date.UTC(2026, monthIndex, 1)).toLocaleDateString(undefined, {
+    month: 'short',
+    timeZone: 'UTC',
+  });
+
+type ActivityTrendRow = DebtReportsDto['activityTrends']['rows'][number];
+
+const interestRowsWithActivity = (
+  rows: DebtReportsDto['activityTrends']['rows'],
+): readonly ActivityTrendRow[] =>
+  rows.filter((row) => Number(row.interestActivity) !== 0);
+
+const recentInterestRows = (
+  rows: DebtReportsDto['activityTrends']['rows'],
+): readonly ActivityTrendRow[] => {
+  const activeRows = interestRowsWithActivity(rows);
+  return activeRows.slice(Math.max(0, activeRows.length - 24));
+};
+
+const InterestComparisonChart = ({
+  rows,
+}: {
+  readonly rows: readonly ActivityTrendRow[];
+}): React.JSX.Element | null => {
+  if (rows.length === 0) return null;
+  const width = 720;
+  const height = 240;
+  const chartTop = 20;
+  const chartBottom = 180;
+  const years = [...new Set(rows.map((row) => row.period.slice(0, 4)))].sort();
+  const valuesByYearMonth = new Map(
+    rows.map((row) => [
+      `${row.period.slice(0, 4)}-${row.period.slice(5, 7)}`,
+      Number(row.interestActivity),
+    ]),
+  );
+  const maximum = Math.max(...[...valuesByYearMonth.values()], 1);
+  const monthSlot = (width - 96) / 12;
+  const barWidth = Math.max(4, Math.min(12, monthSlot / Math.max(years.length, 1) - 2));
+  const yFor = (value: number): number =>
+    chartBottom - (value / maximum) * (chartBottom - chartTop);
+
+  return (
+    <div
+      className="mt-3 rounded-lg border border-slate-200 bg-white p-4"
+      role="img"
+      aria-label="Grouped bar chart comparing monthly interest expense across years. Tabular detail follows."
+    >
+      <div className="mb-2 flex flex-wrap gap-3 text-xs text-slate-700">
+        {years.map((year, index) => (
+          <span className="inline-flex items-center gap-1" key={year}>
+            <span
+              className="inline-block h-3 w-3 border border-slate-700"
+              style={{ backgroundColor: index % 2 === 0 ? '#fef3c7' : '#fed7aa' }}
+            />
+            {year}
+          </span>
+        ))}
+      </div>
+      <svg
+        aria-hidden="true"
+        className="h-auto w-full"
+        focusable="false"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+      >
+        <line
+          stroke="#cbd5e1"
+          x1="64"
+          x2={width - 16}
+          y1={chartBottom}
+          y2={chartBottom}
+        />
+        <line stroke="#cbd5e1" x1="64" x2="64" y1={chartTop} y2={chartBottom} />
+        <text fill="#475569" fontSize="11" x="4" y="16">
+          Dollars
+        </text>
+        <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
+          {formatDollarString(maximum.toFixed(2))}
+        </text>
+        {Array.from({ length: 12 }).map((_, monthIndex) => {
+          const month = `${monthIndex + 1}`.padStart(2, '0');
+          const baseX = 64 + monthIndex * monthSlot + monthSlot / 2;
+          return (
+            <g key={month}>
+              {years.map((year, yearIndex) => {
+                const value = valuesByYearMonth.get(`${year}-${month}`) ?? 0;
+                const y = yFor(value);
+                const x =
+                  baseX - (years.length * barWidth) / 2 + yearIndex * (barWidth + 2);
+                return (
+                  <g key={year}>
+                    <title>{`${monthName(monthIndex)} ${year}: ${formatDollarString(value.toFixed(2))} interest expense.`}</title>
+                    <rect
+                      fill={yearIndex % 2 === 0 ? '#fef3c7' : '#fed7aa'}
+                      height={chartBottom - y}
+                      stroke="#b45309"
+                      strokeDasharray={yearIndex % 2 === 0 ? undefined : '3 2'}
+                      width={barWidth}
+                      x={x}
+                      y={y}
+                    />
+                  </g>
+                );
+              })}
+              <text fill="#475569" fontSize="10" textAnchor="middle" x={baseX} y="204">
+                {monthName(monthIndex)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+
 export const AdvancedReports = ({
   reports,
   loading,
@@ -531,16 +649,27 @@ export const AdvancedReports = ({
 
 const ReportShell = ({
   basis,
+  basisMode = 'expanded',
   children,
   title,
 }: {
   readonly basis: DebtReportsDto['monthlyRollforward']['basis'];
+  readonly basisMode?: 'expanded' | 'compact';
   readonly children: React.ReactNode;
   readonly title: string;
 }): React.JSX.Element => (
   <details className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <summary className="cursor-pointer text-lg font-semibold">{title}</summary>
-    <BasisNote basis={basis} />
+    {basisMode === 'expanded' ? (
+      <BasisNote basis={basis} />
+    ) : (
+      <details className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+        <summary className="cursor-pointer font-semibold">
+          Basis and assumptions
+        </summary>
+        <BasisNote basis={basis} />
+      </details>
+    )}
     <div className="mt-4">{children}</div>
   </details>
 );
@@ -562,11 +691,12 @@ const ReportRollforward = ({
               <th className="px-3 py-2">Period</th>
               <th className="px-3 py-2 text-right">Beginning</th>
               <th className="px-3 py-2 text-right">Borrowings</th>
-              <th className="px-3 py-2 text-right">Payments</th>
+              <th className="px-3 py-2 text-right">Cash payments</th>
               <th className="px-3 py-2 text-right">Principal reduction</th>
               <th className="px-3 py-2 text-right">Interest</th>
-              <th className="px-3 py-2 text-right">Adj./other</th>
+              <th className="px-3 py-2 text-right">Principal adjustments</th>
               <th className="px-3 py-2 text-right">Ending</th>
+              <th className="px-3 py-2 text-right">Check</th>
             </tr>
           </thead>
           <tbody>
@@ -580,6 +710,7 @@ const ReportRollforward = ({
                 <MoneyCell value={row.interestActivity} />
                 <MoneyCell value={row.adjustmentsAndOther} />
                 <MoneyCell value={row.endingBalance} />
+                <MoneyCell value={row.rollforwardCheck} />
               </tr>
             ))}
           </tbody>
@@ -747,6 +878,7 @@ const ReportInterestAnalysis = ({
 }: {
   readonly reports: DebtReportsDto;
 }): React.JSX.Element => {
+  const [interestView, setInterestView] = useState<'trend' | 'comparison'>('trend');
   const annualTotals = new Map<string, number>();
   for (const row of reports.activityTrends.rows) {
     const year = row.period.slice(0, 4);
@@ -755,62 +887,172 @@ const ReportInterestAnalysis = ({
       (annualTotals.get(year) ?? 0) + Number(row.interestActivity),
     );
   }
+  const monthlyRows = recentInterestRows(reports.activityTrends.rows);
+  const comparisonRows = interestRowsWithActivity(reports.activityTrends.rows);
+  const annualRows = [...annualTotals.entries()]
+    .filter(([, total]) => total !== 0)
+    .map(([year, total], index, rows) => {
+      const prior = index === 0 ? null : (rows[index - 1]?.[1] ?? null);
+      const change = prior === null ? null : total - prior;
+      const percentChange =
+        prior === null || prior === 0 || change === null
+          ? null
+          : (change / prior) * 100;
+      return { year, total, change, percentChange };
+    });
+  const omittedZeroYears = [...annualTotals.entries()]
+    .filter(([, total]) => total === 0)
+    .map(([year]) => year);
 
   return (
-    <ReportShell basis={reports.activityTrends.basis} title="Interest expense analysis">
+    <ReportShell
+      basis={reports.activityTrends.basis}
+      basisMode="compact"
+      title="Interest expense analysis"
+    >
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <p className="text-sm text-slate-600">
+          Interest expense is shown as positive activity and excludes zero-only periods
+          from charts when they add no analytical value.
+        </p>
+        <fieldset className="flex gap-3 rounded-lg border border-slate-200 p-3 text-sm">
+          <legend className="px-1 text-xs font-semibold text-slate-600">
+            Monthly view
+          </legend>
+          <label className="inline-flex items-center gap-2">
+            <input
+              checked={interestView === 'trend'}
+              name="interest-view"
+              onChange={() => setInterestView('trend')}
+              type="radio"
+              value="trend"
+            />
+            Chronological trend
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              checked={interestView === 'comparison'}
+              name="interest-view"
+              onChange={() => setInterestView('comparison')}
+              type="radio"
+              value="comparison"
+            />
+            Compare months across years
+          </label>
+        </fieldset>
+      </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-slate-200 p-4">
           <h4 className="text-sm font-semibold text-slate-900">
-            Monthly interest expense trend
+            {interestView === 'trend'
+              ? 'Monthly interest expense trend'
+              : 'Month-by-month comparison across years'}
           </h4>
-          <InterestMiniChart
-            chartType="line"
-            label="Line chart of monthly interest expense"
-            rows={reports.activityTrends.rows.map((row) => ({
-              label: periodLabel(row.period),
-              value: row.interestActivity,
-            }))}
-          />
+          {interestView === 'trend' ? (
+            monthlyRows.length === 0 ? (
+              <p className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+                No interest activity exists in the selected report range.
+              </p>
+            ) : (
+              <InterestMiniChart
+                chartType="line"
+                label="Line chart of monthly interest expense"
+                rows={monthlyRows.map((row) => ({
+                  label: periodLabel(row.period),
+                  value: row.interestActivity,
+                }))}
+              />
+            )
+          ) : comparisonRows.length === 0 ? (
+            <p className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+              No interest activity exists for month-by-month comparison.
+            </p>
+          ) : (
+            <InterestComparisonChart rows={comparisonRows} />
+          )}
         </div>
         <div className="rounded-lg border border-slate-200 p-4">
           <h4 className="text-sm font-semibold text-slate-900">
             Annual interest expense comparison
           </h4>
-          <InterestMiniChart
-            chartType="bar"
-            label="Bar chart of annual interest expense"
-            rows={[...annualTotals.entries()].map(([year, total]) => ({
-              label: year,
-              value: total.toFixed(2),
-            }))}
-          />
+          {annualRows.length === 0 ? (
+            <p className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+              No annual interest activity exists in the selected report range.
+            </p>
+          ) : (
+            <InterestMiniChart
+              chartType="bar"
+              label="Bar chart of annual interest expense"
+              rows={annualRows.map((row) => ({
+                label: row.year,
+                value: row.total.toFixed(2),
+              }))}
+            />
+          )}
+          {omittedZeroYears.length > 0 ? (
+            <p className="mt-2 text-xs text-slate-500">
+              Omitted zero-interest years: {omittedZeroYears.join(', ')}.
+            </p>
+          ) : null}
         </div>
       </div>
       {reports.activityTrends.rows.length === 0 ? <EmptyState /> : null}
       {reports.activityTrends.rows.length > 0 ? (
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="text-left text-xs text-slate-500 uppercase">
-              <tr>
-                <th className="px-3 py-2">Month</th>
-                <th className="px-3 py-2 text-right">Interest expense</th>
-                <th className="px-3 py-2 text-right">Principal reduction</th>
-                <th className="px-3 py-2 text-right">Borrowings</th>
-                <th className="px-3 py-2 text-right">Payments</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.activityTrends.rows.map((row) => (
-                <tr className="border-t border-slate-100" key={row.period}>
-                  <td className="px-3 py-2">{periodLabel(row.period)}</td>
-                  <MoneyCell value={row.interestActivity} />
-                  <MoneyCell value={row.principalReduction} />
-                  <MoneyCell value={row.borrowings} />
-                  <MoneyCell value={row.payments} />
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-xs text-slate-500 uppercase">
+                <tr>
+                  <th className="px-3 py-2">Month</th>
+                  <th className="px-3 py-2 text-right">Interest expense</th>
+                  <th className="px-3 py-2 text-right">Principal reduction</th>
+                  <th className="px-3 py-2 text-right">Borrowings</th>
+                  <th className="px-3 py-2 text-right">Cash payments</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {reports.activityTrends.rows.map((row) => (
+                  <tr className="border-t border-slate-100" key={row.period}>
+                    <td className="px-3 py-2">{periodLabel(row.period)}</td>
+                    <MoneyCell value={row.interestActivity} />
+                    <MoneyCell value={row.principalReduction} />
+                    <MoneyCell value={row.borrowings} />
+                    <MoneyCell value={row.payments} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-xs text-slate-500 uppercase">
+                <tr>
+                  <th className="px-3 py-2">Year</th>
+                  <th className="px-3 py-2 text-right">Interest expense</th>
+                  <th className="px-3 py-2 text-right">Change</th>
+                  <th className="px-3 py-2 text-right">% change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {annualRows.map((row) => (
+                  <tr className="border-t border-slate-100" key={row.year}>
+                    <td className="px-3 py-2">{row.year}</td>
+                    <MoneyCell value={row.total.toFixed(2)} />
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">
+                      {row.change === null
+                        ? '—'
+                        : formatDollarString(row.change.toFixed(2))}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">
+                      {row.percentChange === null
+                        ? '—'
+                        : `${row.percentChange.toFixed(1)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
     </ReportShell>

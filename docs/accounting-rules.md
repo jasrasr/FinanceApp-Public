@@ -403,22 +403,36 @@ underlying records are preserved, but All activity and custom report ranges are
 clamped to the reporting-history start date until a future configuration
 explicitly changes it.
 
-Monthly and annual rollforwards use:
+Monthly and annual principal rollforwards use:
 
-- Beginning balance: application-calculated ledger balance as of the day before
-  the period start.
-- Ending balance: application-calculated ledger balance as of the period end.
+- Beginning principal: application-calculated principal balance as of the day
+  before the period start.
+- Ending principal: application-calculated principal balance as of the period
+  end.
 - Borrowings: opening principal for debts originated in the period plus posted
-  borrowing/draw transaction totals. Opening principal is not double-counted
+  borrowing/draw principal allocations. Opening principal is not double-counted
   when an equivalent same-date borrowing/draw already represents the original
   principal.
-- Payments: positive display of posted payment transaction totals.
+- Cash payments: positive display of posted payment transaction totals. Cash
+  payments are retained as supplemental activity information and are not used in
+  the principal rollforward equation.
 - Principal reduction: positive display of negative principal and
   extra-principal allocations.
 - Interest activity: positive display of net signed interest allocations for the
-  report date range.
-- Adjustments and other: residual posted activity not classified as borrowings
-  or payments.
+  report date range. Interest is supplemental activity information and is not
+  used in the principal rollforward equation.
+- Principal adjustments: principal allocations from activity that is neither a
+  borrowing/draw nor a normal principal payment, such as an approved principal
+  adjustment.
+- Rollforward check: Beginning principal + Borrowings - Principal reduction +
+  Principal adjustments - Ending principal. A properly classified rollforward
+  should equal zero.
+
+Escrow deposits, real estate tax disbursements, homeowners insurance,
+mortgage insurance, escrow refunds, escrow adjustments, interest allocations,
+fees, and penalties do not enter principal adjustments merely because they are
+nonprincipal activity. They appear only in their appropriate supplemental
+activity or escrow reporting.
 
 Debt balance trend charts use the active report date range and filters and show
 application-calculated ending principal balance at each month-end or year-end.
@@ -427,7 +441,11 @@ where the aggregation remains useful. The table paired with the chart provides
 period-end balances and period-over-period changes.
 
 Interest analysis is separate from debt balance trends. Monthly interest expense
-trends and annual interest comparisons display interest expense as positive
+charts omit zero-only periods when they add no analytical value and default to a
+recent readable chronological view. A comparison view groups January through
+December and separates each year so the same month can be compared across years.
+Annual interest comparisons omit zero years when they add no analytical value and
+state the omission. Monthly and annual interest displays use positive
 user-facing amounts and must reconcile to the accessible tabular detail.
 
 Balance-history reporting shows calculated ledger balances and latest confirmed

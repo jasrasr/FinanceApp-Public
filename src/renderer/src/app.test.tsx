@@ -21,7 +21,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 16,
   appMetadata: {
-    version: '0.18.0',
+    version: '0.19.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -215,9 +215,10 @@ const sampleReports: DebtReportsDto = {
         borrowings: '0.00',
         payments: '500.00',
         principalReduction: '400.00',
-        interestActivity: '-100.00',
+        interestActivity: '100.00',
         adjustmentsAndOther: '0.00',
-        endingBalance: '124500.13',
+        rollforwardCheck: '0.00',
+        endingBalance: '124600.13',
       },
     ],
   },
@@ -230,9 +231,10 @@ const sampleReports: DebtReportsDto = {
         borrowings: '0.00',
         payments: '500.00',
         principalReduction: '400.00',
-        interestActivity: '-100.00',
+        interestActivity: '100.00',
         adjustmentsAndOther: '0.00',
-        endingBalance: '124500.13',
+        rollforwardCheck: '0.00',
+        endingBalance: '124600.13',
       },
     ],
   },
@@ -1026,7 +1028,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.18.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.19.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1045,6 +1047,10 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
     expect(screen.getByText('Monthly debt rollforward')).toBeVisible();
     expect(screen.getByText('Debt balance history by obligation')).toBeVisible();
+    fireEvent.click(screen.getByText('Monthly debt rollforward'));
+    expect(screen.getAllByText('Cash payments').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Principal adjustments').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Check').length).toBeGreaterThan(0);
     const trendsSummary = screen.getByText('Debt balance trend');
     const trendsReport = trendsSummary.closest('details');
     expect(trendsReport).not.toHaveAttribute('open');
@@ -1070,6 +1076,7 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
     fireEvent.click(screen.getByText('Interest expense analysis'));
     expect(screen.getByText('Monthly interest expense trend')).toBeVisible();
+    expect(screen.getByText('Basis and assumptions')).toBeVisible();
     expect(
       screen.getByRole('img', {
         name: /Line chart of monthly interest expense/i,
@@ -1080,7 +1087,14 @@ describe('debt maintenance application', () => {
         name: /Bar chart of annual interest expense/i,
       }),
     ).toBeVisible();
-    expect(screen.getByText('Interest expense')).toBeVisible();
+    fireEvent.click(screen.getByRole('radio', { name: 'Compare months across years' }));
+    expect(screen.getByText('Month-by-month comparison across years')).toBeVisible();
+    expect(
+      screen.getByRole('img', {
+        name: /Grouped bar chart comparing monthly interest expense across years/i,
+      }),
+    ).toBeVisible();
+    expect(screen.getAllByText('Interest expense').length).toBeGreaterThan(0);
     fireEvent.change(screen.getByLabelText('Date preset'), {
       target: { value: 'all_activity' },
     });

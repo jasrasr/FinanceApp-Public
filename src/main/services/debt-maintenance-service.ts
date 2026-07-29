@@ -1467,6 +1467,23 @@ const calculateReportBalanceThroughDate = (
     ? 0
     : calculateLedgerBalanceThroughDate(database, record.debt.id, date);
 
+const calculateReportPrincipalBalanceThroughDate = (
+  record: DebtWithActivityRecord,
+  date: string,
+): number => {
+  if (date < record.debt.originationDate) return 0;
+  return record.transactions
+    .filter(
+      ({ transaction }) =>
+        transaction.status !== 'superseded' && transaction.effectiveDate <= date,
+    )
+    .reduce(
+      (balance, { allocations }) =>
+        balance + allocationTotal(allocations, ['principal', 'extra_principal']),
+      record.debt.originalPrincipalCents,
+    );
+};
+
 const allocationTotal = (
   allocations: readonly DebtTransactionWithAllocationsRecord['allocations'][number][],
   types: readonly string[],
@@ -1476,7 +1493,6 @@ const allocationTotal = (
     .reduce((total, allocation) => total + allocation.amountCents, 0);
 
 const createRollforward = (
-  database: AppDatabase,
   records: readonly DebtWithActivityRecord[],
   startDate: string,
   endDate: string,
@@ -1490,7 +1506,7 @@ const createRollforward = (
     let payments = 0;
     let principalReduction = 0;
     let interestActivity = 0;
-    let periodTransactionTotal = 0;
+    let principalAdjustments = 0;
 
     for (const record of records) {
       const transactionTypes = new Map(
@@ -1512,9 +1528,8 @@ const createRollforward = (
               transaction.transactionType)
             : transaction.transactionType;
 
-        periodTransactionTotal += transaction.totalAmountCents;
         if (effectiveTransactionType === 'borrowing_draw')
-          borrowings += transaction.totalAmountCents;
+          borrowings += allocationTotal(allocations, ['principal', 'extra_principal']);
         if (effectiveTransactionType === 'payment')
           payments -= transaction.totalAmountCents;
         const principal = allocationTotal(allocations, [
@@ -1523,6 +1538,8 @@ const createRollforward = (
         ]);
         if (effectiveTransactionType === 'payment') {
           principalReduction -= principal;
+        } else if (effectiveTransactionType !== 'borrowing_draw') {
+          principalAdjustments += principal;
         }
         interestActivity += allocationTotal(allocations, ['interest']);
       }
@@ -1530,15 +1547,20 @@ const createRollforward = (
 
     const beginningBalance = records.reduce(
       (total, record) =>
-        total + calculateReportBalanceThroughDate(database, record, beginningDate),
+        total + calculateReportPrincipalBalanceThroughDate(record, beginningDate),
       0,
     );
     const endingBalance = records.reduce(
       (total, record) =>
-        total + calculateReportBalanceThroughDate(database, record, end),
+        total + calculateReportPrincipalBalanceThroughDate(record, end),
       0,
     );
-    const adjustmentsAndOther = periodTransactionTotal - borrowings + payments;
+    const rollforwardCheck =
+      beginningBalance +
+      borrowings -
+      principalReduction +
+      principalAdjustments -
+      endingBalance;
 
     return {
       period,
@@ -1547,7 +1569,8 @@ const createRollforward = (
       payments: centsToDollars(payments),
       principalReduction: centsToDollars(principalReduction),
       interestActivity: centsToDollars(Math.abs(interestActivity)),
-      adjustmentsAndOther: centsToDollars(adjustmentsAndOther),
+      adjustmentsAndOther: centsToDollars(principalAdjustments),
+      rollforwardCheck: centsToDollars(rollforwardCheck),
       endingBalance: centsToDollars(endingBalance),
     };
   });
@@ -1808,14 +1831,8 @@ const createDebtReports = (
     });
   });
 
-  const monthlyRows = createRollforward(
-    database,
-    records,
-    startDate,
-    endDate,
-    'monthly',
-  );
-  const annualRows = createRollforward(database, records, startDate, endDate, 'annual');
+  const monthlyRows = createRollforward(records, startDate, endDate, 'monthly');
+  const annualRows = createRollforward(records, startDate, endDate, 'annual');
   const trendRows = monthlyRows.map((row) => ({
     period: row.period,
     principalReduction: row.principalReduction,
