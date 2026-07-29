@@ -34,6 +34,7 @@ import type {
   UpdateImportSheetMappingRequest,
   UpdateStagedImportRowReviewRequest,
   UpdateDebtRequest,
+  VoidBalanceReconciliationRequest,
 } from '../../shared/debt-contracts';
 import {
   addDebtTermRequestSchema,
@@ -61,6 +62,7 @@ import {
   postImportBatchRequestSchema,
   previewImportBatchPostingRequestSchema,
   updateDebtRequestSchema,
+  voidBalanceReconciliationRequestSchema,
 } from '../../shared/debt-contracts';
 import {
   ALLOCATION_TYPES,
@@ -102,6 +104,7 @@ import {
   updateImportSheetMappingReview,
   updateStagedImportRowReview,
   updateDebtDescriptiveRecord,
+  voidBalanceReconciliationRecord,
   type DebtRecord,
   type BalanceReconciliationRecord,
   type DebtTransactionWithAllocationsRecord,
@@ -190,6 +193,7 @@ export interface DebtMaintenanceService {
   createBalanceReconciliation(
     request: CreateBalanceReconciliationRequest,
   ): DebtDetailDto;
+  voidBalanceReconciliation(request: VoidBalanceReconciliationRequest): DebtDetailDto;
   archiveDebt(request: ArchiveDebtRequest): DebtDetailDto;
   restoreDebt(request: RestoreDebtRequest): DebtDetailDto;
 }
@@ -623,6 +627,11 @@ const mapBalanceReconciliation = (
   ),
   calculatedDifference: centsToDollars(reconciliation.calculatedDifferenceCents),
   reconciliationStatus: reconciliation.reconciliationStatus,
+  lifecycleStatus: reconciliation.lifecycleStatus,
+  supersedesReconciliationId: reconciliation.supersedesReconciliationId,
+  supersededByReconciliationId: reconciliation.supersededByReconciliationId,
+  voidedAtUtc: reconciliation.voidedAtUtc,
+  supersededAtUtc: reconciliation.supersededAtUtc,
   explanation: reconciliation.explanation,
   approvedAdjustmentTransactionId: reconciliation.approvedAdjustmentTransactionId,
   sourceReference: reconciliation.sourceReference,
@@ -682,6 +691,108 @@ const calculateEscrowBalanceFromActivity = (record: DebtWithActivityRecord): num
   }
 
   return balance;
+};
+
+interface ReversalIntegrityIssue {
+  readonly debtId: string;
+  readonly debtName: string;
+  readonly creditor: string;
+  readonly originalTransactionId: string | null;
+  readonly reversalTransactionId: string;
+  readonly effectiveDate: string;
+  readonly unmatchedTotalCents: number;
+  readonly unmatchedAllocations: readonly {
+    readonly allocationType: string;
+    readonly amountCents: number;
+  }[];
+}
+
+const formatAllocationType = (allocationType: string): string =>
+  allocationType.replaceAll('_', ' ');
+
+const summarizeReversalIssue = (issue: ReversalIntegrityIssue): string => {
+  const allocationSummary =
+    issue.unmatchedAllocations.length === 0
+      ? 'no allocation detail'
+      : issue.unmatchedAllocations
+          .map(
+            (allocation) =>
+              `${formatAllocationType(allocation.allocationType)} ${centsToDollars(allocation.amountCents)}`,
+          )
+          .join(', ');
+
+  return `Malformed reversal detected; original and reversal activity do not fully offset (${allocationSummary}; total ${centsToDollars(issue.unmatchedTotalCents)}). Calculated debt, escrow, and YTD amounts for this obligation require review.`;
+};
+
+const findMalformedReversalIssues = (
+  record: DebtWithActivityRecord,
+): readonly ReversalIntegrityIssue[] => {
+  const transactionsById = new Map(
+    record.transactions.map((entry) => [entry.transaction.id, entry]),
+  );
+  const issues: ReversalIntegrityIssue[] = [];
+
+  for (const reversalEntry of record.transactions) {
+    const { transaction: reversal } = reversalEntry;
+
+    if (
+      reversal.transactionType !== 'reversal' ||
+      reversal.status === 'superseded' ||
+      !reversal.reversalOfTransactionId
+    ) {
+      continue;
+    }
+
+    const originalEntry = transactionsById.get(reversal.reversalOfTransactionId);
+
+    if (!originalEntry) {
+      issues.push({
+        debtId: record.debt.id,
+        debtName: record.debt.name,
+        creditor: record.debt.creditor,
+        originalTransactionId: reversal.reversalOfTransactionId,
+        reversalTransactionId: reversal.id,
+        effectiveDate: reversal.effectiveDate,
+        unmatchedTotalCents: reversal.totalAmountCents,
+        unmatchedAllocations: reversalEntry.allocations.map((allocation) => ({
+          allocationType: allocation.allocationType,
+          amountCents: allocation.amountCents,
+        })),
+      });
+      continue;
+    }
+
+    const unmatchedAllocations = ALLOCATION_TYPES.map((allocationType) => {
+      const originalAmount = originalEntry.allocations
+        .filter((allocation) => allocation.allocationType === allocationType)
+        .reduce((total, allocation) => total + allocation.amountCents, 0);
+      const reversalAmount = reversalEntry.allocations
+        .filter((allocation) => allocation.allocationType === allocationType)
+        .reduce((total, allocation) => total + allocation.amountCents, 0);
+
+      return {
+        allocationType,
+        amountCents: originalAmount + reversalAmount,
+      };
+    }).filter((allocation) => allocation.amountCents !== 0);
+    const unmatchedTotalCents =
+      originalEntry.transaction.totalAmountCents + reversal.totalAmountCents;
+
+    if (unmatchedTotalCents !== 0 || unmatchedAllocations.length > 0) {
+      issues.push({
+        debtId: record.debt.id,
+        debtName: record.debt.name,
+        creditor: record.debt.creditor,
+        originalTransactionId: originalEntry.transaction.id,
+        reversalTransactionId: reversal.id,
+        effectiveDate: reversal.effectiveDate,
+        unmatchedTotalCents,
+        unmatchedAllocations,
+      });
+    }
+  }
+
+  return issues;
 };
 
 const postedTransactionFieldErrors = (
@@ -941,8 +1052,11 @@ const createDashboard = (
   const upcomingMaturities: DashboardDto['upcomingMaturities'] = [];
   const escrowBalances: DashboardDto['escrowBalances'] = [];
   const attentionItems: DashboardDto['attentionItems'] = [];
+  let hasDataIntegrityExceptions = false;
 
   for (const record of records) {
+    const reversalIssues = findMalformedReversalIssues(record);
+    hasDataIntegrityExceptions ||= reversalIssues.length > 0;
     const currentTerm = currentTermForDate(record.terms, effectiveDate);
     const ledgerBalanceCents = calculateLedgerBalanceThroughDate(
       database,
@@ -978,26 +1092,40 @@ const createDashboard = (
       weightedRateDenominator += BigInt(ledgerBalanceCents);
     }
 
+    const transactionTypes = new Map(
+      record.transactions.map((entry) => [
+        entry.transaction.id,
+        entry.transaction.transactionType,
+      ]),
+    );
+
     for (const { transaction, allocations } of postedActualTransactionsThrough(
       record,
       ytdStart,
       effectiveDate,
     )) {
-      if (transaction.transactionType === 'borrowing_draw') {
+      const effectiveTransactionType =
+        transaction.transactionType === 'reversal' &&
+        transaction.reversalOfTransactionId
+          ? (transactionTypes.get(transaction.reversalOfTransactionId) ??
+            transaction.transactionType)
+          : transaction.transactionType;
+
+      if (effectiveTransactionType === 'borrowing_draw') {
         newBorrowingsYtdCents += transaction.totalAmountCents;
       }
 
       for (const allocation of allocations) {
         if (
+          effectiveTransactionType === 'payment' &&
           (allocation.allocationType === 'principal' ||
-            allocation.allocationType === 'extra_principal') &&
-          allocation.amountCents < 0
+            allocation.allocationType === 'extra_principal')
         ) {
           principalReductionYtdCents -= allocation.amountCents;
         }
 
         if (allocation.allocationType === 'interest') {
-          interestActivityYtdCents += Math.abs(allocation.amountCents);
+          interestActivityYtdCents += allocation.amountCents;
         }
       }
     }
@@ -1022,9 +1150,10 @@ const createDashboard = (
 
     for (const reconciliation of record.balanceReconciliations) {
       if (
-        reconciliation.reconciliationStatus === 'unreconciled' ||
-        reconciliation.reconciliationStatus === 'in_progress' ||
-        reconciliation.reconciliationStatus === 'exception'
+        reconciliation.lifecycleStatus === 'current' &&
+        (reconciliation.reconciliationStatus === 'unreconciled' ||
+          reconciliation.reconciliationStatus === 'in_progress' ||
+          reconciliation.reconciliationStatus === 'exception')
       ) {
         attentionItems.push({
           debtId: record.debt.id,
@@ -1038,6 +1167,19 @@ const createDashboard = (
             'Open reconciliation item; difference is statement ending balance less application-calculated ledger balance for the statement date.',
         });
       }
+    }
+
+    for (const issue of reversalIssues) {
+      attentionItems.push({
+        debtId: issue.debtId,
+        debtName: issue.debtName,
+        creditor: issue.creditor,
+        statementDate: issue.effectiveDate,
+        status: 'exception',
+        difference: centsToDollars(issue.unmatchedTotalCents),
+        sourceReference: issue.reversalTransactionId,
+        basis: summarizeReversalIssue(issue),
+      });
     }
   }
 
@@ -1062,7 +1204,7 @@ const createDashboard = (
       activeDebt: centsToDollars(activeDebtCents),
       principalReductionYtd: centsToDollars(principalReductionYtdCents),
       newBorrowingsYtd: centsToDollars(newBorrowingsYtdCents),
-      interestActivityYtd: centsToDollars(interestActivityYtdCents),
+      interestActivityYtd: centsToDollars(Math.abs(interestActivityYtdCents)),
       escrowBalance: centsToDollars(escrowBalanceCents),
       requiredMonthlyPayments: centsToDollars(requiredMonthlyPaymentsCents),
       weightedAverageInterestRate:
@@ -1071,11 +1213,11 @@ const createDashboard = (
           : rateMicrosToPercentString(weightedAverageInterestRateMicros),
     },
     metricBasis: {
-      activeDebt: `Application-calculated ledger balances for active debts as of ${effectiveDate}; not confirmed snapshots or original principal.`,
-      principalReductionYtd: `Net principal and extra-principal allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}.`,
+      activeDebt: `Application-calculated ledger balances for active debts as of ${effectiveDate}; not confirmed snapshots or original principal.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected balances require review.' : ''}`,
+      principalReductionYtd: `Net principal and extra-principal allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected YTD amounts require review.' : ''}`,
       newBorrowingsYtd: `Posted non-superseded borrowing or draw transaction totals dated ${ytdStart} through ${effectiveDate}.`,
-      interestActivityYtd: `Positive display of interest allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}; internal payment allocations are stored as negative values.`,
-      escrowBalance: `Application-calculated escrow balances for active debts as of ${effectiveDate}; excluded from debt principal balance.`,
+      interestActivityYtd: `Positive display of interest allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}; internal payment allocations are stored as negative values.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected YTD amounts require review.' : ''}`,
+      escrowBalance: `Application-calculated escrow balances for active debts as of ${effectiveDate}; excluded from debt principal balance.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected escrow balances require review.' : ''}`,
       requiredMonthlyPayments: `Current effective debt terms as of ${effectiveDate}, normalized to monthly equivalents; irregular and other frequencies are excluded from the amount.`,
       weightedAverageInterestRate: `Current effective annual rates as of ${effectiveDate}, weighted by application-calculated ledger balances for active debts.`,
     },
@@ -1317,22 +1459,37 @@ const createRollforward = (
     let periodTransactionTotal = 0;
 
     for (const record of records) {
+      const transactionTypes = new Map(
+        record.transactions.map((entry) => [
+          entry.transaction.id,
+          entry.transaction.transactionType,
+        ]),
+      );
       for (const { transaction, allocations } of postedActualTransactionsThrough(
         record,
         start,
         end,
       )) {
+        const effectiveTransactionType =
+          transaction.transactionType === 'reversal' &&
+          transaction.reversalOfTransactionId
+            ? (transactionTypes.get(transaction.reversalOfTransactionId) ??
+              transaction.transactionType)
+            : transaction.transactionType;
+
         periodTransactionTotal += transaction.totalAmountCents;
-        if (transaction.transactionType === 'borrowing_draw')
+        if (effectiveTransactionType === 'borrowing_draw')
           borrowings += transaction.totalAmountCents;
-        if (transaction.transactionType === 'payment')
+        if (effectiveTransactionType === 'payment')
           payments -= transaction.totalAmountCents;
         const principal = allocationTotal(allocations, [
           'principal',
           'extra_principal',
         ]);
-        if (principal < 0) principalReduction -= principal;
-        interestActivity += Math.abs(allocationTotal(allocations, ['interest']));
+        if (effectiveTransactionType === 'payment') {
+          principalReduction -= principal;
+        }
+        interestActivity += allocationTotal(allocations, ['interest']);
       }
     }
 
@@ -1354,7 +1511,7 @@ const createRollforward = (
       borrowings: centsToDollars(borrowings),
       payments: centsToDollars(payments),
       principalReduction: centsToDollars(principalReduction),
-      interestActivity: centsToDollars(interestActivity),
+      interestActivity: centsToDollars(Math.abs(interestActivity)),
       adjustmentsAndOther: centsToDollars(adjustmentsAndOther),
       endingBalance: centsToDollars(endingBalance),
     };
@@ -1612,7 +1769,9 @@ const createDebtReports = (
     records.flatMap((record) => [
       ...record.balanceReconciliations
         .filter(
-          (reconciliation) => reconciliation.reconciliationStatus !== 'reconciled',
+          (reconciliation) =>
+            reconciliation.lifecycleStatus === 'current' &&
+            reconciliation.reconciliationStatus !== 'reconciled',
         )
         .map((reconciliation) => ({
           severity:
@@ -1641,6 +1800,15 @@ const createDebtReports = (
             'Irregular or other payment frequency is not supported for reliable payoff projection.',
           sourceId: term.id,
         })),
+      ...findMalformedReversalIssues(record).map((issue) => ({
+        severity: 'exception' as const,
+        category: 'Data integrity',
+        debtId: issue.debtId,
+        debtName: issue.debtName,
+        effectiveDate: issue.effectiveDate,
+        message: summarizeReversalIssue(issue),
+        sourceId: issue.reversalTransactionId,
+      })),
     ]);
 
   return {
@@ -3592,13 +3760,17 @@ export const createDebtMaintenanceService = ({
           );
         }
 
+        const reversalDate = ensureNotBefore(
+          'reversalDate',
+          ensureCalendarDate('reversalDate', parsed.reversalDate),
+          debt.debt.originationDate,
+        );
         const timestamp = nextTimestamp(now, original.updatedAtUtc);
-        const transactionDate = timestamp.slice(0, 10);
         reversePostedTransaction(database, {
           originalTransactionId: original.id,
           expectedUpdatedAtUtc: parsed.expectedUpdatedAtUtc,
-          effectiveDate: transactionDate,
-          postingDate: transactionDate,
+          effectiveDate: reversalDate,
+          postingDate: reversalDate,
           description: `Reversal of transaction ${original.id}.`,
           occurredAtUtc: timestamp,
         });
@@ -3707,6 +3879,57 @@ export const createDebtMaintenanceService = ({
         const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
         const reconciliationId = createId();
         const approvedAdjustment = parsed.reconciliation.approvedAdjustment ?? null;
+        const supersedesReconciliationId =
+          parsed.reconciliation.supersedesReconciliationId ?? null;
+        const supersededReconciliation = supersedesReconciliationId
+          ? existing.balanceReconciliations.find(
+              (reconciliation) => reconciliation.id === supersedesReconciliationId,
+            )
+          : null;
+
+        if (supersedesReconciliationId) {
+          if (!supersededReconciliation) {
+            throw new ApplicationServiceError(
+              'not_found',
+              'Reconciliation to correct was not found.',
+            );
+          }
+
+          if (supersededReconciliation.lifecycleStatus !== 'current') {
+            throw new ApplicationServiceError(
+              'conflict',
+              'Only the current reconciliation can be corrected.',
+            );
+          }
+
+          if (
+            supersededReconciliation.debtId !== parsed.debtId ||
+            supersededReconciliation.statementDate !== statementDate
+          ) {
+            throw new ApplicationServiceError(
+              'validation',
+              'Review the highlighted fields.',
+              {
+                'reconciliation.statementDate': [
+                  'Corrected reconciliation must use the same debt and statement date.',
+                ],
+              },
+            );
+          }
+        } else {
+          const existingCurrent = existing.balanceReconciliations.find(
+            (reconciliation) =>
+              reconciliation.statementDate === statementDate &&
+              reconciliation.lifecycleStatus === 'current',
+          );
+
+          if (existingCurrent) {
+            throw new ApplicationServiceError(
+              'conflict',
+              'A current reconciliation already exists for this statement date. Void or correct it before recording a replacement.',
+            );
+          }
+        }
         let status: BalanceReconciliationInput['reconciliationStatus'] =
           calculatedDifferenceCents === 0 ? 'reconciled' : 'exception';
         let adjustment: {
@@ -3800,6 +4023,11 @@ export const createDebtMaintenanceService = ({
           approvedAdjustmentTransactionId,
           sourceReference: nullableText(parsed.reconciliation.sourceReference ?? null),
           supportingNotes: nullableText(parsed.reconciliation.supportingNotes ?? null),
+          lifecycleStatus: 'current',
+          supersedesReconciliationId,
+          supersededByReconciliationId: null,
+          voidedAtUtc: null,
+          supersededAtUtc: null,
           createdAtUtc: timestamp,
           updatedAtUtc: timestamp,
         };
@@ -3813,14 +4041,19 @@ export const createDebtMaintenanceService = ({
             effectiveDate: statementDate,
             confirmedBalanceCents: statementEndingBalanceCents,
             sourceType: 'statement',
-            sourceReference: nullableText(
-              parsed.reconciliation.sourceReference ?? null,
-            ),
+            sourceReference: `reconciliation:${reconciliationId}`,
             notes: nullableText(parsed.reconciliation.supportingNotes ?? null),
             createdAtUtc: timestamp,
             updatedAtUtc: timestamp,
           },
           adjustment: adjustment ?? undefined,
+          supersedes: supersededReconciliation
+            ? {
+                id: supersededReconciliation.id,
+                expectedUpdatedAtUtc: supersededReconciliation.updatedAtUtc,
+                supersededAtUtc: timestamp,
+              }
+            : undefined,
           auditInputs: [
             ...(adjustment
               ? [
@@ -3870,6 +4103,57 @@ export const createDebtMaintenanceService = ({
         return mapDetail(
           database,
           getRecordOrThrow(parsed.debtId),
+          currentFinancialDate(now),
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    voidBalanceReconciliation: (request) => {
+      try {
+        const parsed = voidBalanceReconciliationRequestSchema.parse(request);
+        const record = listDebtActivityRecords(database, true)
+          .flatMap((debt) => debt.balanceReconciliations)
+          .find((reconciliation) => reconciliation.id === parsed.id);
+
+        if (!record) {
+          throw new ApplicationServiceError(
+            'not_found',
+            'Reconciliation was not found.',
+          );
+        }
+
+        const debt = getRecordOrThrow(record.debtId);
+
+        if (debt.debt.archivedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Restore this debt before voiding a reconciliation.',
+          );
+        }
+
+        const timestamp = nextTimestamp(now, record.updatedAtUtc);
+        voidBalanceReconciliationRecord(database, {
+          id: parsed.id,
+          expectedUpdatedAtUtc: parsed.expectedUpdatedAtUtc,
+          voidedAtUtc: timestamp,
+          audit: createReconciliationAudit(
+            createId(),
+            parsed.id,
+            'balance_reconciliation_voided',
+            'void',
+            timestamp,
+            'Balance reconciliation was voided and preserved for history.',
+            {
+              statementDate: record.statementDate,
+            },
+          ),
+        });
+
+        return mapDetail(
+          database,
+          getRecordOrThrow(record.debtId),
           currentFinancialDate(now),
         );
       } catch (error) {

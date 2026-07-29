@@ -15,6 +15,7 @@ import {
   TRANSACTION_SOURCE_TYPES,
   TRANSACTION_TYPES,
 } from '../domain/accounting/constants';
+import { RECONCILIATION_LIFECYCLE_STATUSES } from '../../shared/debt-options';
 import { PAYOFF_SCENARIO_STATUSES, PAYOFF_STRATEGIES } from '../../shared/debt-options';
 import { isFinancialDate, isUtcTimestamp } from '../domain/accounting/financial-date';
 import { calculateReconciliationDifference } from '../domain/accounting/reconciliation';
@@ -203,6 +204,11 @@ export const balanceReconciliationInputSchema = z.object({
   approvedAdjustmentTransactionId: idSchema.nullable().optional(),
   sourceReference: optionalText,
   supportingNotes: optionalText,
+  lifecycleStatus: z.enum(RECONCILIATION_LIFECYCLE_STATUSES).default('current'),
+  supersedesReconciliationId: idSchema.nullable().optional(),
+  supersededByReconciliationId: idSchema.nullable().optional(),
+  voidedAtUtc: utcTimestampSchema.nullable().optional(),
+  supersededAtUtc: utcTimestampSchema.nullable().optional(),
   createdAtUtc: utcTimestampSchema,
   updatedAtUtc: utcTimestampSchema,
 });

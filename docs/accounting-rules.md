@@ -108,7 +108,8 @@ Balance-affecting allocation rules are:
 - Interest allocations affect debt balance only when posted as an interest-charge
   transaction, not when included in a payment.
 - Reversals offset the same principal, interest-charge, fee, penalty, or escrow
-  component as the original transaction.
+  component as the original transaction and require an explicit financial
+  reversal date.
 
 The full payment transaction total must not be used as principal reduction.
 
@@ -232,6 +233,17 @@ The normal user-facing reconciliation workflow assigns status automatically:
 
 Users do not manually select reconciliation status in the normal workflow.
 
+Incorrect reconciliations are corrected through lifecycle changes, not silent
+overwrites:
+
+- `current` reconciliations control current dashboard/report attention status.
+- `superseded` reconciliations remain visible for history and identify the
+  replacement reconciliation.
+- `voided` reconciliations remain visible for history but no longer control
+  current exception reporting.
+- A corrected reconciliation for the same debt and statement date supersedes the
+  old current reconciliation and creates a new current reconciliation.
+
 ## Basic Dashboard Metrics
 
 Dashboard metrics exclude archived debts unless a metric explicitly states
@@ -242,16 +254,19 @@ The default dashboard balance is the application-calculated ledger balance as of
 the dashboard effective date. It is not a confirmed snapshot, statement balance,
 projected balance, scenario balance, or original principal amount.
 
-Dashboard year-to-date metrics use posted non-superseded actual activity dated
-January 1 through the dashboard effective date:
+Dashboard year-to-date metrics use transaction effective dates for posted
+non-superseded actual activity dated January 1 through the dashboard effective
+date. They do not use created, updated, posting/system, import, or audit
+timestamps.
 
-- Principal reduction is the positive display of negative principal and
-  legacy extra-principal allocations.
+- Principal reduction is the net positive display of principal and legacy
+  extra-principal allocations from payment activity. Reversals dated inside the
+  same displayed period offset the original payment activity.
 - New borrowings are borrowing and draw transaction totals.
-- Interest activity is displayed as a positive expense amount from interest
-  allocations dated in the current calendar year. Internally, interest paid as
-  part of a payment is stored with the payment's negative sign and converted to a
-  positive display value for activity metrics.
+- Interest activity is displayed as a positive expense amount from net signed
+  interest allocations dated in the current calendar year. Internally, interest
+  paid as part of a payment is stored with the payment's negative sign and linked
+  reversals offset that signed activity before display conversion.
 - Current escrow balance is calculated from escrow deposits, disbursements,
   refunds, adjustments, and reversals for active debts, and is displayed
   separately from debt principal.
@@ -382,8 +397,8 @@ Monthly and annual rollforwards use:
 - Payments: positive display of posted payment transaction totals.
 - Principal reduction: positive display of negative principal and
   extra-principal allocations.
-- Interest activity: positive display of interest allocations for the report
-  date range.
+- Interest activity: positive display of net signed interest allocations for the
+  report date range.
 - Adjustments and other: residual posted activity not classified as borrowings
   or payments.
 
@@ -444,6 +459,13 @@ Posted activity is not silently deleted or overwritten.
 - A transaction may be reversed only once.
 - Superseding corrections use a separate unique relationship.
 - A reversal creates a non-sensitive audit event.
+- If upgraded or legacy data contains a malformed reversal whose signed total or
+  allocations do not completely offset the original transaction, the application
+  reports a data-integrity exception and warns that affected debt, escrow, and
+  YTD metrics require review.
+- Malformed reversals are not silently edited, deleted, or repaired. A future
+  repair workflow should create an explicit linked corrective transaction after
+  user review.
 
 ## Audit Metadata
 

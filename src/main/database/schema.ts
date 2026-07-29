@@ -24,7 +24,11 @@ import {
   TRANSACTION_SOURCE_TYPES,
   TRANSACTION_TYPES,
 } from '../domain/accounting/constants';
-import { PAYOFF_SCENARIO_STATUSES, PAYOFF_STRATEGIES } from '../../shared/debt-options';
+import {
+  PAYOFF_SCENARIO_STATUSES,
+  PAYOFF_STRATEGIES,
+  RECONCILIATION_LIFECYCLE_STATUSES,
+} from '../../shared/debt-options';
 
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991;
 const FINANCIAL_DATE_GLOB = '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]';
@@ -351,6 +355,7 @@ export const balanceSnapshots = sqliteTable(
       table.debtId,
       table.effectiveDate,
       table.sourceType,
+      table.sourceReference,
     ),
     index('balance_snapshots_debt_effective_idx').on(table.debtId, table.effectiveDate),
     check(
@@ -397,18 +402,43 @@ export const balanceReconciliations = sqliteTable(
     }),
     sourceReference: text('source_reference'),
     supportingNotes: text('supporting_notes'),
+    lifecycleStatus: text('lifecycle_status', {
+      enum: RECONCILIATION_LIFECYCLE_STATUSES,
+    })
+      .notNull()
+      .default('current'),
+    supersedesReconciliationId: text('supersedes_reconciliation_id').references(
+      (): AnySQLiteColumn => balanceReconciliations.id,
+      {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      },
+    ),
+    supersededByReconciliationId: text('superseded_by_reconciliation_id').references(
+      (): AnySQLiteColumn => balanceReconciliations.id,
+      {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      },
+    ),
+    voidedAtUtc: text('voided_at_utc'),
+    supersededAtUtc: text('superseded_at_utc'),
     createdAtUtc: text('created_at_utc').notNull(),
     updatedAtUtc: text('updated_at_utc').notNull(),
   },
   (table) => [
-    uniqueIndex('balance_reconciliations_debt_statement_uq').on(
-      table.debtId,
-      table.statementDate,
-    ),
+    uniqueIndex('balance_reconciliations_debt_statement_uq')
+      .on(table.debtId, table.statementDate)
+      .where(sql`${table.lifecycleStatus} = 'current'`),
     index('balance_reconciliations_status_idx').on(table.reconciliationStatus),
+    index('balance_reconciliations_lifecycle_idx').on(table.lifecycleStatus),
     check(
       'balance_reconciliations_status_valid',
       sql`${table.reconciliationStatus} IN (${sqlList(RECONCILIATION_STATUSES)})`,
+    ),
+    check(
+      'balance_reconciliations_lifecycle_valid',
+      sql`${table.lifecycleStatus} IN (${sqlList(RECONCILIATION_LIFECYCLE_STATUSES)})`,
     ),
     check(
       'balance_reconciliations_statement_date_format',
@@ -432,7 +462,7 @@ export const balanceReconciliations = sqliteTable(
     ),
     check(
       'balance_reconciliations_timestamp_format',
-      sql`${table.createdAtUtc} LIKE '%Z' AND ${table.updatedAtUtc} LIKE '%Z'`,
+      sql`${table.createdAtUtc} LIKE '%Z' AND ${table.updatedAtUtc} LIKE '%Z' AND (${table.voidedAtUtc} IS NULL OR ${table.voidedAtUtc} LIKE '%Z') AND (${table.supersededAtUtc} IS NULL OR ${table.supersededAtUtc} LIKE '%Z')`,
     ),
   ],
 );

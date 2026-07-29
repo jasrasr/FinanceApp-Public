@@ -113,11 +113,20 @@ on simplified manual-entry forms. Manual user entry accepts positive amount
 strings; the application service converts them to these signed stored values
 according to transaction type.
 
+Reversal rows use their own financial `effective_date` and `posting_date`,
+provided by the reversal workflow. They do not derive financial date treatment
+from `created_at_utc` or `updated_at_utc`.
+
 Application-calculated debt balances are derived from balance-affecting
 allocations rather than full transaction totals. Payment interest and escrow
 allocations do not reduce debt principal. Interest allocations increase debt
 balance only when posted as interest-charge transactions. Reversals offset the
 same affected components as the original transaction.
+
+Data-quality checks compare each reversal total and allocation set to the
+original transaction. If they do not completely offset, the application reports a
+malformed-reversal exception and marks affected calculated balances and YTD
+metrics as requiring review; it does not mutate the stored rows.
 
 ## `transaction_allocations`
 
@@ -163,10 +172,10 @@ activity.
 | `created_at_utc`          |    text |   Yes    | UTC timestamp                  |
 | `updated_at_utc`          |    text |   Yes    | UTC timestamp                  |
 
-Debt, date, and source type are unique. These records preserve external evidence
-without overwriting the posted ledger. The normal user-facing path creates
-statement snapshots through the combined Reconcile Balance workflow rather than a
-separate Record Snapshot action.
+Debt, date, source type, and source reference are unique. These records preserve
+external evidence without overwriting the posted ledger. The normal user-facing
+path creates statement snapshots through the combined Reconcile Balance workflow
+rather than a separate Record Snapshot action.
 
 ## `balance_reconciliations`
 
@@ -186,11 +195,17 @@ date.
 | `approved_adjustment_transaction_id`   |    text |    No    | Posted adjustment transaction for the same debt                                 |
 | `source_reference`                     |    text |    No    | Statement reference                                                             |
 | `supporting_notes`                     |    text |    No    | Review notes                                                                    |
+| `lifecycle_status`                     |    text |   Yes    | Current, superseded, or voided                                                  |
+| `supersedes_reconciliation_id`         |    text |    No    | Prior reconciliation corrected by this row                                      |
+| `superseded_by_reconciliation_id`      |    text |    No    | Replacement reconciliation when this row is superseded                          |
+| `voided_at_utc`                        |    text |    No    | UTC timestamp when voided                                                       |
+| `superseded_at_utc`                    |    text |    No    | UTC timestamp when superseded                                                   |
 | `created_at_utc`                       |    text |   Yes    | UTC timestamp                                                                   |
 | `updated_at_utc`                       |    text |   Yes    | UTC timestamp                                                                   |
 
-Debt and statement date are unique. Adjustment-reference presence must agree with
-the reconciliation status. The application-calculated balance is computed from
+Current debt and statement date rows are unique. Superseded and voided rows are
+retained for history. Adjustment-reference presence must agree with the
+reconciliation status. The application-calculated balance is computed from
 original principal plus non-superseded balance-affecting allocation activity
 through the statement date. The stored difference is calculated by the
 application and also checked by the database constraint. The normal user-facing

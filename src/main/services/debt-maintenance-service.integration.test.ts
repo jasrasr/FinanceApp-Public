@@ -643,6 +643,52 @@ describe('debt creation', () => {
     });
   });
 
+  it('supersedes an incorrect current reconciliation with a corrected same-date reconciliation', () => {
+    const created = service.createDebt(validRequest());
+    service.createDebtTransaction(validTransactionRequest(created.id));
+
+    const incorrect = service.createBalanceReconciliation({
+      ...validReconciliationRequest(created.id),
+      reconciliation: {
+        ...validReconciliationRequest(created.id).reconciliation,
+        statementEndingBalance: '124500.13',
+      },
+    }).balanceReconciliations[0]!;
+
+    const corrected = service.createBalanceReconciliation({
+      debtId: created.id,
+      reconciliation: {
+        statementDate: incorrect.statementDate,
+        statementEndingBalance: '124600.13',
+        approvedAdjustment: null,
+        supersedesReconciliationId: incorrect.id,
+        sourceReference: null,
+        supportingNotes: null,
+      },
+    });
+    const reconciliations = corrected.balanceReconciliations;
+    const current = reconciliations.find(
+      (reconciliation) => reconciliation.lifecycleStatus === 'current',
+    );
+    const superseded = reconciliations.find(
+      (reconciliation) => reconciliation.id === incorrect.id,
+    );
+
+    expect(reconciliations).toHaveLength(2);
+    expect(current).toMatchObject({
+      statementDate: '2026-01-31',
+      reconciliationStatus: 'reconciled',
+      lifecycleStatus: 'current',
+      supersedesReconciliationId: incorrect.id,
+    });
+    expect(superseded).toMatchObject({
+      lifecycleStatus: 'superseded',
+      supersededByReconciliationId: current?.id,
+    });
+    expect(service.getDashboard({}).attentionItems).toHaveLength(0);
+    expect(context.database.select().from(balanceSnapshots).all()).toHaveLength(2);
+  });
+
   it('posts and links an approved reconciliation adjustment explicitly', () => {
     const created = service.createDebt(validRequest());
     service.createDebtTransaction(validTransactionRequest(created.id));
@@ -747,6 +793,7 @@ describe('debt creation', () => {
     const updated = service.reverseDebtTransaction({
       id: originalTransaction!.id,
       expectedUpdatedAtUtc: originalTransaction!.updatedAtUtc,
+      reversalDate: originalTransaction!.effectiveDate,
       confirmed: true,
     });
     const transactions = context.database
@@ -778,6 +825,197 @@ describe('debt creation', () => {
       status: 'posted',
     });
     expect(eventTypes).toContain('transaction_reversed');
+  });
+
+  it('reverses principal interest and escrow using the explicit financial reversal date', () => {
+    const created = service.createDebt({
+      ...validRequest('Generated Historical Mortgage'),
+      debt: {
+        ...validRequest('Generated Historical Mortgage').debt,
+        originationDate: '2020-01-01',
+      },
+      initialTerm: {
+        ...validRequest('Generated Historical Mortgage').initialTerm,
+        effectiveStartDate: '2020-01-01',
+      },
+    });
+    const recorded = service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        ...validTransactionRequest(created.id).transaction,
+        effectiveDate: '2021-06-01',
+        postingDate: '2021-06-01',
+        totalAmount: '1500.00',
+        allocations: {
+          principal: '1000.00',
+          interest: '200.00',
+          escrow: '300.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    const originalTransaction = recorded.transactions[0]!;
+
+    expect(recorded.currentBalance).toBe('124000.13');
+    expect(recorded.calculatedEscrowBalance).toBe('300.00');
+    expect(service.getDashboard({}).totals.principalReductionYtd).toBe('0.00');
+    expect(service.getDashboard({}).totals.interestActivityYtd).toBe('0.00');
+
+    const reversed = service.reverseDebtTransaction({
+      id: originalTransaction.id,
+      expectedUpdatedAtUtc: originalTransaction.updatedAtUtc,
+      reversalDate: '2021-06-02',
+      confirmed: true,
+    });
+    const reversal = reversed.transactions.find(
+      (transaction) => transaction.reversalOfTransactionId === originalTransaction.id,
+    );
+
+    expect(reversal).toMatchObject({
+      effectiveDate: '2021-06-02',
+      postingDate: '2021-06-02',
+      transactionType: 'reversal',
+    });
+    expect(reversed.currentBalance).toBe(created.originalPrincipal);
+    expect(reversed.calculatedEscrowBalance).toBe('0.00');
+    expect(service.getDashboard({}).totals.principalReductionYtd).toBe('0.00');
+    expect(service.getDashboard({}).totals.interestActivityYtd).toBe('0.00');
+    expect(service.getDashboard({}).totals.escrowBalance).toBe('0.00');
+  });
+
+  it('surfaces malformed reversal data-integrity exceptions without rewriting posted history', () => {
+    const created = service.createDebt({
+      ...validRequest('Generated Malformed Reversal Mortgage'),
+      debt: {
+        ...validRequest('Generated Malformed Reversal Mortgage').debt,
+        debtType: 'mortgage',
+        originationDate: '2020-01-01',
+        originalPrincipal: '100000.00',
+      },
+      initialTerm: {
+        ...validRequest('Generated Malformed Reversal Mortgage').initialTerm,
+        effectiveStartDate: '2020-01-01',
+      },
+    });
+    const recorded = service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        ...validTransactionRequest(created.id).transaction,
+        effectiveDate: '2021-06-01',
+        postingDate: '2021-06-01',
+        totalAmount: '1500.00',
+        allocations: {
+          principal: '1000.00',
+          interest: '200.00',
+          escrow: '300.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    const originalTransaction = recorded.transactions[0]!;
+    const malformedReversalId = randomUUID();
+    const timestamp = '2026-07-27T13:30:00.000Z';
+
+    context.sqlite
+      .prepare(
+        `INSERT INTO debt_transactions (
+          id, debt_id, transaction_type, effective_date, posting_date,
+          total_amount_cents, status, description, source_type,
+          source_reference, reversal_of_transaction_id, supersedes_transaction_id,
+          created_at_utc, updated_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        malformedReversalId,
+        created.id,
+        'reversal',
+        '2021-06-02',
+        '2021-06-02',
+        150_000,
+        'posted',
+        'Generated malformed legacy reversal.',
+        'manual',
+        null,
+        originalTransaction.id,
+        null,
+        timestamp,
+        timestamp,
+      );
+    context.sqlite
+      .prepare(
+        `INSERT INTO transaction_allocations (
+          id, transaction_id, allocation_type, amount_cents, notes,
+          created_at_utc, updated_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        randomUUID(),
+        malformedReversalId,
+        'principal',
+        100_000,
+        null,
+        timestamp,
+        timestamp,
+      );
+    context.sqlite
+      .prepare(
+        `INSERT INTO transaction_allocations (
+          id, transaction_id, allocation_type, amount_cents, notes,
+          created_at_utc, updated_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        randomUUID(),
+        malformedReversalId,
+        'interest',
+        20_000,
+        null,
+        timestamp,
+        timestamp,
+      );
+
+    const transactionsBefore = context.database.select().from(debtTransactions).all();
+    const dashboard = service.getDashboard({});
+    const reports = service.getDebtReports({
+      startDate: '2021-01-01',
+      endDate: '2026-07-27',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(dashboard.attentionItems).toEqual([
+      expect.objectContaining({
+        debtId: created.id,
+        status: 'exception',
+        sourceReference: malformedReversalId,
+        basis: expect.stringContaining('Malformed reversal detected'),
+      }),
+    ]);
+    expect(dashboard.metricBasis.activeDebt).toContain(
+      'Data-integrity exceptions are present',
+    );
+    expect(dashboard.metricBasis.escrowBalance).toContain(
+      'Data-integrity exceptions are present',
+    );
+    expect(reports.reconciliationAndDataQuality.rows).toEqual([
+      expect.objectContaining({
+        category: 'Data integrity',
+        severity: 'exception',
+        sourceId: malformedReversalId,
+        message: expect.stringContaining('escrow -300.00'),
+      }),
+    ]);
+    expect(context.database.select().from(debtTransactions).all()).toEqual(
+      transactionsBefore,
+    );
   });
 
   it('rolls back the debt when the initial-term insert fails', () => {
@@ -1079,7 +1317,7 @@ describe('debt maintenance', () => {
     ).toMatchObject({
       debtId: created.id,
       calculatedBalance: '124600.13',
-      confirmedBalance: '124500.00',
+      confirmedBalance: '124500.13',
     });
     expect(reports.maturitySchedule.rows[0]).toMatchObject({
       debtId: created.id,
@@ -1530,7 +1768,7 @@ describe('debt maintenance', () => {
         rowNumber: 3,
         recordType: 'balance_snapshot',
         normalizedValues: {
-          debt_id: debt.id,
+          debt_id: randomUUID(),
           statement_date: '2026-01-31',
           ending_balance: '124000.00',
         },

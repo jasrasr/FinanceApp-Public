@@ -12,6 +12,7 @@ import {
   PAYOFF_SCENARIO_STATUSES,
   PAYOFF_STRATEGIES,
   POSTED_ACTIVITY_TRANSACTION_TYPES,
+  RECONCILIATION_LIFECYCLE_STATUSES,
   RECONCILIATION_STATUSES,
   TAX_CATEGORIES,
 } from './debt-options';
@@ -156,6 +157,15 @@ export const reverseDebtTransactionRequestSchema = z
   .object({
     id: uuidSchema,
     expectedUpdatedAtUtc: utcTimestampSchema,
+    reversalDate: financialDateInputSchema,
+    confirmed: z.literal(true),
+  })
+  .strict();
+
+export const voidBalanceReconciliationRequestSchema = z
+  .object({
+    id: uuidSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
     confirmed: z.literal(true),
   })
   .strict();
@@ -193,6 +203,7 @@ export const createBalanceReconciliationRequestSchema = z
           .strict()
           .nullable()
           .optional(),
+        supersedesReconciliationId: uuidSchema.nullable().optional(),
         sourceReference: optionalTextSchema.optional(),
         supportingNotes: optionalTextSchema.optional(),
       })
@@ -420,6 +431,11 @@ export const balanceReconciliationDtoSchema = z
     applicationCalculatedBalance: z.string(),
     calculatedDifference: z.string(),
     reconciliationStatus: reconciliationStatusSchema,
+    lifecycleStatus: z.enum(RECONCILIATION_LIFECYCLE_STATUSES),
+    supersedesReconciliationId: uuidSchema.nullable(),
+    supersededByReconciliationId: uuidSchema.nullable(),
+    voidedAtUtc: utcTimestampSchema.nullable(),
+    supersededAtUtc: utcTimestampSchema.nullable(),
     explanation: z.string().nullable(),
     approvedAdjustmentTransactionId: uuidSchema.nullable(),
     sourceReference: z.string().nullable(),
@@ -958,6 +974,9 @@ export type CreateDebtTransactionRequest = z.infer<
 >;
 export type ReverseDebtTransactionRequest = z.infer<
   typeof reverseDebtTransactionRequestSchema
+>;
+export type VoidBalanceReconciliationRequest = z.infer<
+  typeof voidBalanceReconciliationRequestSchema
 >;
 export type CreateBalanceSnapshotRequest = z.infer<
   typeof createBalanceSnapshotRequestSchema

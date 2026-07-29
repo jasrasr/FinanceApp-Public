@@ -40,6 +40,7 @@ import type {
   UpdateImportSheetMappingRequest,
   UpdateStagedImportRowReviewRequest,
   UpdateDebtRequest,
+  VoidBalanceReconciliationRequest,
 } from './debt-contracts';
 
 export interface DebtBridge {
@@ -110,12 +111,15 @@ export interface DebtBridge {
   createBalanceReconciliation(
     request: CreateBalanceReconciliationRequest,
   ): Promise<ApplicationResult<DebtDetailDto>>;
+  voidBalanceReconciliation(
+    request: VoidBalanceReconciliationRequest,
+  ): Promise<ApplicationResult<DebtDetailDto>>;
   archiveDebt(request: ArchiveDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   restoreDebt(request: RestoreDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
 }
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 14;
+  readonly bridgeVersion: 15;
   readonly appMetadata: AppMetadataDto;
 }

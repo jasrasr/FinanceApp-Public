@@ -18,8 +18,9 @@ for maintaining debts and supporting future debt-paydown analysis.
   principal adjustments, mortgage escrow activity, and reversals.
 - Statement-based balance reconciliation against the ledger balance calculated
   through the reconciliation date, including a supporting confirmed balance
-  snapshot, automatic reconciliation status assignment, and explicit approved
-  adjustment postings.
+  snapshot, automatic reconciliation status assignment, explicit approved
+  adjustment postings, and void/supersede correction of incorrect
+  reconciliations.
 - Basic dashboard with active-debt totals, year-to-date posted activity metrics,
   current escrow balance, current-term payment and rate summaries, upcoming
   maturities, and open reconciliation attention items.
@@ -135,10 +136,13 @@ npm run package:smoke
 `package` creates an unsigned Windows x64 NSIS installer under `dist/`.
 `package:smoke` installs that generated installer into a temporary directory,
 launches the installed application without Node, npm, VS Code, or the source
-repository as runtime dependencies, verifies database creation, manual debt
-entry, backup, restore, export, same-path reinstall/upgrade preservation, and
-user-data survival after uninstall, then removes the generated temporary test
-data.
+repository as runtime dependencies, verifies database creation, historical
+mortgage payment/reversal behavior, reconciliation correction, manual debt entry,
+backup, restore, export, same-path reinstall/upgrade preservation, and user-data
+survival after uninstall, then removes the generated temporary test data.
+If Windows temporarily holds a lock on the generated installation directory after
+uninstall, the smoke harness reports a cleanup warning; generated user-data and
+export directories remain required cleanup targets.
 
 Because code signing is not configured, Windows may show SmartScreen or unsigned
 publisher warnings. For local testing, review the installer filename and source,
@@ -157,10 +161,13 @@ To locate the containing directory without opening or editing the database:
 2. In Windows, navigate to `%APPDATA%`.
 3. Locate the Debt Tracker application-data directory.
 
-To reset development data, close Debt Tracker completely and move the entire Debt
-Tracker application-data directory to a separate temporary location. Start the
-application to create a new migrated database. Retain the moved directory until
-the reset has been verified. Do not edit the SQLite file manually.
+To reset development data, close Debt Tracker completely and first create a
+manual backup from the Data management screen when the application can still be
+opened. If the application cannot be opened, preserve the entire Debt Tracker
+application-data directory by copying or moving it to a separate timestamped
+temporary location before resetting. Start the application to create a new
+migrated database. Retain the preserved directory until the reset has been
+verified. Do not edit the SQLite file manually.
 
 Automated tests never use this location. Vitest creates databases under the
 operating-system temporary directory, and Playwright supplies a unique temporary
@@ -194,10 +201,17 @@ Electron user-data directory that it removes after the workflow.
 - Manual transaction amounts and allocations are entered as positive currency
   values. The application applies the stored accounting sign from the selected
   transaction type.
+- Reversals require an explicit financial reversal date. The reversal affects
+  balances and year-to-date activity only in the year containing that financial
+  date, not the year when the reversal is entered.
 - Principal allocation includes all principal paid, including additional
   principal. Escrow deposits and disbursements are tracked separately and do not
   change mortgage principal.
 - Reversal transactions preserve the original posted row and its allocations.
+- Malformed historical reversals whose allocations do not fully offset the
+  original transaction are shown as data-integrity exceptions. The application
+  warns that affected debt, escrow, and YTD amounts require review; it does not
+  silently rewrite posted records.
 - Statement balances, confirmed snapshots, ledger-calculated balances, and
   posted transactions are separate records.
 - Approved reconciliation adjustments are explicit posted transactions linked to
@@ -210,14 +224,16 @@ Electron user-data directory that it removes after the workflow.
   displayed dashboard effective date.
 - Current escrow balance is displayed separately from debt principal balance.
 - Year-to-date metrics use posted non-superseded activity from January 1 through
-  the dashboard effective date.
+  the dashboard effective date based on transaction effective dates, not created,
+  updated, import, audit, or system timestamps.
 - Principal reduction counts negative principal allocations, including additional
   principal paid through the principal category. Legacy extra-principal
   allocations remain readable for existing records.
 - New borrowings count posted borrowing and draw transaction totals.
 - Interest activity is displayed as a positive expense amount. Internally,
   payment interest allocations are stored with the payment's negative sign and
-  are converted for user-facing activity metrics.
+  are netted with linked reversals before conversion for user-facing activity
+  metrics.
 - Required monthly payments use current effective debt terms, normalized to a
   monthly equivalent. Irregular and other frequencies are excluded from that
   amount.

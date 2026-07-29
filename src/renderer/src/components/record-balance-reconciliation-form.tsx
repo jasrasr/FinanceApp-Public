@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type {
+  BalanceReconciliationDto,
   CreateBalanceReconciliationRequest,
   DebtDetailDto,
 } from '../../../shared/debt-contracts';
@@ -10,6 +11,7 @@ export interface RecordBalanceReconciliationFormProps {
   readonly busy: boolean;
   readonly debt: DebtDetailDto;
   readonly fieldErrors?: Readonly<Record<string, readonly string[]>>;
+  readonly supersedesReconciliation?: BalanceReconciliationDto | null;
   readonly onCancel: () => void;
   readonly onSubmit: (request: CreateBalanceReconciliationRequest) => void;
 }
@@ -35,6 +37,7 @@ export const RecordBalanceReconciliationForm = ({
   busy,
   debt,
   fieldErrors,
+  supersedesReconciliation = null,
   onCancel,
   onSubmit,
 }: RecordBalanceReconciliationFormProps): React.JSX.Element => {
@@ -49,6 +52,7 @@ export const RecordBalanceReconciliationForm = ({
       reconciliation: {
         statementDate: value(data, 'reconciliation.statementDate'),
         statementEndingBalance: value(data, 'reconciliation.statementEndingBalance'),
+        supersedesReconciliationId: supersedesReconciliation?.id ?? null,
         approvedAdjustment: includesAdjustment
           ? {
               totalAmount: value(data, 'reconciliation.approvedAdjustment.totalAmount'),
@@ -94,9 +98,9 @@ export const RecordBalanceReconciliationForm = ({
       onSubmit={submit}
     >
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
-        Enter the verified lender balance once. Debt Tracker records it as supporting
-        confirmed balance evidence and calculates the ledger difference through the same
-        date without overwriting posted activity.
+        {supersedesReconciliation
+          ? `Correcting the current reconciliation for ${supersedesReconciliation.statementDate}. The original record will be preserved and marked superseded.`
+          : 'Enter the verified lender balance once. Debt Tracker records it as supporting confirmed balance evidence and calculates the ledger difference through the same date without overwriting posted activity.'}
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -107,7 +111,7 @@ export const RecordBalanceReconciliationForm = ({
         >
           <input
             className={inputClassName}
-            defaultValue={today()}
+            defaultValue={supersedesReconciliation?.statementDate ?? today()}
             id="reconciliation.statementDate"
             name="reconciliation.statementDate"
             required

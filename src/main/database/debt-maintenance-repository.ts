@@ -87,6 +87,11 @@ export interface CreateBalanceReconciliationRecordInput {
   readonly reconciliation: BalanceReconciliationInput;
   readonly adjustment?: PostedTransactionInput;
   readonly snapshot?: BalanceSnapshotInsert;
+  readonly supersedes?: {
+    readonly id: string;
+    readonly expectedUpdatedAtUtc: string;
+    readonly supersededAtUtc: string;
+  };
   readonly auditInputs: readonly AuditEventInsert[];
 }
 
@@ -377,7 +382,9 @@ export const calculateEscrowBalanceThroughDate = (
 ): number => {
   const rows = database
     .select({
+      transactionId: debtTransactions.id,
       transactionType: debtTransactions.transactionType,
+      reversalOfTransactionId: debtTransactions.reversalOfTransactionId,
       amountCents: transactionAllocations.amountCents,
     })
     .from(transactionAllocations)
@@ -395,11 +402,34 @@ export const calculateEscrowBalanceThroughDate = (
     )
     .all();
 
+  const reversedTransactionIds = rows
+    .map((row) => row.reversalOfTransactionId)
+    .filter((id): id is string => id !== null);
+  const originalTypes =
+    reversedTransactionIds.length === 0
+      ? new Map<string, DebtTransactionRecord['transactionType']>()
+      : new Map(
+          database
+            .select({
+              id: debtTransactions.id,
+              transactionType: debtTransactions.transactionType,
+            })
+            .from(debtTransactions)
+            .all()
+            .filter((transaction) => reversedTransactionIds.includes(transaction.id))
+            .map((transaction) => [transaction.id, transaction.transactionType]),
+        );
+
   const balance = rows.reduce((total, row) => {
-    if (row.transactionType === 'payment') return total - row.amountCents;
+    const effectiveTransactionType =
+      row.transactionType === 'reversal' && row.reversalOfTransactionId
+        ? (originalTypes.get(row.reversalOfTransactionId) ?? row.transactionType)
+        : row.transactionType;
+
+    if (effectiveTransactionType === 'payment') return total - row.amountCents;
     if (
-      row.transactionType === 'escrow_disbursement' ||
-      row.transactionType === 'escrow_refund'
+      effectiveTransactionType === 'escrow_disbursement' ||
+      effectiveTransactionType === 'escrow_refund'
     ) {
       return total - row.amountCents;
     }
@@ -550,6 +580,34 @@ export const createBalanceReconciliationRecord = (
   }
 
   database.transaction((transactionDb) => {
+    if (input.supersedes) {
+      const result = transactionDb
+        .update(balanceReconciliations)
+        .set({
+          lifecycleStatus: 'superseded',
+          supersededByReconciliationId: null,
+          supersededAtUtc: input.supersedes.supersededAtUtc,
+          updatedAtUtc: input.supersedes.supersededAtUtc,
+        })
+        .where(
+          and(
+            eq(balanceReconciliations.id, input.supersedes.id),
+            eq(
+              balanceReconciliations.updatedAtUtc,
+              input.supersedes.expectedUpdatedAtUtc,
+            ),
+            eq(balanceReconciliations.lifecycleStatus, 'current'),
+          ),
+        )
+        .run();
+
+      if (result.changes !== 1) {
+        throw new RepositoryConflictError(
+          'Reconciliation changed or is no longer current.',
+        );
+      }
+    }
+
     if (adjustment) {
       transactionDb.insert(debtTransactions).values(adjustment.transaction).run();
       transactionDb.insert(transactionAllocations).values(adjustment.allocations).run();
@@ -564,6 +622,55 @@ export const createBalanceReconciliationRecord = (
     }
 
     transactionDb.insert(balanceReconciliations).values(reconciliation).run();
+
+    if (input.supersedes) {
+      transactionDb
+        .update(balanceReconciliations)
+        .set({
+          supersededByReconciliationId: reconciliation.id,
+        })
+        .where(eq(balanceReconciliations.id, input.supersedes.id))
+        .run();
+    }
+
+    transactionDb.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const voidBalanceReconciliationRecord = (
+  database: AppDatabase,
+  input: {
+    readonly id: string;
+    readonly expectedUpdatedAtUtc: string;
+    readonly voidedAtUtc: string;
+    readonly audit: AuditEventInsert;
+  },
+): void => {
+  const audit = auditEventInsertSchema.parse(input.audit);
+
+  database.transaction((transactionDb) => {
+    const result = transactionDb
+      .update(balanceReconciliations)
+      .set({
+        lifecycleStatus: 'voided',
+        voidedAtUtc: input.voidedAtUtc,
+        updatedAtUtc: input.voidedAtUtc,
+      })
+      .where(
+        and(
+          eq(balanceReconciliations.id, input.id),
+          eq(balanceReconciliations.updatedAtUtc, input.expectedUpdatedAtUtc),
+          eq(balanceReconciliations.lifecycleStatus, 'current'),
+        ),
+      )
+      .run();
+
+    if (result.changes !== 1) {
+      throw new RepositoryConflictError(
+        'Reconciliation changed or is no longer current.',
+      );
+    }
+
     transactionDb.insert(auditEvents).values(audit).run();
   });
 };

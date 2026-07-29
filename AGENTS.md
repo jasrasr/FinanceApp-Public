@@ -86,6 +86,7 @@ Implement the application in this order:
 12. Windows packaging and production readiness.
 13. First user-acceptance corrections and workflow simplification.
 14. Accounting correction and usability acceptance fixes.
+15. Data-integrity repair for historical dates, reversals, and reconciliation correction.
 
 Do not build the workbook importer before the core manual workflows are
 working. The database and accounting rules must first be proven through

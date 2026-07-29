@@ -5,7 +5,7 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.14.0`. Earlier
+phase seven on 2026-07-28. The current application version is `0.15.0`. Earlier
 phase entries did not record an application version at the time they were
 completed.
 
@@ -720,3 +720,73 @@ completed.
   - Continue focused user acceptance testing before deciding whether to pursue
     release signing, cleanup of legacy compatibility UI/code, or production
     release-process hardening.
+
+## Phase 15: Data-Integrity Repair for Historical Dates, Reversals, and Reconciliation Correction
+
+- Completion date: 2026-07-29
+- Application version: 0.15.0
+- Features implemented:
+  - Reproduced the installed-app historical-payment workflow with generated
+    fictional data before implementation.
+  - Added explicit financial reversal date entry.
+  - Corrected dashboard and report YTD metrics to use transaction effective
+    dates and net linked reversal activity.
+  - Corrected escrow balance calculations for reversal rows in repository-backed
+    dashboard calculations.
+  - Added reconciliation lifecycle support for current, superseded, and voided
+    records.
+  - Added same-date reconciliation correction by superseding the current
+    reconciliation and creating a corrected current reconciliation.
+  - Removed itemized dashboard escrow-balance rows while preserving the summary
+    card and debt-detail escrow history.
+  - Added minimum malformed-reversal detection so incomplete reversal allocation
+    offsets appear as data-integrity exceptions without rewriting posted rows.
+  - Documented a safe manual development-data reset procedure that requires the
+    application to be closed and backups or preserved user-data copies first.
+- Material architecture and accounting decisions:
+  - YTD metrics use financial effective dates only, not created, updated, import,
+    audit, or system timestamps.
+  - Payment principal reduction is limited to payment activity and linked
+    reversals; borrowings remain in borrowing metrics.
+  - Interest activity is netted internally and displayed as a positive expense.
+  - Reconciliation correction is lifecycle-based and preserves historical rows.
+  - Malformed reversal handling is read-only detection and warning in this phase;
+    explicit corrective posting remains a future workflow.
+- Database schema or migration changes:
+  - Added `drizzle/0005_large_omega_sentinel.sql`.
+  - Added reconciliation lifecycle and supersede/void metadata columns.
+  - Changed current reconciliation uniqueness to a partial unique index for
+    current debt/date rows.
+  - Adjusted balance-snapshot uniqueness to include source reference so corrected
+    reconciliation evidence can be preserved separately.
+- New or changed IPC operations:
+  - Added typed `voidBalanceReconciliation`.
+  - Changed `reverseDebtTransaction` request contract to require `reversalDate`.
+  - Bridge contract version increased to 15.
+- New UI screens or workflows:
+  - Reverse-transaction confirmation includes Reversal date.
+  - Reconciliation rows show lifecycle status and expose Correct/Void actions for
+    current records.
+  - Reconciliation form can correct a current same-date reconciliation.
+  - Dashboard keeps only the Current escrow balance summary card.
+- Validation and smoke-test results:
+  - Integration tests cover historical dated payment/reversal behavior,
+    principal/interest/escrow offset, YTD exclusion, and reconciliation
+    superseding.
+  - Electron E2E covers a generated mortgage, 2021 payment, 2026 YTD exclusion,
+    same-date reconciliation correction, dashboard escrow simplification, and
+    explicit reversal date.
+  - Database migration tests cover applying the reconciliation lifecycle
+    migration to a representative existing database with prior reconciliation
+    records.
+  - Packaged smoke tests cover the installed-app historical mortgage payment,
+    2021 reversal, 2026 YTD exclusion, reconciliation correction, and dashboard
+    escrow-summary behavior.
+- Known limitations and technical debt:
+  - A full user-facing malformed-reversal repair wizard remains deferred.
+  - Current correction workflow supports reconciliation void/supersede; it does
+    not yet provide a specialized allocation-repair wizard for manually corrupted
+    reversal rows.
+- Recommended next phase:
+  - Continue user acceptance testing before deciding whether the malformed
+    reversal repair wizard is needed for production data.

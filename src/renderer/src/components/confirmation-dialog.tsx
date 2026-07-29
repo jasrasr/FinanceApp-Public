@@ -1,5 +1,8 @@
+import type { ReactNode } from 'react';
+
 export interface ConfirmationDialogProps {
   readonly busy: boolean;
+  readonly children?: ReactNode;
   readonly confirmLabel: string;
   readonly description: string;
   readonly onCancel: () => void;
@@ -11,6 +14,7 @@ export const ConfirmationDialog = ({
   busy,
   confirmLabel,
   description,
+  children,
   onCancel,
   onConfirm,
   title,
@@ -26,6 +30,7 @@ export const ConfirmationDialog = ({
         {title}
       </h2>
       <p className="mt-3 text-sm leading-6 text-slate-600">{description}</p>
+      {children ? <div className="mt-4">{children}</div> : null}
       <div className="mt-6 flex justify-end gap-3">
         <button
           className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"

@@ -41,6 +41,7 @@ import {
   updateImportSheetMappingRequestSchema,
   updateStagedImportRowReviewRequestSchema,
   updateDebtRequestSchema,
+  voidBalanceReconciliationRequestSchema,
   type ApplicationError,
   type ApplicationResult,
 } from '../../shared/debt-contracts';
@@ -385,6 +386,14 @@ export const registerDebtIpcHandlers = (
     debtDetailDtoSchema,
     isTrustedSender,
     (request) => service.createBalanceReconciliation(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.voidReconciliation,
+    voidBalanceReconciliationRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.voidBalanceReconciliation(request),
   );
   registerHandler(
     ipcMain,

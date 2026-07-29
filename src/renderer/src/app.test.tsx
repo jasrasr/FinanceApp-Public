@@ -19,9 +19,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 14,
+  bridgeVersion: 15,
   appMetadata: {
-    version: '0.14.0',
+    version: '0.15.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -113,6 +113,7 @@ const createBridge = (): AppBridge => ({
   reverseDebtTransaction: vi.fn(),
   createBalanceSnapshot: vi.fn(),
   createBalanceReconciliation: vi.fn(),
+  voidBalanceReconciliation: vi.fn(),
   archiveDebt: vi.fn(),
   restoreDebt: vi.fn(),
 });
@@ -599,6 +600,11 @@ const sampleDebtDetail: DebtDetailDto = {
       applicationCalculatedBalance: '124500.00',
       calculatedDifference: '0.00',
       reconciliationStatus: 'reconciled',
+      lifecycleStatus: 'current',
+      supersedesReconciliationId: null,
+      supersededByReconciliationId: null,
+      voidedAtUtc: null,
+      supersededAtUtc: null,
       explanation: 'Generated reconciliation.',
       approvedAdjustmentTransactionId: null,
       sourceReference: 'STAT-2026-01',
@@ -711,11 +717,50 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
   });
 
+  it('renders dashboard data-integrity exceptions for malformed reversals', async () => {
+    const bridge = createBridge();
+    const dashboardWithIntegrityException: DashboardDto = {
+      ...sampleDashboard,
+      metricBasis: {
+        ...sampleDashboard.metricBasis,
+        activeDebt:
+          'Application-calculated ledger balances for active debts as of 2026-07-28. Data-integrity exceptions are present and affected balances require review.',
+      },
+      attentionItems: [
+        {
+          debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+          debtName: 'Fictional Equipment Note',
+          creditor: 'Harbor Ridge Cooperative',
+          statementDate: '2021-06-02',
+          status: 'exception',
+          difference: '0.00',
+          sourceReference: 'generated-malformed-reversal',
+          basis:
+            'Malformed reversal detected; original and reversal activity do not fully offset.',
+        },
+      ],
+    };
+    bridge.getDashboard = vi.fn(async () => ({
+      ok: true as const,
+      value: dashboardWithIntegrityException,
+    }));
+    render(<App bridge={bridge} />);
+
+    expect(await screen.findByRole('heading', { name: 'Debt overview' })).toBeVisible();
+    expect(
+      screen.getByText(
+        'Malformed reversal detected; original and reversal activity do not fully offset.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByText('Source generated-malformed-reversal')).toBeVisible();
+    expect(screen.getByText(/Data-integrity exceptions are present/)).toBeVisible();
+  });
+
   it('renders application version and local last-changed metadata', async () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.14.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.15.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,

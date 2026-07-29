@@ -101,6 +101,12 @@ export const RECONCILIATION_STATUSES = [
   'exception',
 ] as const;
 
+export const RECONCILIATION_LIFECYCLE_STATUSES = [
+  'current',
+  'superseded',
+  'voided',
+] as const;
+
 export const PAYOFF_STRATEGIES = [
   'baseline',
   'avalanche',
@@ -125,5 +131,7 @@ export type PostedActivityTransactionType =
 export type TransactionSourceType = (typeof MANUAL_ENTRY_SOURCE_TYPES)[number];
 export type BalanceSnapshotSourceType = (typeof BALANCE_SNAPSHOT_SOURCE_TYPES)[number];
 export type ReconciliationStatus = (typeof RECONCILIATION_STATUSES)[number];
+export type ReconciliationLifecycleStatus =
+  (typeof RECONCILIATION_LIFECYCLE_STATUSES)[number];
 export type PayoffStrategy = (typeof PAYOFF_STRATEGIES)[number];
 export type PayoffScenarioStatus = (typeof PAYOFF_SCENARIO_STATUSES)[number];

@@ -1,9 +1,17 @@
 // @vitest-environment node
 
 import { eq } from 'drizzle-orm';
-import { existsSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type DatabaseContext, openMigratedDatabase } from './connection';
@@ -25,6 +33,13 @@ import {
 } from './temporary-database';
 
 const MIGRATIONS_FOLDER = resolve(process.cwd(), 'drizzle');
+const PRIOR_MIGRATION_TAGS = [
+  '0000_initial-core-schema',
+  '0001_aberrant_the_santerians',
+  '0002_foamy_betty_ross',
+  '0003_peaceful_ghost_rider',
+  '0004_youthful_starbolt',
+] as const;
 const FIXED_TIMESTAMP = '2026-07-27T13:00:00.000Z';
 
 let context: DatabaseContext;
@@ -57,6 +72,44 @@ const createFictionalDebt = () => {
   });
 
   return debtId;
+};
+
+const createPriorMigrationFolder = (): string => {
+  const directory = mkdtempSync(join(tmpdir(), 'debt-tracker-prior-migrations-'));
+  const metaDirectory = join(directory, 'meta');
+  mkdirSync(metaDirectory, { recursive: true });
+
+  for (const tag of PRIOR_MIGRATION_TAGS) {
+    copyFileSync(
+      resolve(MIGRATIONS_FOLDER, `${tag}.sql`),
+      resolve(directory, `${tag}.sql`),
+    );
+  }
+
+  const journal = JSON.parse(
+    readFileSync(resolve(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8'),
+  ) as {
+    version: string;
+    dialect: string;
+    entries: { tag: string }[];
+  };
+  writeFileSync(
+    resolve(metaDirectory, '_journal.json'),
+    JSON.stringify(
+      {
+        ...journal,
+        entries: journal.entries.filter((entry) =>
+          PRIOR_MIGRATION_TAGS.includes(
+            entry.tag as (typeof PRIOR_MIGRATION_TAGS)[number],
+          ),
+        ),
+      },
+      null,
+      2,
+    ),
+  );
+
+  return directory;
 };
 
 beforeEach(() => {
@@ -120,6 +173,123 @@ describe('database migrations and isolation', () => {
         })
         .run(),
     ).toThrow();
+  });
+
+  it('migrates a representative existing database with prior reconciliation records', () => {
+    context.close();
+    temporary.cleanup();
+
+    const priorMigrationFolder = createPriorMigrationFolder();
+    temporary = createTemporaryDatabaseLocation();
+    context = openMigratedDatabase(temporary.databasePath, priorMigrationFolder);
+
+    const debtId = createFictionalDebt();
+    const reconciliationId = randomUUID();
+    context.sqlite
+      .prepare(
+        `INSERT INTO balance_reconciliations (
+          id, debt_id, statement_date, statement_ending_balance_cents,
+          application_calculated_balance_cents, calculated_difference_cents,
+          reconciliation_status, explanation, approved_adjustment_transaction_id,
+          source_reference, supporting_notes, created_at_utc, updated_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        reconciliationId,
+        debtId,
+        '2026-01-31',
+        2_500_000,
+        2_500_000,
+        0,
+        'reconciled',
+        null,
+        null,
+        'Generated prior statement',
+        null,
+        FIXED_TIMESTAMP,
+        FIXED_TIMESTAMP,
+      );
+    context.close();
+
+    context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+    const migrated = context.sqlite
+      .prepare(
+        `SELECT lifecycle_status, supersedes_reconciliation_id,
+          superseded_by_reconciliation_id, voided_at_utc, superseded_at_utc
+         FROM balance_reconciliations
+         WHERE id = ?`,
+      )
+      .get(reconciliationId) as
+      | {
+          lifecycle_status: string;
+          supersedes_reconciliation_id: string | null;
+          superseded_by_reconciliation_id: string | null;
+          voided_at_utc: string | null;
+          superseded_at_utc: string | null;
+        }
+      | undefined;
+
+    expect(migrated).toEqual({
+      lifecycle_status: 'current',
+      supersedes_reconciliation_id: null,
+      superseded_by_reconciliation_id: null,
+      voided_at_utc: null,
+      superseded_at_utc: null,
+    });
+
+    const correctedId = randomUUID();
+    context.sqlite
+      .prepare(
+        `UPDATE balance_reconciliations
+         SET lifecycle_status = 'superseded',
+           superseded_at_utc = ?,
+           updated_at_utc = ?
+         WHERE id = ?`,
+      )
+      .run(FIXED_TIMESTAMP, FIXED_TIMESTAMP, reconciliationId);
+    context.sqlite
+      .prepare(
+        `INSERT INTO balance_reconciliations (
+          id, debt_id, statement_date, statement_ending_balance_cents,
+          application_calculated_balance_cents, calculated_difference_cents,
+          reconciliation_status, explanation, approved_adjustment_transaction_id,
+          source_reference, supporting_notes, lifecycle_status,
+          supersedes_reconciliation_id, superseded_by_reconciliation_id,
+          voided_at_utc, superseded_at_utc, created_at_utc, updated_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        correctedId,
+        debtId,
+        '2026-01-31',
+        2_500_000,
+        2_500_000,
+        0,
+        'reconciled',
+        null,
+        null,
+        'Generated corrected statement',
+        null,
+        'current',
+        reconciliationId,
+        null,
+        null,
+        null,
+        FIXED_TIMESTAMP,
+        FIXED_TIMESTAMP,
+      );
+    context.sqlite
+      .prepare(
+        `UPDATE balance_reconciliations
+         SET superseded_by_reconciliation_id = ?
+         WHERE id = ?`,
+      )
+      .run(correctedId, reconciliationId);
+
+    expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+    expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
+
+    rmSync(priorMigrationFolder, { force: true, recursive: true });
   });
 });
 

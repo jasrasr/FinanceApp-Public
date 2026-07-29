@@ -33,10 +33,13 @@ export interface DebtDetailProps {
   readonly onBack: () => void;
   readonly onEdit: () => void;
   readonly onRecordReconciliation: () => void;
+  readonly onCorrectReconciliation: (reconciliation: BalanceReconciliationDto) => void;
+  readonly onVoidReconciliation: (reconciliation: BalanceReconciliationDto) => void;
   readonly onRecordTransaction: () => void;
   readonly onReverseTransaction: (
     transactionId: string,
     expectedUpdatedAtUtc: string,
+    defaultReversalDate: string,
   ) => void;
 }
 
@@ -47,6 +50,8 @@ export const DebtDetail = ({
   onBack,
   onEdit,
   onRecordReconciliation,
+  onCorrectReconciliation,
+  onVoidReconciliation,
   onRecordTransaction,
   onReverseTransaction,
 }: DebtDetailProps): React.JSX.Element => (
@@ -338,6 +343,9 @@ export const DebtDetail = ({
                       <span className="inline-flex rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold">
                         {labelFromValue(reconciliation.reconciliationStatus)}
                       </span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {labelFromValue(reconciliation.lifecycleStatus)}
+                      </span>
                       {reconciliation.approvedAdjustmentTransactionId ? (
                         <span className="mt-1 block text-xs text-slate-500">
                           Adjustment linked
@@ -351,6 +359,24 @@ export const DebtDetail = ({
                           reconciliation.supportingNotes ??
                           'No explanation entered'}
                       </span>
+                      {reconciliation.lifecycleStatus === 'current' ? (
+                        <span className="mt-2 flex flex-wrap gap-3">
+                          <button
+                            className="text-xs font-semibold text-blue-700 hover:text-blue-900 focus:underline focus:outline-none"
+                            onClick={() => onCorrectReconciliation(reconciliation)}
+                            type="button"
+                          >
+                            Correct
+                          </button>
+                          <button
+                            className="text-xs font-semibold text-blue-700 hover:text-blue-900 focus:underline focus:outline-none"
+                            onClick={() => onVoidReconciliation(reconciliation)}
+                            type="button"
+                          >
+                            Void
+                          </button>
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 ),
@@ -461,7 +487,11 @@ export const DebtDetail = ({
                       <button
                         className="font-semibold text-blue-700 hover:text-blue-900 focus:underline focus:outline-none"
                         onClick={() =>
-                          onReverseTransaction(transaction.id, transaction.updatedAtUtc)
+                          onReverseTransaction(
+                            transaction.id,
+                            transaction.updatedAtUtc,
+                            transaction.effectiveDate,
+                          )
                         }
                         type="button"
                       >

@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type Page } from '@playwright/test';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -38,7 +38,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.14.0')).toBeVisible();
+      await expect(window.getByText('Version 0.15.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();
@@ -46,6 +46,9 @@ test.describe('packaged Windows application', () => {
         window.getByRole('heading', { name: 'No debts to display' }),
       ).toBeVisible();
 
+      await exercisePackagedHistoricalMortgageWorkflow(window);
+
+      await window.getByRole('button', { name: 'Debts' }).click();
       await createGeneratedDebt(window, {
         name: 'Packaged Fictional Baseline Note',
         principal: '42000.00',
@@ -89,6 +92,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByText(/Export completed with \d+ CSV files/),
       ).toBeVisible();
+      expectHistoricalMortgageExportIntegrity(exportDirectory);
 
       expect(existsSync(join(userDataDirectory, 'debt-tracker.sqlite3'))).toBe(true);
       expect(existsSync(join(userDataDirectory, 'backups'))).toBe(true);
@@ -112,6 +116,236 @@ test.describe('packaged Windows application', () => {
     }
   });
 });
+
+const exercisePackagedHistoricalMortgageWorkflow = async (
+  window: Page,
+): Promise<void> => {
+  await createGeneratedMortgage(window);
+
+  await window.getByRole('button', { name: 'Dashboard' }).click();
+  await expect(window.getByText('Total active debt')).toBeVisible();
+  await expectDashboardMetric(window, 'Total active debt', '$100,000.00');
+
+  await window.getByRole('button', { name: 'Debts' }).click();
+  await window
+    .getByRole('button', {
+      name: /Open Packaged Historical Mortgage/,
+    })
+    .click();
+  await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
+  await window.getByLabel('Transaction type').selectOption('payment');
+  await window.getByLabel('Transaction date').fill('2021-06-01');
+  await window.getByRole('textbox', { name: 'Amount' }).fill('1500.00');
+  await window.locator('[name="transaction.allocations.principal"]').fill('1000.00');
+  await window.locator('[name="transaction.allocations.interest"]').fill('200.00');
+  await window.locator('[name="transaction.allocations.escrow"]').fill('300.00');
+  await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
+  await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
+  await expect(
+    window.getByLabel('Core debt information').getByText('$300.00'),
+  ).toBeVisible();
+
+  await window.getByRole('button', { name: 'Dashboard' }).click();
+  await expectDashboardMetric(window, 'Total active debt', '$99,000.00');
+  await expectDashboardMetric(window, 'Principal reduction YTD', '$0.00');
+  await expectDashboardMetric(window, 'Interest activity YTD', '$0.00');
+  await expectDashboardMetric(window, 'Current escrow balance', '$300.00');
+  await expect(window.getByRole('heading', { name: 'Escrow balances' })).toHaveCount(0);
+  await expect(
+    window
+      .getByText(/posted non-superseded activity dated 2026-01-01 through 2026-07-29/i)
+      .first(),
+  ).toBeVisible();
+
+  await window.getByRole('button', { name: 'Debts' }).click();
+  await window
+    .getByRole('button', {
+      name: /Open Packaged Historical Mortgage/,
+    })
+    .click();
+  await window.getByRole('button', { name: 'Reverse' }).first().click();
+  await expect(
+    window.getByRole('heading', { name: 'Reverse this transaction?' }),
+  ).toBeVisible();
+  await expect(window.getByLabel('Reversal date')).toHaveValue('2021-06-01');
+  await window.getByLabel('Reversal date').fill('2021-06-02');
+  await window
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Reverse transaction', exact: true })
+    .click();
+  await expect(window.getByText('Transaction was reversed.')).toBeVisible();
+  await expect(
+    window.getByLabel('Core debt information').getByText('$0.00'),
+  ).toBeVisible();
+
+  await window.getByRole('button', { name: 'Dashboard' }).click();
+  await expectDashboardMetric(window, 'Total active debt', '$100,000.00');
+  await expectDashboardMetric(window, 'Principal reduction YTD', '$0.00');
+  await expectDashboardMetric(window, 'Interest activity YTD', '$0.00');
+  await expectDashboardMetric(window, 'Current escrow balance', '$0.00');
+  await expect(
+    window.getByText(/dated 2026-01-01 through 2026-07-29/i).first(),
+  ).toBeVisible();
+
+  await window.getByRole('button', { name: 'Debts' }).click();
+  await window
+    .getByRole('button', {
+      name: /Open Packaged Historical Mortgage/,
+    })
+    .click();
+  await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
+  await window.locator('[name="reconciliation.statementDate"]').fill('2026-01-31');
+  await window
+    .locator('[name="reconciliation.statementEndingBalance"]')
+    .fill('99999.00');
+  await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
+  await expect(window.getByText('Balance reconciliation was recorded.')).toBeVisible();
+  await expect(window.getByText('Exception')).toBeVisible();
+
+  await window.getByRole('button', { name: 'Correct' }).last().click();
+  await expect(window.getByText(/Correcting the current reconciliation/)).toBeVisible();
+  await window
+    .locator('[name="reconciliation.statementEndingBalance"]')
+    .fill('100000.00');
+  await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
+  await expect(window.getByText('Balance reconciliation was recorded.')).toBeVisible();
+  await expect(window.getByText('Superseded')).toBeVisible();
+  await expect(window.getByText('Reconciled').first()).toBeVisible();
+
+  await window.getByRole('button', { name: 'Dashboard' }).click();
+  await expect(
+    window.getByText(
+      'No unreconciled, in-progress, or exception reconciliation items for active debts.',
+    ),
+  ).toBeVisible();
+  await expect(window.getByText('Current escrow balance')).toBeVisible();
+  await expect(window.getByRole('heading', { name: 'Escrow balances' })).toHaveCount(0);
+};
+
+const expectDashboardMetric = async (
+  window: Page,
+  label: string,
+  value: string,
+): Promise<void> => {
+  await expect(
+    window
+      .getByText(label, { exact: true })
+      .locator('xpath=ancestor::section[1]')
+      .getByText(value, {
+        exact: true,
+      }),
+  ).toBeVisible();
+};
+
+const createGeneratedMortgage = async (window: Page): Promise<void> => {
+  const createFirstDebtButton = window.getByRole('button', {
+    name: 'Create first debt',
+  });
+  const addDebtButton = window.getByRole('button', { name: 'Add debt' });
+  if (await createFirstDebtButton.isVisible()) {
+    await createFirstDebtButton.click();
+  } else {
+    await addDebtButton.click();
+  }
+  await window.getByLabel('Debt name').fill('Packaged Historical Mortgage');
+  await window.getByLabel('Creditor').fill('Packaged Smoke Fictional Mortgage Co.');
+  await window.getByLabel('Debt type').selectOption('mortgage');
+  await window.getByLabel('Original principal').fill('100000.00');
+  await window.getByLabel('Origination date').fill('2020-01-01');
+  await window.getByLabel(/Maturity date/).fill('2035-01-01');
+  await window.getByLabel('Tax category').selectOption('mortgage_interest');
+  await window.getByLabel('Deductible percentage').fill('0');
+  await window.getByLabel('Purpose').fill('Generated packaged historical workflow');
+  await window.getByLabel('Annual interest rate (%)').fill('4.50');
+  await window.getByLabel('Required payment').fill('1500.00');
+  await window.getByRole('button', { name: 'Create debt' }).click();
+  await expect(
+    window.getByRole('heading', { name: 'Packaged Historical Mortgage' }),
+  ).toBeVisible();
+};
+
+const parseCsv = (content: string): Record<string, string>[] => {
+  const lines = content.trim().split(/\r?\n/);
+  const [headerLine, ...dataLines] = lines;
+  if (!headerLine) return [];
+  const headers = headerLine.split(',');
+
+  return dataLines.map((line) =>
+    Object.fromEntries(
+      line.split(',').map((value, index) => [headers[index] ?? '', value]),
+    ),
+  );
+};
+
+const expectHistoricalMortgageExportIntegrity = (exportDirectory: string): void => {
+  const exportBatchDirectory = readdirSync(exportDirectory)
+    .filter((entry) => entry.startsWith('debt-tracker-export-'))
+    .sort()
+    .at(-1);
+
+  if (!exportBatchDirectory) {
+    throw new Error('No generated export directory was found.');
+  }
+
+  const exportPath = join(exportDirectory, exportBatchDirectory);
+  const debts = parseCsv(readFileSync(join(exportPath, 'actual-debts.csv'), 'utf8'));
+  const historicalMortgage = debts.find(
+    (debt) => debt.name === 'Packaged Historical Mortgage',
+  );
+
+  expect(historicalMortgage).toBeDefined();
+  const historicalMortgageId = historicalMortgage?.id;
+
+  if (!historicalMortgageId) {
+    throw new Error('Generated historical mortgage export row is missing an id.');
+  }
+
+  const transactions = parseCsv(
+    readFileSync(join(exportPath, 'actual-posted-transactions.csv'), 'utf8'),
+  ).filter((transaction) => transaction.debt_id === historicalMortgageId);
+  const transactionIds = new Set(
+    transactions
+      .map((transaction) => transaction.id)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const allocations = parseCsv(
+    readFileSync(join(exportPath, 'actual-transaction-allocations.csv'), 'utf8'),
+  ).filter(
+    (allocation) =>
+      allocation.transaction_id != null &&
+      transactionIds.has(allocation.transaction_id),
+  );
+
+  const netByAllocationType = new Map<string, number>();
+  for (const allocation of allocations) {
+    if (!allocation.allocation_type || !allocation.amount_cents) {
+      throw new Error('Generated allocation export row is missing required fields.');
+    }
+
+    netByAllocationType.set(
+      allocation.allocation_type,
+      (netByAllocationType.get(allocation.allocation_type) ?? 0) +
+        Number(allocation.amount_cents),
+    );
+  }
+
+  expect(
+    transactions.find((transaction) => transaction.transaction_type === 'payment'),
+  ).toMatchObject({
+    transaction_date: '2021-06-01',
+    total_amount_cents: '-150000',
+    status: 'reversed',
+  });
+  expect(
+    transactions.find((transaction) => transaction.transaction_type === 'reversal'),
+  ).toMatchObject({
+    transaction_date: '2021-06-02',
+    total_amount_cents: '150000',
+  });
+  expect(netByAllocationType.get('principal')).toBe(0);
+  expect(netByAllocationType.get('interest')).toBe(0);
+  expect(netByAllocationType.get('escrow')).toBe(0);
+};
 
 const createGeneratedDebt = async (
   window: Page,

@@ -27,13 +27,24 @@ const backupDirectory = join(userDataDirectory, 'backups');
 
 let uninstallVerified = false;
 
-const removeTemporaryDirectory = (directory: string): void => {
-  rmSync(directory, {
-    force: true,
-    maxRetries: 10,
-    recursive: true,
-    retryDelay: 500,
-  });
+const removeTemporaryDirectory = (
+  directory: string,
+  options: { readonly required: boolean },
+): void => {
+  try {
+    rmSync(directory, {
+      force: true,
+      maxRetries: 10,
+      recursive: true,
+      retryDelay: 500,
+    });
+  } catch (error) {
+    if (options.required) throw error;
+
+    process.stderr.write(
+      `Warning: temporary installed-app directory could not be removed automatically: ${directory}\n`,
+    );
+  }
 };
 
 const run = (
@@ -129,7 +140,7 @@ try {
       );
     }
   }
-  removeTemporaryDirectory(installDirectory);
-  removeTemporaryDirectory(userDataDirectory);
-  removeTemporaryDirectory(exportDirectory);
+  removeTemporaryDirectory(installDirectory, { required: false });
+  removeTemporaryDirectory(userDataDirectory, { required: true });
+  removeTemporaryDirectory(exportDirectory, { required: true });
 }

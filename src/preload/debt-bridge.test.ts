@@ -41,10 +41,11 @@ describe('typed preload bridge', () => {
       'updateDebt',
       'updateImportSheetMapping',
       'updateStagedImportRowReview',
+      'voidBalanceReconciliation',
     ]);
-    expect(bridge.bridgeVersion).toBe(14);
+    expect(bridge.bridgeVersion).toBe(15);
     expect(bridge.appMetadata).toEqual({
-      version: '0.14.0',
+      version: '0.15.0',
       lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);
