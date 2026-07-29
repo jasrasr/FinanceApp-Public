@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.16.0')).toBeVisible();
+    await expect(window.getByText('Version 0.17.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -170,6 +170,23 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(window.getByRole('heading', { name: 'Escrow balances' })).toHaveCount(
       0,
     );
+    await window
+      .getByRole('button', { name: /Current escrow balance: \$300\.00/ })
+      .click();
+    await expect(
+      window.getByRole('heading', { name: 'Escrow balances and activity' }),
+    ).toBeVisible();
+    await window
+      .getByLabel('Escrow activity type')
+      .selectOption('homeowners_insurance');
+    await window.getByLabel('Transaction date').fill('2026-02-10');
+    await window.getByLabel('Amount').fill('50.00');
+    await window.getByRole('button', { name: 'Record escrow activity' }).click();
+    await expect(window.getByText('Escrow activity was recorded.')).toBeVisible();
+    await expect(window.getByText('$250.00').first()).toBeVisible();
+    await expect(
+      window.getByRole('cell', { name: 'Homeowners insurance payment' }),
+    ).toBeVisible();
 
     await window.getByRole('button', { name: 'Debts' }).click();
     await window
@@ -187,7 +204,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
     await expect(
-      window.getByLabel('Core debt information').getByText('$600.00'),
+      window.getByLabel('Core debt information').getByText('$550.00'),
     ).toBeVisible();
 
     await window.getByRole('button', { name: 'Record escrow activity' }).click();
@@ -201,7 +218,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
     await expect(
-      window.getByLabel('Core debt information').getByText('$475.00'),
+      window.getByLabel('Core debt information').getByText('$425.00'),
     ).toBeVisible();
 
     await window.getByRole('button', { name: 'Payoff scenarios' }).click();
@@ -221,6 +238,10 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(window.getByLabel('Date preset')).toBeVisible();
     await window.getByLabel('Date preset').selectOption('prior_year');
     await expect(window.getByLabel('Start date')).toHaveValue('2025-01-01');
+    await window.getByLabel('Date preset').selectOption('all_activity');
+    await expect(window.getByLabel('Start date')).toHaveValue('2019-01-01');
+    await window.getByLabel('Start date').fill('2018-12-31');
+    await expect(window.getByLabel('Start date')).toHaveValue('2019-01-01');
     await window.getByLabel('Date preset').selectOption('last_12_months');
     await expect(window.getByText('Monthly debt rollforward')).toBeVisible();
     await expect(window.getByText('Debt balance history by obligation')).toBeVisible();
@@ -230,6 +251,20 @@ test('completes the manual debt-maintenance workflow', async () => {
     ).toBeVisible();
     await expect(
       window.getByText('Actual-versus-plan variance using saved payoff scenarios'),
+    ).toBeVisible();
+    await window
+      .getByText('Principal, interest, borrowing, and payment trends')
+      .click();
+    await expect(
+      window.getByRole('img', {
+        name: /Bar chart of principal reduction and interest expense/i,
+      }),
+    ).toBeVisible();
+    await window.getByLabel('Line chart').check();
+    await expect(
+      window.getByRole('img', {
+        name: /Line chart of principal reduction and interest expense/i,
+      }),
     ).toBeVisible();
 
     await window.getByRole('button', { name: 'Data management' }).click();

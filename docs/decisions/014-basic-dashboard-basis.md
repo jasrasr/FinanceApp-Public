@@ -25,8 +25,11 @@ statement balances remain separate evidence and are not substituted into the
 dashboard total.
 
 Use posted allocations and transaction classifications for year-to-date metrics.
-Use current effective debt terms for required monthly payments and weighted
-average interest rate.
+New borrowings YTD includes opening principal for active debts originated during
+the displayed year, unless a same-date borrowing/draw transaction already
+represents the original borrowing. Subsequent borrowing/draw transactions
+continue to be counted by transaction effective date. Use current effective debt
+terms for required monthly payments and weighted average interest rate.
 
 ## Consequences
 

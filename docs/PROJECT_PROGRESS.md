@@ -5,7 +5,7 @@ AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.
 
 Version tracking note: application-version progress tracking was added after
-phase seven on 2026-07-28. The current application version is `0.16.0`. Earlier
+phase seven on 2026-07-28. The current application version is `0.17.0`. Earlier
 phase entries did not record an application version at the time they were
 completed.
 
@@ -847,3 +847,58 @@ completed.
 - Recommended next phase:
   - Continue focused user acceptance testing of the simplified dashboard, debt
     list, debt detail, and escrow navigation before adding unrelated workflows.
+
+## Phase 17: Escrow, Borrowing Metric, and Reporting Visualization Refinement
+
+- Completion date: 2026-07-29
+- Application version: 0.17.0
+- Features implemented:
+  - Added escrow activity entry directly from the Escrow balances and activity
+    screen.
+  - Supported real estate tax, homeowners insurance, mortgage insurance, escrow
+    refund, escrow adjustment, and other named escrow expense entries.
+  - Refreshed escrow balances and activity immediately after posting.
+  - Updated New borrowings YTD to include opening principal for active debts
+    originated during the displayed year.
+  - Added duplicate prevention when a same-date borrowing/draw transaction
+    already represents the opening principal.
+  - Bounded All activity and custom report ranges to January 1, 2019.
+  - Added principal and interest trend chart controls with bar and line views.
+- Material architecture and accounting decisions:
+  - Escrow detail posting reuses the existing typed transaction bridge and
+    main-process transaction service; no duplicate accounting logic or generic
+    IPC was added.
+  - Opening principal is included in New borrowings YTD only for active debts
+    originated in the displayed year and is not double-counted when represented
+    by an explicit same-date borrowing/draw transaction.
+  - Reporting history currently starts on January 1, 2019. Older records remain
+    preserved and are excluded only from report period generation.
+  - Principal and interest charts are renderer visualizations of existing report
+    rows and remain paired with accessible tables.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - No new IPC operations.
+  - Existing `createDebtTransaction`, `getDashboard`, `listDebts`, `getDebt`,
+    and `getDebtReports` bridge operations are reused.
+- New UI screens or workflows:
+  - Escrow balances and activity now includes Record escrow activity.
+  - Advanced reports now include report-history date clamping and bar/line chart
+    selection for principal and interest trends.
+- Validation and smoke-test results:
+  - Added service regression tests for current-year debt origination, prior-year
+    origination, HELOC draws, opening principal plus later draws, duplicate
+    prevention, and report-history clamping.
+  - Added renderer and Electron E2E coverage for escrow-detail posting, immediate
+    refresh, report date boundary, and chart selection.
+  - Final command results should be recorded in the completion report for this
+    phase.
+- Known limitations and technical debt:
+  - Reporting-history start date is a fixed constant, not a user-configurable
+    setting.
+  - Escrow adjustment entry currently represents a positive escrow adjustment;
+    negative adjustment workflows require an explicitly approved future design.
+- Recommended next phase:
+  - Continue user acceptance testing of escrow activity, dashboard borrowing
+    metrics, and report chart usefulness before adding unrelated reporting or
+    configuration features.

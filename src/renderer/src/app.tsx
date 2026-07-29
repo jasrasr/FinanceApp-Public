@@ -179,6 +179,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setLoading(true);
     setError(null);
     const dashboardResult = await invokeBridge(() => bridge.getDashboard({}));
+    const debtsResult = await invokeBridge(() =>
+      bridge.listDebts({ includeArchived: false }),
+    );
 
     if (!dashboardResult.ok) {
       setError(dashboardResult.error);
@@ -186,11 +189,25 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       return;
     }
 
+    if (!debtsResult.ok) {
+      setError(debtsResult.error);
+      setLoading(false);
+      return;
+    }
+
     setDashboard(dashboardResult.value);
-    const detailResults = await Promise.all(
-      dashboardResult.value.escrowBalances.map((escrowBalance) =>
-        invokeBridge(() => bridge.getDebt({ id: escrowBalance.debtId })),
+    const escrowDebtIds = new Set(
+      dashboardResult.value.escrowBalances.map((escrowBalance) => escrowBalance.debtId),
+    );
+    const debtIds = [
+      ...new Set(
+        debtsResult.value
+          .filter((debt) => debt.debtType === 'mortgage' || escrowDebtIds.has(debt.id))
+          .map((debt) => debt.id),
       ),
+    ];
+    const detailResults = await Promise.all(
+      debtIds.map((debtId) => invokeBridge(() => bridge.getDebt({ id: debtId }))),
     );
     const failed = detailResults.find((result) => !result.ok);
 
@@ -738,6 +755,27 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
+  const recordEscrowActivity = async (
+    request: CreateDebtTransactionRequest,
+  ): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() => bridge.createDebtTransaction(request));
+
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Escrow activity was recorded.');
+      await loadDebts();
+      await loadDashboard();
+      await loadEscrowDetail();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
   const recordReconciliation = async (
     request: CreateBalanceReconciliationRequest,
   ): Promise<void> => {
@@ -1064,9 +1102,12 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             <EscrowDetail
               debts={escrowDebts}
               effectiveDate={dashboard.effectiveDate}
+              fieldErrors={fieldErrors}
               loading={loading}
               onBackToDashboard={showDashboard}
+              onRecordEscrowActivity={(request) => void recordEscrowActivity(request)}
               onSelectDebt={(id) => void selectDebt(id)}
+              saving={saving}
             />
           ) : null}
 

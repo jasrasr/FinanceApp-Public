@@ -75,6 +75,7 @@ import {
   POSTED_ACTIVITY_TRANSACTION_TYPES,
   TAX_CATEGORIES,
 } from '../../shared/debt-options';
+import { REPORTING_HISTORY_START_DATE } from '../../shared/reporting-constants';
 import type { AppDatabase } from '../database/connection';
 import {
   calculateEscrowBalanceThroughDate,
@@ -1036,6 +1037,20 @@ const postedActualTransactionsThrough = (
       isWithinDateRange(transaction.effectiveDate, startDate, endDate),
   );
 
+const openingPrincipalRepresentedByBorrowingTransaction = (
+  record: DebtWithActivityRecord,
+  startDate: string,
+  endDate: string,
+): boolean =>
+  record.transactions.some(
+    ({ transaction }) =>
+      transaction.status !== 'superseded' &&
+      transaction.transactionType === 'borrowing_draw' &&
+      transaction.effectiveDate === record.debt.originationDate &&
+      isWithinDateRange(transaction.effectiveDate, startDate, endDate) &&
+      transaction.totalAmountCents === record.debt.originalPrincipalCents,
+  );
+
 const createDashboard = (
   database: AppDatabase,
   records: readonly DebtWithActivityRecord[],
@@ -1101,6 +1116,17 @@ const createDashboard = (
         entry.transaction.transactionType,
       ]),
     );
+
+    if (
+      isWithinDateRange(record.debt.originationDate, ytdStart, effectiveDate) &&
+      !openingPrincipalRepresentedByBorrowingTransaction(
+        record,
+        ytdStart,
+        effectiveDate,
+      )
+    ) {
+      newBorrowingsYtdCents += record.debt.originalPrincipalCents;
+    }
 
     for (const { transaction, allocations } of postedActualTransactionsThrough(
       record,
@@ -1218,7 +1244,7 @@ const createDashboard = (
     metricBasis: {
       activeDebt: `Application-calculated ledger balances for active debts as of ${effectiveDate}; not confirmed snapshots or original principal.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected balances require review.' : ''}`,
       principalReductionYtd: `Net principal and extra-principal allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected YTD amounts require review.' : ''}`,
-      newBorrowingsYtd: `Posted non-superseded borrowing or draw transaction totals dated ${ytdStart} through ${effectiveDate}.`,
+      newBorrowingsYtd: `Opening principal for active debts originated from ${ytdStart} through ${effectiveDate}, plus posted non-superseded borrowing or draw transaction totals dated in the same period. Opening principal is not double-counted when a same-date borrowing/draw already represents it.`,
       interestActivityYtd: `Positive display of interest allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}; internal payment allocations are stored as negative values.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected YTD amounts require review.' : ''}`,
       escrowBalance: `Application-calculated escrow balances for active debts as of ${effectiveDate}; excluded from debt principal balance.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected escrow balances require review.' : ''}`,
       requiredMonthlyPayments: `Current effective debt terms as of ${effectiveDate}, normalized to monthly equivalents; irregular and other frequencies are excluded from the amount.`,
@@ -1631,7 +1657,11 @@ const createDebtReports = (
 ): DebtReportsDto => {
   const parsed = getDebtReportsRequestSchema.parse(request);
   const effectiveDate = parsed.endDate ?? currentFinancialDate(now);
-  const startDate = parsed.startDate ?? `${effectiveDate.slice(0, 4)}-01-01`;
+  const requestedStartDate = parsed.startDate ?? `${effectiveDate.slice(0, 4)}-01-01`;
+  const startDate =
+    requestedStartDate < REPORTING_HISTORY_START_DATE
+      ? REPORTING_HISTORY_START_DATE
+      : requestedStartDate;
   const endDate = parsed.endDate ?? effectiveDate;
   const filters: DebtReportsDto['filters'] = {
     startDate,
@@ -1648,6 +1678,7 @@ const createDebtReports = (
     'Reports are read-only and do not edit posted financial records.',
     'Posted activity excludes superseded transactions.',
     'Projected and scenario data is labeled separately from actual ledger data.',
+    `Reporting history currently starts on ${REPORTING_HISTORY_START_DATE}; older underlying records are preserved but excluded from report periods.`,
   ];
 
   const balanceHistoryRows = records.flatMap((record) => {

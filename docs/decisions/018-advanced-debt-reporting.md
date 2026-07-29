@@ -34,11 +34,20 @@ Every report section carries a basis object containing:
 - Assumptions.
 - Warnings.
 
+Report period generation is bounded by the current reporting-history start date,
+January 1, 2019. Requests for All activity or custom ranges before that date are
+clamped for reporting only; older underlying financial records are preserved.
+
 Rollforward and balance-history reports use application-calculated ledger
 balances. Confirmed snapshots are displayed separately. Interest-rate and
 extra-payment sensitivity reports reuse the payoff scenario engine rather than
 duplicating projection logic. Unsupported payoff terms inherit the engine's
 warnings.
+
+Principal and interest trend visuals are renderer presentation of the existing
+activity-trend rows. They provide bar and line options for the same report date
+range and filters, display principal reduction and interest expense as positive
+user-facing activity series, and remain paired with tabular detail.
 
 Actual-versus-plan variance uses saved payoff scenarios as the plan source. Since
 saved scenario records currently do not persist monthly planned balances, the

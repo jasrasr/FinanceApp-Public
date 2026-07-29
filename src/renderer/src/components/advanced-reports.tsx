@@ -3,6 +3,7 @@ import type {
   DebtReportsDto,
   GetDebtReportsRequest,
 } from '../../../shared/debt-contracts';
+import { REPORTING_HISTORY_START_DATE } from '../../../shared/reporting-constants';
 import { formatDollarString } from './display-format';
 
 export interface AdvancedReportsProps {
@@ -15,6 +16,8 @@ export interface AdvancedReportsProps {
 const today = (): string => new Date().toISOString().slice(0, 10);
 
 const defaultStart = (): string => `${today().slice(0, 4)}-01-01`;
+const clampReportingStartDate = (value: string): string =>
+  value < REPORTING_HISTORY_START_DATE ? REPORTING_HISTORY_START_DATE : value;
 
 type DatePreset =
   | 'current_year'
@@ -56,7 +59,7 @@ const dateRangeForPreset = (
       return { startDate: monthStart(start), endDate: today() };
     }
     case 'all_activity':
-      return { startDate: '1900-01-01', endDate: today() };
+      return { startDate: REPORTING_HISTORY_START_DATE, endDate: today() };
     case 'custom':
       return null;
   }
@@ -105,44 +108,180 @@ const EmptyState = (): React.JSX.Element => (
 );
 
 const TrendChart = ({
+  chartType,
   rows,
 }: {
+  readonly chartType: 'bar' | 'line';
   readonly rows: DebtReportsDto['activityTrends']['rows'];
 }): React.JSX.Element | null => {
   if (rows.length === 0) return null;
-  const values = rows.map((row) =>
-    Math.max(
-      Number(row.principalReduction),
-      Number(row.borrowings),
-      Number(row.payments),
-      Math.abs(Number(row.interestActivity)),
-    ),
-  );
+  const values = rows.flatMap((row) => [
+    Number(row.principalReduction),
+    Number(row.interestActivity),
+  ]);
   const maximum = Math.max(...values, 1);
+  const width = Math.max(360, rows.length * 72);
+  const height = 220;
+  const chartTop = 20;
+  const chartBottom = 170;
+  const chartHeight = chartBottom - chartTop;
+  const xFor = (index: number): number =>
+    rows.length === 1 ? 48 : 48 + (index * (width - 96)) / (rows.length - 1);
+  const yFor = (value: string): number =>
+    chartBottom - (Number(value) / maximum) * chartHeight;
+  const principalPoints = rows
+    .map((row, index) => `${xFor(index)},${yFor(row.principalReduction)}`)
+    .join(' ');
+  const interestPoints = rows
+    .map((row, index) => `${xFor(index)},${yFor(row.interestActivity)}`)
+    .join(' ');
+
+  const barWidth = Math.max(8, Math.min(22, (width - 120) / rows.length / 3));
 
   return (
     <div
-      className="mt-4 rounded-lg border border-slate-200 bg-white p-4"
+      className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white p-4"
       role="img"
-      aria-label="Bar chart of principal reduction by period. Tabular detail follows."
+      aria-label={`${chartType === 'line' ? 'Line' : 'Bar'} chart of principal reduction and interest expense by period from ${rows.at(0)?.period} through ${rows.at(-1)?.period}. Tabular detail follows.`}
     >
-      <div className="flex h-36 items-end gap-2">
-        {rows.map((row) => (
-          <div className="flex flex-1 flex-col items-center gap-1" key={row.period}>
-            <div
-              className="w-full rounded-t bg-slate-700"
-              style={{
-                height: `${Math.max(4, (Number(row.principalReduction) / maximum) * 120)}px`,
-              }}
-              title={`${row.period}: ${formatDollarString(row.principalReduction)} principal reduction`}
-            />
-            <span className="text-[10px] text-slate-500">{row.period.slice(-2)}</span>
-          </div>
-        ))}
+      <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-700">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-0.5 w-5 bg-blue-700" aria-hidden="true" />
+          Principal reduction
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span
+            className="h-0.5 w-5 border-t-2 border-dashed border-amber-700"
+            aria-hidden="true"
+          />
+          Interest expense
+        </span>
       </div>
+      <svg
+        className="min-w-full"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+      >
+        <title>
+          Principal and interest activity by period, displayed as positive user-facing
+          activity amounts.
+        </title>
+        <desc>
+          X axis is report period. Y axis is dollars. Principal reduction and interest
+          expense are separate series.
+        </desc>
+        <line
+          stroke="#cbd5e1"
+          strokeWidth="1"
+          x1="48"
+          x2={width - 24}
+          y1={chartBottom}
+          y2={chartBottom}
+        />
+        <line
+          stroke="#cbd5e1"
+          strokeWidth="1"
+          x1="48"
+          x2="48"
+          y1={chartTop}
+          y2={chartBottom}
+        />
+        <text fill="#475569" fontSize="11" x="4" y="16">
+          Dollars
+        </text>
+        <text fill="#475569" fontSize="11" x={width - 70} y={height - 8}>
+          Period
+        </text>
+        <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
+          {formatDollarString(maximum.toFixed(2))}
+        </text>
+        {chartType === 'line' ? (
+          <>
+            <polyline
+              fill="none"
+              points={principalPoints}
+              stroke="#1d4ed8"
+              strokeWidth="3"
+            />
+            <polyline
+              fill="none"
+              points={interestPoints}
+              stroke="#b45309"
+              strokeDasharray="6 4"
+              strokeWidth="3"
+            />
+            {rows.map((row, index) => (
+              <g key={row.period}>
+                <circle
+                  cx={xFor(index)}
+                  cy={yFor(row.principalReduction)}
+                  fill="#1d4ed8"
+                  r="3"
+                />
+                <circle
+                  cx={xFor(index)}
+                  cy={yFor(row.interestActivity)}
+                  fill="#fff7ed"
+                  r="3"
+                  stroke="#b45309"
+                  strokeWidth="2"
+                />
+                <text
+                  fill="#475569"
+                  fontSize="10"
+                  textAnchor="middle"
+                  x={xFor(index)}
+                  y={chartBottom + 16}
+                >
+                  {row.period.slice(-2)}
+                </text>
+              </g>
+            ))}
+          </>
+        ) : (
+          <>
+            {rows.map((row, index) => {
+              const x = xFor(index);
+              const principalY = yFor(row.principalReduction);
+              const interestY = yFor(row.interestActivity);
+
+              return (
+                <g key={row.period}>
+                  <rect
+                    fill="#1d4ed8"
+                    height={chartBottom - principalY}
+                    width={barWidth}
+                    x={x - barWidth - 2}
+                    y={principalY}
+                  />
+                  <rect
+                    fill="#fef3c7"
+                    height={chartBottom - interestY}
+                    stroke="#b45309"
+                    strokeDasharray="3 2"
+                    width={barWidth}
+                    x={x + 2}
+                    y={interestY}
+                  />
+                  <text
+                    fill="#475569"
+                    fontSize="10"
+                    textAnchor="middle"
+                    x={x}
+                    y={chartBottom + 16}
+                  >
+                    {row.period.slice(-2)}
+                  </text>
+                </g>
+              );
+            })}
+          </>
+        )}
+      </svg>
       <p className="mt-2 text-xs text-slate-500">
-        Chart shows principal reduction only; full principal, interest, borrowing, and
-        payment detail is in the table.
+        Principal reduction and interest expense are displayed as positive activity
+        values. The table below provides the accessible detail for each period.
       </p>
     </div>
   );
@@ -159,11 +298,14 @@ export const AdvancedReports = ({
   const [datePreset, setDatePreset] = useState<DatePreset>('current_year');
   const [debtType, setDebtType] = useState('');
   const [status, setStatus] = useState('');
+  const [trendChartType, setTrendChartType] = useState<'bar' | 'line'>('bar');
 
   const apply = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
+    const requestedStartDate = clampReportingStartDate(startDate);
+    if (requestedStartDate !== startDate) setStartDate(requestedStartDate);
     onApplyFilters({
-      startDate,
+      startDate: requestedStartDate,
       endDate,
       debtId: null,
       ownerEntity: null,
@@ -225,8 +367,9 @@ export const AdvancedReports = ({
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
             onChange={(event) => {
               setDatePreset('custom');
-              setStartDate(event.target.value);
+              setStartDate(clampReportingStartDate(event.target.value));
             }}
+            min={REPORTING_HISTORY_START_DATE}
             type="date"
             value={startDate}
           />
@@ -300,7 +443,11 @@ export const AdvancedReports = ({
             section={reports.annualRollforward}
           />
           <ReportBalanceHistory reports={reports} onSelectDebt={onSelectDebt} />
-          <ReportTrends reports={reports} />
+          <ReportTrends
+            chartType={trendChartType}
+            onChartTypeChange={setTrendChartType}
+            reports={reports}
+          />
           <ReportSchedule reports={reports} onSelectDebt={onSelectDebt} />
           <ReportSensitivity
             title="Interest-rate sensitivity"
@@ -451,15 +598,55 @@ const ReportBalanceHistory = ({
 );
 
 const ReportTrends = ({
+  chartType,
+  onChartTypeChange,
   reports,
 }: {
+  readonly chartType: 'bar' | 'line';
+  readonly onChartTypeChange: (chartType: 'bar' | 'line') => void;
   readonly reports: DebtReportsDto;
 }): React.JSX.Element => (
   <ReportShell
     basis={reports.activityTrends.basis}
     title="Principal, interest, borrowing, and payment trends"
   >
-    <TrendChart rows={reports.activityTrends.rows} />
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h4 className="text-sm font-semibold text-slate-900">
+          Principal and interest trends
+        </h4>
+        <p className="mt-1 text-xs text-slate-600">
+          Uses the active report date range and filters. Amounts are displayed as
+          positive activity values.
+        </p>
+      </div>
+      <fieldset className="flex gap-3 rounded-lg border border-slate-200 p-3 text-sm">
+        <legend className="px-1 text-xs font-semibold text-slate-600">
+          Chart type
+        </legend>
+        <label className="inline-flex items-center gap-2">
+          <input
+            checked={chartType === 'bar'}
+            name="trend-chart-type"
+            onChange={() => onChartTypeChange('bar')}
+            type="radio"
+            value="bar"
+          />
+          Bar chart
+        </label>
+        <label className="inline-flex items-center gap-2">
+          <input
+            checked={chartType === 'line'}
+            name="trend-chart-type"
+            onChange={() => onChartTypeChange('line')}
+            type="radio"
+            value="line"
+          />
+          Line chart
+        </label>
+      </fieldset>
+    </div>
+    <TrendChart chartType={chartType} rows={reports.activityTrends.rows} />
     {reports.activityTrends.rows.length === 0 ? <EmptyState /> : null}
     {reports.activityTrends.rows.length > 0 ? (
       <div className="mt-4 overflow-x-auto">

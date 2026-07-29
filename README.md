@@ -236,7 +236,9 @@ Electron user-data directory that it removes after the workflow.
   displayed dashboard effective date and links to the Debts screen.
 - Current escrow balance is displayed separately from debt principal balance.
   Its dashboard card links to an escrow detail view showing balances and posted
-  escrow activity by applicable debt.
+  escrow activity by applicable debt. That view can also record mortgage escrow
+  activity without duplicating accounting logic from debt-detail transaction
+  entry.
 - Year-to-date metrics use posted non-superseded activity from January 1 through
   the dashboard effective date based on transaction effective dates, not created,
   updated, import, audit, or system timestamps.
@@ -244,6 +246,9 @@ Electron user-data directory that it removes after the workflow.
   principal paid through the principal category. Legacy extra-principal
   allocations remain readable for existing records.
 - New borrowings count posted borrowing and draw transaction totals.
+- New borrowings YTD also includes opening principal for active debts originated
+  during the displayed year. Opening principal is not double-counted when a
+  same-date borrowing/draw transaction already represents the original borrowing.
 - Interest activity is displayed as a positive expense amount. Internally,
   payment interest allocations are stored with the payment's negative sign and
   are netted with linked reversals before conversion for user-facing activity
@@ -290,6 +295,12 @@ Electron user-data directory that it removes after the workflow.
 - Date-range presets support current year, prior year, current month, prior
   month, year to date, last 12 months, all activity, and custom date ranges.
 - Report sections are collapsed by default and can be expanded independently.
+- All activity and custom report ranges currently start no earlier than
+  January 1, 2019. Older underlying records are preserved but excluded from
+  report periods until a future configurable history-start date is approved.
+- Principal and interest trend charts support bar and line views, use the active
+  report date range and filters, and remain paired with accessible tabular
+  detail.
 - Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
   engine and inherit its unsupported-term warnings.
 - Actual-versus-plan variance uses saved payoff scenarios. Because saved

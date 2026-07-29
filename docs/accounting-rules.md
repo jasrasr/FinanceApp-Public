@@ -269,7 +269,10 @@ timestamps.
 - Principal reduction is the net positive display of principal and legacy
   extra-principal allocations from payment activity. Reversals dated inside the
   same displayed period offset the original payment activity.
-- New borrowings are borrowing and draw transaction totals.
+- New borrowings are borrowing and draw transaction totals plus opening
+  principal for active debts originated in the displayed year. Opening principal
+  is not double-counted when a same-date borrowing/draw transaction already
+  represents the original borrowing.
 - Interest activity is displayed as a positive expense amount from net signed
   interest allocations dated in the current calendar year. Internally, interest
   paid as part of a payment is stored with the payment's negative sign and linked
@@ -395,6 +398,11 @@ the report effective date or period end. That balance is not a confirmed
 snapshot, statement balance, original principal, projected balance, or scenario
 balance.
 
+Report periods currently start no earlier than January 1, 2019. Older
+underlying records are preserved, but All activity and custom report ranges are
+clamped to the reporting-history start date until a future configuration
+explicitly changes it.
+
 Monthly and annual rollforwards use:
 
 - Beginning balance: application-calculated ledger balance as of the day before
@@ -408,6 +416,11 @@ Monthly and annual rollforwards use:
   report date range.
 - Adjustments and other: residual posted activity not classified as borrowings
   or payments.
+
+Principal and interest trend charts use the active report date range and filters,
+show principal reduction and interest expense as separate positive activity
+series, and remain paired with the rollforward/trend tables for accessible
+detail.
 
 Balance-history reporting shows calculated ledger balances and latest confirmed
 snapshots separately. It does not treat the latest confirmed snapshot as the

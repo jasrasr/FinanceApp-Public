@@ -1149,6 +1149,88 @@ describe('debt maintenance', () => {
     );
   });
 
+  it('includes current-year originated debt opening principal in new borrowings YTD', () => {
+    const request = validRequest('Fictional Current-Year Opening Loan');
+    request.debt.originationDate = '2026-03-15';
+    request.initialTerm.effectiveStartDate = '2026-03-15';
+    const created = service.createDebt(request);
+
+    const dashboard = service.getDashboard({});
+
+    expect(created.currentBalance).toBe('125000.13');
+    expect(dashboard.totals.newBorrowingsYtd).toBe('125000.13');
+    expect(dashboard.metricBasis.newBorrowingsYtd).toContain('Opening principal');
+  });
+
+  it('excludes prior-year originated debt opening principal from new borrowings YTD', () => {
+    service.createDebt(validRequest('Fictional Prior-Year Opening Loan'));
+
+    expect(service.getDashboard({}).totals.newBorrowingsYtd).toBe('0.00');
+  });
+
+  it('continues counting current-year HELOC draws by transaction date', () => {
+    const request = validRequest('Fictional HELOC');
+    request.debt.debtType = 'heloc';
+    request.debt.originationDate = '2024-01-01';
+    request.debt.creditLimit = '150000.00';
+    request.initialTerm.effectiveStartDate = '2024-01-01';
+    const created = service.createDebt(request);
+
+    service.createDebtTransaction(validBorrowingRequest(created.id));
+
+    expect(service.getDashboard({}).totals.newBorrowingsYtd).toBe('1000.00');
+  });
+
+  it('counts opening principal and later draws without requiring an artificial opening transaction', () => {
+    const request = validRequest('Fictional Current-Year Loan With Draw');
+    request.debt.originationDate = '2026-03-15';
+    request.initialTerm.effectiveStartDate = '2026-03-15';
+    const created = service.createDebt(request);
+
+    service.createDebtTransaction({
+      ...validBorrowingRequest(created.id),
+      transaction: {
+        ...validBorrowingRequest(created.id).transaction,
+        effectiveDate: '2026-04-01',
+        postingDate: '2026-04-01',
+      },
+    });
+
+    expect(service.getDashboard({}).totals.newBorrowingsYtd).toBe('126000.13');
+  });
+
+  it('does not double-count opening principal when a same-date borrowing draw represents it', () => {
+    const request = validRequest('Fictional Explicit Opening Draw');
+    request.debt.originationDate = '2026-03-15';
+    request.initialTerm.effectiveStartDate = '2026-03-15';
+    const created = service.createDebt(request);
+
+    service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        transactionType: 'borrowing_draw',
+        effectiveDate: '2026-03-15',
+        postingDate: '2026-03-15',
+        status: 'posted',
+        totalAmount: '125000.13',
+        description: 'Generated explicit opening draw.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '125000.13',
+          interest: null,
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    expect(service.getDashboard({}).totals.newBorrowingsYtd).toBe('125000.13');
+  });
+
   it('uses principal-only balance impact and excludes prior-year activity from current-year dashboard metrics', () => {
     const request = validRequest('Fictional Multi-Year Mortgage');
     request.debt.debtType = 'mortgage';
@@ -1332,6 +1414,56 @@ describe('debt maintenance', () => {
         debtId: created.id,
       }),
     ]);
+  });
+
+  it('clamps advanced report activity to the configured reporting history start date', () => {
+    const request = validRequest('Fictional Pre-History Loan');
+    request.debt.originationDate = '2018-01-01';
+    request.initialTerm.effectiveStartDate = '2018-01-01';
+    const created = service.createDebt(request);
+    service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2018-12-31',
+        postingDate: '2018-12-31',
+        status: 'posted',
+        totalAmount: '500.00',
+        description: 'Generated pre-history payment.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '400.00',
+          interest: '100.00',
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    const reports = service.getDebtReports({
+      startDate: '1900-01-01',
+      endDate: '2019-02-28',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(reports.filters.startDate).toBe('2019-01-01');
+    expect(reports.monthlyRollforward.rows.map((row) => row.period)).toEqual([
+      '2019-01',
+      '2019-02',
+    ]);
+    expect(
+      reports.monthlyRollforward.rows.some((row) => row.period.startsWith('2018')),
+    ).toBe(false);
+    expect(reports.monthlyRollforward.basis.assumptions).toContain(
+      'Reporting history currently starts on 2019-01-01; older underlying records are preserved but excluded from report periods.',
+    );
   });
 
   it('reports saved-scenario variance as limited when monthly plan balances are unavailable', () => {

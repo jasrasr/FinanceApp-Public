@@ -21,7 +21,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 16,
   appMetadata: {
-    version: '0.16.0',
+    version: '0.17.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -816,10 +816,19 @@ describe('debt maintenance application', () => {
 
   it('navigates from dashboard current escrow balance to escrow detail', async () => {
     const bridge = createBridge();
+    const mortgageSummary = {
+      ...sampleDebtSummary,
+      debtType: 'mortgage' as const,
+    };
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [mortgageSummary],
+    }));
     bridge.getDebt = vi.fn(async () => ({
       ok: true as const,
       value: {
         ...sampleDebtDetail,
+        debtType: 'mortgage' as const,
         calculatedEscrowBalance: '300.00',
         transactions: [
           {
@@ -855,6 +864,82 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
     expect(screen.getByText('Generated payment.')).toBeVisible();
     expect(screen.getAllByText('$300.00').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('posts escrow activity from escrow detail and refreshes balances', async () => {
+    const bridge = createBridge();
+    const mortgageSummary = {
+      ...sampleDebtSummary,
+      debtType: 'mortgage' as const,
+    };
+    const mortgageDetail = {
+      ...sampleDebtDetail,
+      debtType: 'mortgage' as const,
+      calculatedEscrowBalance: '300.00',
+    };
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [mortgageSummary],
+    }));
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: mortgageDetail,
+    }));
+    bridge.createDebtTransaction = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        ...mortgageDetail,
+        calculatedEscrowBalance: '150.00',
+      },
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Current escrow balance/ }),
+    );
+    await screen.findByRole('heading', { name: 'Escrow balances and activity' });
+    fireEvent.change(screen.getByRole('combobox', { name: /Escrow activity type/ }), {
+      target: { value: 'real_estate_tax' },
+    });
+    fireEvent.change(
+      document.querySelector('[name="escrow.transactionDate"]') as HTMLInputElement,
+      {
+        target: { value: '2026-07-15' },
+      },
+    );
+    fireEvent.change(
+      document.querySelector('[name="escrow.amount"]') as HTMLInputElement,
+      {
+        target: { value: '150.00' },
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Record escrow activity' }));
+
+    expect(await screen.findByText('Escrow activity was recorded.')).toBeVisible();
+    expect(bridge.createDebtTransaction).toHaveBeenCalledWith({
+      debtId: sampleDebtDetail.id,
+      transaction: {
+        transactionType: 'escrow_disbursement',
+        effectiveDate: '2026-07-15',
+        postingDate: '2026-07-15',
+        status: 'posted',
+        totalAmount: '150.00',
+        description: 'Real estate tax payment',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: null,
+          interest: null,
+          escrow: '150.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    expect(bridge.getDashboard).toHaveBeenCalledTimes(4);
+    expect(bridge.getDebt).toHaveBeenCalledTimes(2);
   });
 
   it('orders dashboard cards with interest activity before new borrowings', async () => {
@@ -919,7 +1004,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.16.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.17.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -951,8 +1036,27 @@ describe('debt maintenance application', () => {
       ).length,
     ).toBeGreaterThan(0);
     expect(
-      screen.getByRole('img', { name: /principal reduction by period/i }),
+      screen.getByRole('img', {
+        name: /Bar chart of principal reduction and interest expense/i,
+      }),
     ).toBeVisible();
+    expect(screen.getByText('Principal and interest trends')).toBeVisible();
+    expect(screen.getAllByText('Principal reduction').length).toBeGreaterThan(0);
+    expect(screen.getByText('Interest expense')).toBeVisible();
+    fireEvent.click(screen.getByLabelText('Line chart'));
+    expect(
+      screen.getByRole('img', {
+        name: /Line chart of principal reduction and interest expense/i,
+      }),
+    ).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Date preset'), {
+      target: { value: 'all_activity' },
+    });
+    expect(screen.getByLabelText('Start date')).toHaveValue('2019-01-01');
+    fireEvent.change(screen.getByLabelText('Start date'), {
+      target: { value: '2018-12-31' },
+    });
+    expect(screen.getByLabelText('Start date')).toHaveValue('2019-01-01');
     expect(bridge.getDebtReports).toHaveBeenCalledWith({
       startDate: null,
       endDate: null,

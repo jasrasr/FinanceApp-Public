@@ -29,6 +29,9 @@ without treating escrow as debt principal or interest.
 - Track mortgage escrow in the posted ledger with explicit escrow transaction
   types and escrow allocations, but exclude escrow activity from calculated debt
   principal balances.
+- Provide escrow activity entry from both mortgage debt detail and the escrow
+  balances/activity view. Both workflows use the same posted transaction service
+  and positive user-entered amounts; the UI does not duplicate accounting logic.
 - Replace separate user-facing snapshot entry with Reconcile Balance, which
   transactionally creates a supporting confirmed snapshot and reconciliation.
 - Collapse advanced report sections by default.
