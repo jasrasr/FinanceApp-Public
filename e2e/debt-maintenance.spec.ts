@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.19.0')).toBeVisible();
+    await expect(window.getByText('Version 0.20.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -96,9 +96,11 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByLabel('Transaction type').selectOption('payment');
     await window.getByLabel('Transaction date').fill('2021-06-01');
     await window.getByRole('textbox', { name: 'Amount' }).fill('1500.00');
-    await window.locator('[name="transaction.allocations.principal"]').fill('1000.00');
     await window.locator('[name="transaction.allocations.interest"]').fill('200.00');
     await window.locator('[name="transaction.allocations.escrow"]').fill('300.00');
+    await expect(
+      window.locator('[name="transaction.allocations.principal"]'),
+    ).toHaveValue('1000.00');
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
     await window.getByRole('button', { name: 'Dashboard' }).click();
@@ -116,8 +118,10 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByLabel('Transaction type').selectOption('payment');
     await window.getByLabel('Transaction date').fill('2026-01-15');
     await window.getByRole('textbox', { name: 'Amount' }).fill('500.00');
-    await window.locator('[name="transaction.allocations.principal"]').fill('400.00');
     await window.locator('[name="transaction.allocations.interest"]').fill('100.00');
+    await expect(
+      window.locator('[name="transaction.allocations.principal"]'),
+    ).toHaveValue('400.00');
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
     await expect(window.getByText('$500.00', { exact: true })).toBeVisible();
@@ -198,9 +202,11 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByLabel('Transaction type').selectOption('payment');
     await window.getByLabel('Transaction date').fill('2026-02-01');
     await window.getByRole('textbox', { name: 'Amount' }).fill('1800.00');
-    await window.locator('[name="transaction.allocations.principal"]').fill('1000.00');
     await window.locator('[name="transaction.allocations.interest"]').fill('500.00');
     await window.locator('[name="transaction.allocations.escrow"]').fill('300.00');
+    await expect(
+      window.locator('[name="transaction.allocations.principal"]'),
+    ).toHaveValue('1000.00');
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
     await expect(
@@ -261,18 +267,28 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(
       window.getByText('Actual-versus-plan variance using saved payoff scenarios'),
     ).toBeVisible();
-    await window.getByText('Debt balance trend').click();
+    await expect(window.getByText('Debt balance trend')).toHaveCount(0);
+    await window.getByText('Debt balance history by obligation').click();
     await expect(
       window.getByRole('img', {
-        name: /Line chart of ending principal balance/i,
+        name: /Line chart of debt balance history/i,
       }),
     ).toBeVisible();
-    await window.getByRole('radio', { name: 'Bar chart' }).check();
     await expect(
-      window.getByRole('img', {
-        name: /Bar chart of ending principal balance/i,
-      }),
+      window.getByRole('button', { name: 'Total debt balance' }),
     ).toBeVisible();
+    const balanceLegend = window.locator(
+      '[aria-label="Debt balance history chart controls"]',
+    );
+    await balanceLegend.getByRole('button', { name: 'Total debt balance' }).click();
+    await balanceLegend
+      .getByRole('button', {
+        name: 'Updated Fictional Harbor Mortgage Note — Harbor Ridge Cooperative',
+      })
+      .click();
+    await expect(window.getByText(/No debt lines are selected/)).toBeVisible();
+    await balanceLegend.getByRole('button', { name: 'Total debt balance' }).click();
+    await window.getByRole('button', { name: 'Reset zoom' }).click();
     await window.getByText('Interest expense analysis').click();
     await expect(
       window.getByRole('img', { name: /Line chart of monthly interest expense/i }),

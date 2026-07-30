@@ -1008,3 +1008,56 @@ completed.
 - Recommended next phase:
   - Review report outputs with additional representative fictional debt
     portfolios before adding further report types.
+
+## Phase 20: Reporting and Transaction-Entry Usability Refinement
+
+- Completion date: 2026-07-30
+- Application version: 0.20.0
+- Features implemented:
+  - Replaced the normal Debt balance history by obligation table with an
+    interactive line chart and accessible detail table.
+  - Added one chart line per debt plus a total-debt line, with session-only
+    legend toggles, dynamic Y-axis scaling, mouse-wheel X-axis zoom, reset zoom,
+    and empty state when no lines are selected.
+  - Removed the separate visible total-only Debt balance trend section because
+    the interactive history chart now covers total and individual debt balances.
+  - Simplified payment entry by auto-calculating principal as the payment amount
+    remaining after interest, escrow, fees, and penalties.
+- Material architecture and accounting decisions:
+  - Debt history chart values use application-calculated ending principal
+    balance by reporting period; confirmed snapshots remain separate support
+    data and are not plotted as current principal.
+  - Payment principal auto-calculation is a renderer usability layer. Existing
+    main-process validation and signed ledger conversion remain authoritative.
+  - Chart visibility and zoom are renderer-only session state and are not
+    persisted as settings.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - No new IPC operations.
+  - Existing `getDebtReports` continues to provide report data through the typed
+    bridge; balance-history rows now represent period-end principal balances.
+- New UI screens or workflows:
+  - Advanced reports now show the interactive debt balance history chart in the
+    existing report section.
+  - Payment transaction entry now displays principal as a read-only
+    auto-calculated amount for payment transactions.
+- Validation and smoke-test results:
+  - Added renderer regression coverage for payment principal defaulting,
+    recalculation, over-allocation blocking, legend toggles, disabled legend
+    fading, Y-axis recalculation, zoom/reset, chart/table reconciliation, and
+    removal of the old trend section.
+  - Added service assertions that balance-history rows use monthly period-end
+    dates and ending-principal basis.
+  - Updated Electron and packaged workflows to use positive payment amounts with
+    auto-calculated principal.
+  - Final command results should be recorded in the completion report for this
+    phase.
+- Known limitations and technical debt:
+  - The interactive chart uses lightweight SVG rendering; deeper analytics such
+    as saved chart preferences remain intentionally out of scope.
+  - Report chart zoom is limited to the selected report range and does not add
+    persistent zoom settings.
+- Recommended next phase:
+  - Run additional user acceptance testing on report readability and payment
+    allocation entry before adding new reporting categories.

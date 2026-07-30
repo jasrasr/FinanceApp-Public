@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const executablePath = process.env.DEBT_TRACKER_PACKAGED_EXE;
+const currentFinancialDate = (): string => new Date().toISOString().slice(0, 10);
+const escapedRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test.describe('packaged Windows application', () => {
   test.skip(!executablePath, 'DEBT_TRACKER_PACKAGED_EXE is required.');
@@ -38,7 +41,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.19.0')).toBeVisible();
+      await expect(window.getByText('Version 0.20.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();
@@ -142,9 +145,11 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
   await window.getByLabel('Transaction type').selectOption('payment');
   await window.getByLabel('Transaction date').fill('2021-06-01');
   await window.getByRole('textbox', { name: 'Amount' }).fill('1500.00');
-  await window.locator('[name="transaction.allocations.principal"]').fill('1000.00');
   await window.locator('[name="transaction.allocations.interest"]').fill('200.00');
   await window.locator('[name="transaction.allocations.escrow"]').fill('300.00');
+  await expect(
+    window.locator('[name="transaction.allocations.principal"]'),
+  ).toHaveValue('1000.00');
   await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
   await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
   await expect(
@@ -161,7 +166,10 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
     window,
     'Principal reduction YTD',
     '$0.00',
-    /posted non-superseded activity dated 2026-01-01 through 2026-07-29/i,
+    new RegExp(
+      `posted non-superseded activity dated ${escapedRegExp(currentFinancialDate().slice(0, 4))}-01-01 through ${escapedRegExp(currentFinancialDate())}`,
+      'i',
+    ),
   );
 
   await window.getByRole('button', { name: 'Debts' }).click();
@@ -194,7 +202,10 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
     window,
     'Interest activity YTD',
     '$0.00',
-    /dated 2026-01-01 through 2026-07-29/i,
+    new RegExp(
+      `dated ${escapedRegExp(currentFinancialDate().slice(0, 4))}-01-01 through ${escapedRegExp(currentFinancialDate())}`,
+      'i',
+    ),
   );
 
   await window.getByRole('button', { name: 'Debts' }).click();
@@ -253,7 +264,7 @@ const expectDashboardBasisHidden = async (
   value: string,
   basis: RegExp,
 ): Promise<void> => {
-  const effectiveDate = '2026-07-29';
+  const effectiveDate = currentFinancialDate();
   const accessibleName = `${label}: ${value} as of ${effectiveDate}`;
   const dashboard = window.locator('section[aria-labelledby="dashboard-heading"]');
   const card =

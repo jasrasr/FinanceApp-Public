@@ -17,6 +17,13 @@ transaction amount and all allocations. The Electron main-process service
 converts those positive values to signed ledger cents based on transaction type
 before repository validation and persistence.
 
+- For user-entered payments, the renderer auto-calculates principal as the
+  payment amount less positive interest, escrow, fee, and penalty allocations.
+  Principal is displayed as read-only in the payment form and cannot become
+  negative.
+- The service still validates the submitted allocation total and applies the
+  signed ledger convention. Renderer auto-calculation is a usability layer, not
+  the authoritative accounting control.
 - Payments persist as negative ledger activity.
 - Borrowing/draws, fees, penalties, interest charges, escrow disbursements,
   escrow refunds, escrow adjustments, principal adjustments, and other manual

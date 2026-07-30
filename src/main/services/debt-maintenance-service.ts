@@ -1793,25 +1793,11 @@ const createDebtReports = (
     `Reporting history currently starts on ${REPORTING_HISTORY_START_DATE}; older underlying records are preserved but excluded from report periods.`,
   ];
 
-  const balanceHistoryRows = records.flatMap((record) => {
-    const dates = [
-      ...new Set([
-        startDate,
-        endDate,
-        ...record.transactions
-          .filter(({ transaction }) =>
-            isWithinDateRange(transaction.effectiveDate, startDate, endDate),
-          )
-          .map(({ transaction }) => transaction.effectiveDate),
-        ...record.balanceSnapshots
-          .filter((snapshot) =>
-            isWithinDateRange(snapshot.effectiveDate, startDate, endDate),
-          )
-          .map((snapshot) => snapshot.effectiveDate),
-      ]),
-    ].sort();
-
-    return dates.map((date) => {
+  const balanceHistoryDates = periodKeys(startDate, endDate, 'monthly').map((period) =>
+    clampDate(periodEnd(period, 'monthly'), startDate, endDate),
+  );
+  const balanceHistoryRows = records.flatMap((record) =>
+    balanceHistoryDates.map((date) => {
       const snapshot = record.balanceSnapshots
         .filter((candidate) => candidate.effectiveDate <= date)
         .at(-1);
@@ -1821,15 +1807,15 @@ const createDebtReports = (
         creditor: record.debt.creditor,
         effectiveDate: date,
         calculatedBalance: centsToDollars(
-          calculateReportBalanceThroughDate(database, record, date),
+          calculateReportPrincipalBalanceThroughDate(record, date),
         ),
         confirmedBalance: snapshot
           ? centsToDollars(snapshot.confirmedBalanceCents)
           : null,
-        basis: `Calculated balance is ledger-based as of ${date}; confirmed balance is latest snapshot on or before ${date}, when available.`,
+        basis: `Calculated balance is ending principal as of ${date}; confirmed balance is latest snapshot on or before ${date}, when available and shown separately.`,
       };
-    });
-  });
+    }),
+  );
 
   const monthlyRows = createRollforward(records, startDate, endDate, 'monthly');
   const annualRows = createRollforward(records, startDate, endDate, 'annual');

@@ -213,6 +213,9 @@ Electron user-data directory that it removes after the workflow.
 - Manual transaction amounts and allocations are entered as positive currency
   values. The application applies the stored accounting sign from the selected
   transaction type.
+- For payments, principal is auto-calculated in the form as the payment amount
+  remaining after interest, escrow, fees, and penalties. Nonprincipal
+  allocations cannot exceed the payment amount.
 - Reversals require an explicit financial reversal date. The reversal affects
   balances and year-to-date activity only in the year containing that financial
   date, not the year when the reversal is entered.
@@ -306,9 +309,10 @@ Electron user-data directory that it removes after the workflow.
   Principal reduction + Principal adjustments = Ending principal. Cash payments
   and interest are supplemental activity columns and do not drive principal
   balance movement.
-- Debt balance trend charts show application-calculated ending principal balance
-  at month-end or year-end, default to a continuous line chart, and remain paired
-  with accessible tabular detail.
+- Debt balance history by obligation is shown as an interactive line chart with
+  one line per debt and one total-debt line. It uses application-calculated
+  ending principal balances by period, supports session-only legend toggles and
+  chart zoom, and remains paired with accessible tabular detail.
 - Interest analysis separates monthly interest expense trends from annual
   interest comparisons. Monthly charts default to a recent readable period and
   support month-by-month comparison across years. Interest expense is displayed

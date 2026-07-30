@@ -82,6 +82,12 @@ escrow, fees, or penalties. Principal includes all principal paid, including
 additional principal. Legacy extra-principal and other allocation rows remain
 readable for compatibility but are not new user-facing categories.
 
+For payment entry, the renderer auto-calculates principal as the positive
+payment amount less positive interest, escrow, fee, and penalty allocations. The
+principal field is read-only in the payment form. If nonprincipal allocations
+exceed the payment amount, the renderer prevents submission and the main-process
+service validation remains the authoritative control before persistence.
+
 For example, a user enters a generated payment amount of `500.00` and positive
 allocations of `400.00` principal and `100.00` interest. The ledger persists the
 payment as `-500.00` with `-400.00` principal and `-100.00` interest. A
@@ -434,11 +440,12 @@ fees, and penalties do not enter principal adjustments merely because they are
 nonprincipal activity. They appear only in their appropriate supplemental
 activity or escrow reporting.
 
-Debt balance trend charts use the active report date range and filters and show
-application-calculated ending principal balance at each month-end or year-end.
-The default visualization is a continuous line chart, with an optional bar chart
-where the aggregation remains useful. The table paired with the chart provides
-period-end balances and period-over-period changes.
+Debt balance history by obligation uses the active report date range and filters
+and shows application-calculated ending principal balance at each report period
+end. The normal visualization is an interactive line chart with one line per debt
+and one total-debt line. Legend visibility is a report-session display choice
+only; it does not change stored financial data. The table paired with the chart
+provides period-end balances and period-over-period changes.
 
 Interest analysis is separate from debt balance trends. Monthly interest expense
 charts omit zero-only periods when they add no analytical value and default to a
@@ -448,10 +455,10 @@ Annual interest comparisons omit zero years when they add no analytical value an
 state the omission. Monthly and annual interest displays use positive
 user-facing amounts and must reconcile to the accessible tabular detail.
 
-Balance-history reporting shows calculated ledger balances and latest confirmed
-snapshots separately. It does not treat the latest confirmed snapshot as the
-current balance unless a future reconciliation or reporting rule explicitly does
-so.
+Balance-history reporting shows calculated principal balances and latest
+confirmed snapshots separately. It does not treat the latest confirmed snapshot
+as the current balance unless a future reconciliation or reporting rule
+explicitly does so.
 
 Maturity and required-payment schedules use current effective terms as of the
 report effective date. Required payments are normalized to monthly equivalents

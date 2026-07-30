@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type {
   DebtReportsDto,
   GetDebtReportsRequest,
@@ -113,144 +113,6 @@ const periodLabel = (period: string): string => {
   return new Date(Date.UTC(Number(year), Number(month) - 1, 1)).toLocaleDateString(
     undefined,
     { month: 'short', year: 'numeric', timeZone: 'UTC' },
-  );
-};
-
-const BalanceTrendChart = ({
-  chartType,
-  rows,
-}: {
-  readonly chartType: 'bar' | 'line';
-  readonly rows: DebtReportsDto['balanceTrends']['rows'];
-}): React.JSX.Element | null => {
-  if (rows.length === 0) return null;
-  const values = rows.map((row) => Number(row.endingBalance));
-  const maximum = Math.max(...values, 1);
-  const width = 720;
-  const height = 220;
-  const chartTop = 20;
-  const chartBottom = 170;
-  const chartHeight = chartBottom - chartTop;
-  const xFor = (index: number): number =>
-    rows.length === 1 ? 72 : 72 + (index * (width - 120)) / (rows.length - 1);
-  const yFor = (value: string): number =>
-    chartBottom - (Number(value) / maximum) * chartHeight;
-  const points = rows
-    .map((row, index) => `${xFor(index)},${yFor(row.endingBalance)}`)
-    .join(' ');
-
-  const barWidth = Math.max(10, Math.min(28, (width - 140) / rows.length / 2));
-
-  return (
-    <div
-      className="mt-4 rounded-lg border border-slate-200 bg-white p-4"
-      role="img"
-      aria-label={`${chartType === 'line' ? 'Line' : 'Bar'} chart of ending principal balance from ${periodLabel(rows.at(0)?.period ?? '')} through ${periodLabel(rows.at(-1)?.period ?? '')}. Tabular detail follows.`}
-    >
-      <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-700">
-        <span className="inline-flex items-center gap-2">
-          <span className="h-0.5 w-5 bg-blue-700" aria-hidden="true" />
-          Ending principal balance
-        </span>
-      </div>
-      <svg
-        aria-hidden="true"
-        className="h-auto w-full"
-        focusable="false"
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        width={width}
-      >
-        <title>Application-calculated ending principal balance by period.</title>
-        <desc>
-          X axis is period end. Y axis is dollars. Tooltips identify period-end date,
-          balance, and change from prior period.
-        </desc>
-        <line
-          stroke="#cbd5e1"
-          strokeWidth="1"
-          x1="72"
-          x2={width - 24}
-          y1={chartBottom}
-          y2={chartBottom}
-        />
-        <line
-          stroke="#cbd5e1"
-          strokeWidth="1"
-          x1="72"
-          x2="72"
-          y1={chartTop}
-          y2={chartBottom}
-        />
-        <text fill="#475569" fontSize="11" x="4" y="16">
-          Dollars
-        </text>
-        <text fill="#475569" fontSize="11" x={width - 70} y={height - 8}>
-          Period
-        </text>
-        <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
-          {formatDollarString(maximum.toFixed(2))}
-        </text>
-        {chartType === 'line' ? (
-          <>
-            <polyline fill="none" points={points} stroke="#1d4ed8" strokeWidth="3" />
-            {rows.map((row, index) => (
-              <g key={row.period}>
-                <title>{`${row.periodEndDate}: ${formatDollarString(row.endingBalance)} ending principal balance; change ${row.changeFromPriorPeriod ? formatDollarString(row.changeFromPriorPeriod) : 'not applicable'}.`}</title>
-                <circle
-                  cx={xFor(index)}
-                  cy={yFor(row.endingBalance)}
-                  fill="#1d4ed8"
-                  r="3"
-                />
-                <text
-                  fill="#475569"
-                  fontSize="10"
-                  textAnchor="middle"
-                  x={xFor(index)}
-                  y={chartBottom + 16}
-                >
-                  {periodLabel(row.period)}
-                </text>
-              </g>
-            ))}
-          </>
-        ) : (
-          <>
-            {rows.map((row, index) => {
-              const x = xFor(index);
-              const y = yFor(row.endingBalance);
-
-              return (
-                <g key={row.period}>
-                  <title>{`${row.periodEndDate}: ${formatDollarString(row.endingBalance)} ending principal balance; change ${row.changeFromPriorPeriod ? formatDollarString(row.changeFromPriorPeriod) : 'not applicable'}.`}</title>
-                  <rect
-                    fill="#1d4ed8"
-                    height={chartBottom - y}
-                    width={barWidth}
-                    x={x - barWidth / 2}
-                    y={y}
-                  />
-                  <text
-                    fill="#475569"
-                    fontSize="10"
-                    textAnchor="middle"
-                    x={x}
-                    y={chartBottom + 16}
-                  >
-                    {periodLabel(row.period)}
-                  </text>
-                </g>
-              );
-            })}
-          </>
-        )}
-      </svg>
-      <p className="mt-2 text-xs text-slate-500">
-        Ending balance is application-calculated principal at period end. The table
-        below provides exact values and period-over-period changes.
-      </p>
-    </div>
   );
 };
 
@@ -479,7 +341,6 @@ export const AdvancedReports = ({
   const [datePreset, setDatePreset] = useState<DatePreset>('current_year');
   const [debtType, setDebtType] = useState('');
   const [status, setStatus] = useState('');
-  const [balanceChartType, setBalanceChartType] = useState<'bar' | 'line'>('line');
 
   const apply = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -624,11 +485,6 @@ export const AdvancedReports = ({
             section={reports.annualRollforward}
           />
           <ReportBalanceHistory reports={reports} onSelectDebt={onSelectDebt} />
-          <ReportBalanceTrends
-            chartType={balanceChartType}
-            onChartTypeChange={setBalanceChartType}
-            reports={reports}
-          />
           <ReportInterestAnalysis reports={reports} />
           <ReportSchedule reports={reports} onSelectDebt={onSelectDebt} />
           <ReportSensitivity
@@ -738,6 +594,378 @@ const DebtButton = ({
   </button>
 );
 
+type BalanceHistorySeries = {
+  readonly key: string;
+  readonly label: string;
+  readonly debtId: string | null;
+  readonly dash: string;
+  readonly marker: 'circle' | 'square' | 'diamond';
+  readonly values: readonly {
+    readonly periodEndDate: string;
+    readonly balance: number;
+    readonly changeFromPriorPeriod: number | null;
+  }[];
+};
+
+const balanceHistorySeries = (
+  rows: DebtReportsDto['balanceHistory']['rows'],
+): readonly BalanceHistorySeries[] => {
+  const dates = [...new Set(rows.map((row) => row.effectiveDate))].sort();
+  const rowsByDebt = new Map<string, typeof rows>();
+
+  for (const row of rows) {
+    rowsByDebt.set(row.debtId, [...(rowsByDebt.get(row.debtId) ?? []), row]);
+  }
+
+  const individualSeries = [...rowsByDebt.entries()]
+    .map(([debtId, debtRows], index): BalanceHistorySeries => {
+      const sortedRows = [...debtRows].sort((a, b) =>
+        a.effectiveDate.localeCompare(b.effectiveDate),
+      );
+      const valuesByDate = new Map(
+        sortedRows.map((row) => [row.effectiveDate, Number(row.calculatedBalance)]),
+      );
+      let prior: number | null = null;
+      return {
+        key: debtId,
+        label: `${sortedRows[0]?.debtName ?? 'Debt'} — ${sortedRows[0]?.creditor ?? 'Creditor'}`,
+        debtId,
+        dash: index % 3 === 0 ? '0' : index % 3 === 1 ? '8 4' : '2 4',
+        marker: index % 3 === 0 ? 'circle' : index % 3 === 1 ? 'square' : 'diamond',
+        values: dates.map((date) => {
+          const balance = valuesByDate.get(date) ?? 0;
+          const change = prior === null ? null : balance - prior;
+          prior = balance;
+          return { periodEndDate: date, balance, changeFromPriorPeriod: change };
+        }),
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  let priorTotal: number | null = null;
+  const totalSeries: BalanceHistorySeries = {
+    key: 'total',
+    label: 'Total debt balance',
+    debtId: null,
+    dash: '0',
+    marker: 'diamond',
+    values: dates.map((date) => {
+      const balance = individualSeries.reduce((total, series) => {
+        const value = series.values.find((item) => item.periodEndDate === date);
+        return total + (value?.balance ?? 0);
+      }, 0);
+      const change = priorTotal === null ? null : balance - priorTotal;
+      priorTotal = balance;
+      return { periodEndDate: date, balance, changeFromPriorPeriod: change };
+    }),
+  };
+
+  return [totalSeries, ...individualSeries];
+};
+
+const markerForPoint = ({
+  marker,
+  x,
+  y,
+}: {
+  readonly marker: BalanceHistorySeries['marker'];
+  readonly x: number;
+  readonly y: number;
+}): React.JSX.Element => {
+  if (marker === 'square') {
+    return <rect height="7" width="7" x={x - 3.5} y={y - 3.5} />;
+  }
+  if (marker === 'diamond') {
+    return (
+      <rect
+        height="7"
+        transform={`rotate(45 ${x} ${y})`}
+        width="7"
+        x={x - 3.5}
+        y={y - 3.5}
+      />
+    );
+  }
+  return <circle cx={x} cy={y} r="3.5" />;
+};
+
+const BalanceHistoryChart = ({
+  onSelectDebt,
+  rows,
+}: {
+  readonly onSelectDebt: (id: string) => void;
+  readonly rows: DebtReportsDto['balanceHistory']['rows'];
+}): React.JSX.Element => {
+  const series = useMemo(() => balanceHistorySeries(rows), [rows]);
+  const allKeys = useMemo(() => series.map((item) => item.key), [series]);
+  const periods = useMemo(
+    () => [...new Set(rows.map((row) => row.effectiveDate))].sort(),
+    [rows],
+  );
+  const [visibleKeys, setVisibleKeys] = useState<readonly string[]>(allKeys);
+  const [zoom, setZoom] = useState({ start: 0, end: Math.max(0, periods.length - 1) });
+
+  const visibleSeries = series.filter((item) => visibleKeys.includes(item.key));
+  const visiblePeriods = periods.slice(zoom.start, zoom.end + 1);
+  const visibleValues = visibleSeries.flatMap((item) =>
+    item.values
+      .slice(zoom.start, zoom.end + 1)
+      .map((value) => Math.max(0, value.balance)),
+  );
+  const maximum = Math.max(...visibleValues, 1);
+  const width = 820;
+  const height = 320;
+  const chartLeft = 86;
+  const chartRight = width - 28;
+  const chartTop = 28;
+  const chartBottom = height - 74;
+  const chartHeight = chartBottom - chartTop;
+  const colors = ['#0f172a', '#1d4ed8', '#047857', '#b45309', '#7c3aed', '#be123c'];
+  const xFor = (index: number): number =>
+    visiblePeriods.length === 1
+      ? chartLeft
+      : chartLeft + (index * (chartRight - chartLeft)) / (visiblePeriods.length - 1);
+  const yFor = (value: number): number =>
+    chartBottom - (Math.max(0, value) / maximum) * chartHeight;
+  const formatChange = (change: number | null): string =>
+    change === null ? 'not applicable' : formatDollarString(change.toFixed(2));
+
+  const toggleSeries = (key: string): void => {
+    setVisibleKeys((current) =>
+      current.includes(key)
+        ? current.filter((item) => item !== key)
+        : [...current, key],
+    );
+  };
+
+  const zoomChart = (event: React.WheelEvent<HTMLDivElement>): void => {
+    if (periods.length <= 2) return;
+    event.preventDefault();
+    setZoom((current) => {
+      const currentSize = current.end - current.start + 1;
+      const direction = event.deltaY < 0 ? -1 : 1;
+      const nextSize = Math.max(
+        2,
+        Math.min(
+          periods.length,
+          currentSize + direction * Math.max(1, Math.round(currentSize * 0.2)),
+        ),
+      );
+      const center = (current.start + current.end) / 2;
+      let start = Math.round(center - (nextSize - 1) / 2);
+      start = Math.max(0, Math.min(start, periods.length - nextSize));
+      return { start, end: start + nextSize - 1 };
+    });
+  };
+
+  if (rows.length === 0) return <EmptyState />;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-semibold text-slate-900">
+              Ending principal balance by obligation
+            </h4>
+            <p className="text-xs text-slate-600">
+              Toggle lines in this report session. Use the mouse wheel over the chart to
+              zoom the selected report range.
+            </p>
+          </div>
+          <button
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+            onClick={() => setZoom({ start: 0, end: Math.max(0, periods.length - 1) })}
+            type="button"
+          >
+            Reset zoom
+          </button>
+        </div>
+        <div
+          aria-label="Debt balance history chart controls"
+          className="mt-3 flex flex-wrap gap-2"
+        >
+          {series.map((item, index) => {
+            const visible = visibleKeys.includes(item.key);
+            return (
+              <button
+                aria-pressed={visible}
+                className={`rounded-full border px-3 py-1 text-xs font-medium focus:ring-2 focus:ring-blue-200 focus:outline-none ${
+                  visible
+                    ? 'border-slate-400 bg-white text-slate-900'
+                    : 'border-slate-200 bg-slate-50 text-slate-500 opacity-50'
+                }`}
+                key={item.key}
+                onClick={() => toggleSeries(item.key)}
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  className="mr-2 inline-block h-0.5 w-5 align-middle"
+                  style={{
+                    backgroundColor: colors[index % colors.length],
+                    borderTop:
+                      item.dash === '0'
+                        ? undefined
+                        : `2px dashed ${colors[index % colors.length]}`,
+                  }}
+                />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="sr-only" data-testid="balance-history-y-axis-maximum">
+          Y-axis maximum: {formatDollarString(maximum.toFixed(2))}
+        </p>
+        <p className="mt-2 text-xs text-slate-500" data-testid="balance-history-zoom">
+          Showing {visiblePeriods.length} of {periods.length} periods
+        </p>
+        {visibleSeries.length === 0 ? (
+          <p className="mt-4 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+            No debt lines are selected. Enable at least one legend item to view the
+            chart.
+          </p>
+        ) : (
+          <div
+            className="mt-4"
+            data-testid="balance-history-chart"
+            onWheel={zoomChart}
+            role="img"
+            aria-label={`Line chart of debt balance history from ${visiblePeriods.at(0) ?? ''} through ${visiblePeriods.at(-1) ?? ''}. Tabular detail follows.`}
+          >
+            <svg
+              aria-hidden="true"
+              className="h-auto w-full"
+              focusable="false"
+              height={height}
+              viewBox={`0 0 ${width} ${height}`}
+              width={width}
+            >
+              <title>Application-calculated ending principal balance by debt.</title>
+              <desc>
+                X axis is period end. Y axis is dollars. Lines show total debt and
+                individual debt balances.
+              </desc>
+              <line
+                stroke="#cbd5e1"
+                strokeWidth="1"
+                x1={chartLeft}
+                x2={chartRight}
+                y1={chartBottom}
+                y2={chartBottom}
+              />
+              <line
+                stroke="#cbd5e1"
+                strokeWidth="1"
+                x1={chartLeft}
+                x2={chartLeft}
+                y1={chartTop}
+                y2={chartBottom}
+              />
+              <text fill="#475569" fontSize="11" x="4" y="16">
+                Dollars
+              </text>
+              <text fill="#475569" fontSize="11" x={chartRight - 56} y={height - 10}>
+                Period end
+              </text>
+              <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
+                {formatDollarString(maximum.toFixed(2))}
+              </text>
+              <text fill="#475569" fontSize="11" x="18" y={chartBottom + 4}>
+                $0.00
+              </text>
+              {visiblePeriods.map((period, index) => (
+                <text
+                  fill="#475569"
+                  fontSize="10"
+                  key={period}
+                  textAnchor="middle"
+                  x={xFor(index)}
+                  y={chartBottom + 18 + (index % 2) * 12}
+                >
+                  {periodLabel(period.slice(0, 7))}
+                </text>
+              ))}
+              {visibleSeries.map((item, seriesIndex) => {
+                const values = item.values.slice(zoom.start, zoom.end + 1);
+                const points = values
+                  .map((value, index) => `${xFor(index)},${yFor(value.balance)}`)
+                  .join(' ');
+                const color = colors[seriesIndex % colors.length];
+                return (
+                  <g key={item.key}>
+                    <polyline
+                      fill="none"
+                      points={points}
+                      stroke={color}
+                      strokeDasharray={item.key === 'total' ? undefined : item.dash}
+                      strokeWidth={item.key === 'total' ? '3' : '2'}
+                    />
+                    {values.map((value, index) => {
+                      const x = xFor(index);
+                      const y = yFor(value.balance);
+                      return (
+                        <g fill="white" key={`${item.key}-${value.periodEndDate}`}>
+                          <title>{`${value.periodEndDate}: ${item.label}; ending balance ${formatDollarString(value.balance.toFixed(2))}; change ${formatChange(value.changeFromPriorPeriod)}.`}</title>
+                          <g stroke={color} strokeWidth="2">
+                            {markerForPoint({ marker: item.marker, x, y })}
+                          </g>
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="text-left text-xs text-slate-500 uppercase">
+            <tr>
+              <th className="px-3 py-2">Period end</th>
+              <th className="px-3 py-2">Series</th>
+              <th className="px-3 py-2 text-right">Ending balance</th>
+              <th className="px-3 py-2 text-right">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleSeries.flatMap((item) =>
+              item.values.slice(zoom.start, zoom.end + 1).map((value) => (
+                <tr
+                  className="border-t border-slate-100"
+                  key={`${item.key}-${value.periodEndDate}`}
+                >
+                  <td className="px-3 py-2">{value.periodEndDate}</td>
+                  <td className="px-3 py-2">
+                    {item.debtId ? (
+                      <DebtButton
+                        id={item.debtId}
+                        name={item.label}
+                        onSelectDebt={onSelectDebt}
+                      />
+                    ) : (
+                      <span className="font-semibold text-slate-900">{item.label}</span>
+                    )}
+                  </td>
+                  <MoneyCell value={value.balance.toFixed(2)} />
+                  <td className="px-3 py-2 text-right font-mono tabular-nums">
+                    {value.changeFromPriorPeriod === null
+                      ? '—'
+                      : formatDollarString(value.changeFromPriorPeriod.toFixed(2))}
+                  </td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 const ReportBalanceHistory = ({
   reports,
   onSelectDebt,
@@ -749,127 +977,10 @@ const ReportBalanceHistory = ({
     basis={reports.balanceHistory.basis}
     title="Debt balance history by obligation"
   >
-    {reports.balanceHistory.rows.length === 0 ? <EmptyState /> : null}
-    {reports.balanceHistory.rows.length > 0 ? (
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="text-left text-xs text-slate-500 uppercase">
-            <tr>
-              <th className="px-3 py-2">Debt</th>
-              <th className="px-3 py-2">Date</th>
-              <th className="px-3 py-2 text-right">Calculated balance</th>
-              <th className="px-3 py-2 text-right">Confirmed balance</th>
-              <th className="px-3 py-2">Basis</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reports.balanceHistory.rows.map((row) => (
-              <tr
-                className="border-t border-slate-100"
-                key={`${row.debtId}-${row.effectiveDate}`}
-              >
-                <td className="px-3 py-2">
-                  <DebtButton
-                    id={row.debtId}
-                    name={row.debtName}
-                    onSelectDebt={onSelectDebt}
-                  />
-                </td>
-                <td className="px-3 py-2">{row.effectiveDate}</td>
-                <MoneyCell value={row.calculatedBalance} />
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {row.confirmedBalance
-                    ? formatDollarString(row.confirmedBalance)
-                    : '—'}
-                </td>
-                <td className="px-3 py-2 text-xs text-slate-600">{row.basis}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    ) : null}
-  </ReportShell>
-);
-
-const ReportBalanceTrends = ({
-  chartType,
-  onChartTypeChange,
-  reports,
-}: {
-  readonly chartType: 'bar' | 'line';
-  readonly onChartTypeChange: (chartType: 'bar' | 'line') => void;
-  readonly reports: DebtReportsDto;
-}): React.JSX.Element => (
-  <ReportShell basis={reports.balanceTrends.basis} title="Debt balance trend">
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h4 className="text-sm font-semibold text-slate-900">
-          Ending principal balance trend
-        </h4>
-        <p className="mt-1 text-xs text-slate-600">
-          Total debt is shown by default using month-end or year-end
-          application-calculated principal balances.
-        </p>
-      </div>
-      <fieldset className="flex gap-3 rounded-lg border border-slate-200 p-3 text-sm">
-        <legend className="px-1 text-xs font-semibold text-slate-600">
-          Chart type
-        </legend>
-        <label className="inline-flex items-center gap-2">
-          <input
-            checked={chartType === 'bar'}
-            name="balance-trend-chart-type"
-            onChange={() => onChartTypeChange('bar')}
-            type="radio"
-            value="bar"
-          />
-          Bar chart
-        </label>
-        <label className="inline-flex items-center gap-2">
-          <input
-            checked={chartType === 'line'}
-            name="balance-trend-chart-type"
-            onChange={() => onChartTypeChange('line')}
-            type="radio"
-            value="line"
-          />
-          Line chart
-        </label>
-      </fieldset>
-    </div>
-    <BalanceTrendChart chartType={chartType} rows={reports.balanceTrends.rows} />
-    {reports.balanceTrends.rows.length === 0 ? <EmptyState /> : null}
-    {reports.balanceTrends.rows.length > 0 ? (
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="text-left text-xs text-slate-500 uppercase">
-            <tr>
-              <th className="px-3 py-2">Period</th>
-              <th className="px-3 py-2">Period end</th>
-              <th className="px-3 py-2">Grouping</th>
-              <th className="px-3 py-2 text-right">Ending balance</th>
-              <th className="px-3 py-2 text-right">Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reports.balanceTrends.rows.map((row) => (
-              <tr className="border-t border-slate-100" key={row.period}>
-                <td className="px-3 py-2">{periodLabel(row.period)}</td>
-                <td className="px-3 py-2">{row.periodEndDate}</td>
-                <td className="px-3 py-2">{row.grouping}</td>
-                <MoneyCell value={row.endingBalance} />
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {row.changeFromPriorPeriod
-                    ? formatDollarString(row.changeFromPriorPeriod)
-                    : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    ) : null}
+    <BalanceHistoryChart
+      rows={reports.balanceHistory.rows}
+      onSelectDebt={onSelectDebt}
+    />
   </ReportShell>
 );
 

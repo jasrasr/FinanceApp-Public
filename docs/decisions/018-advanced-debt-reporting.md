@@ -51,13 +51,16 @@ snapshots are displayed separately. Interest-rate and extra-payment sensitivity
 reports reuse the payoff scenario engine rather than duplicating projection
 logic. Unsupported payoff terms inherit the engine's warnings.
 
-Debt balance trend visuals show application-calculated ending principal balances
-at month-end or year-end, default to a continuous line chart, and remain paired
-with period-end balance and change tables. Interest analysis is a separate
-report section with monthly interest expense trends, month-by-month cross-year
-comparison, and annual interest comparison charts. Interest charts omit
-zero-only periods when they add no analytical value, use readable month-year or
-year labels, and display interest as a positive user-facing expense that must
+Debt balance history by obligation supersedes the separate total-only balance
+trend section. It visualizes application-calculated ending principal balances by
+period with one line per debt and one total-debt line. Renderer-only chart state
+supports session-scoped line visibility toggles and X-axis zoom; it does not
+write report preferences or financial data. The chart remains paired with a
+period-end balance and change table. Interest analysis is a separate report
+section with monthly interest expense trends, month-by-month cross-year
+comparison, and annual interest comparison charts. Interest charts omit zero-only
+periods when they add no analytical value, use readable month-year or year
+labels, and display interest as a positive user-facing expense that must
 reconcile to the tabular report detail.
 
 Interest-rate sensitivity is framed around variable-rate decision analysis and

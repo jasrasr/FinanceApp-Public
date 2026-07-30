@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AppBridge } from '../../shared/app-bridge';
 import type {
@@ -21,7 +21,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 16,
   appMetadata: {
-    version: '0.19.0',
+    version: '0.20.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -245,11 +245,61 @@ const sampleReports: DebtReportsDto = {
         debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
         debtName: 'Fictional Equipment Note',
         creditor: 'Harbor Ridge Cooperative',
-        effectiveDate: '2026-07-28',
-        calculatedBalance: '124500.13',
-        confirmedBalance: '124500.00',
+        effectiveDate: '2026-01-31',
+        calculatedBalance: '124600.13',
+        confirmedBalance: null,
         basis:
-          'Calculated ledger balance and latest confirmed snapshot are shown separately.',
+          'Calculated ending principal and latest confirmed snapshot are shown separately.',
+      },
+      {
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+        debtName: 'Fictional Equipment Note',
+        creditor: 'Harbor Ridge Cooperative',
+        effectiveDate: '2026-02-28',
+        calculatedBalance: '124200.13',
+        confirmedBalance: null,
+        basis:
+          'Calculated ending principal and latest confirmed snapshot are shown separately.',
+      },
+      {
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+        debtName: 'Fictional Equipment Note',
+        creditor: 'Harbor Ridge Cooperative',
+        effectiveDate: '2026-03-31',
+        calculatedBalance: '123800.13',
+        confirmedBalance: '123800.00',
+        basis:
+          'Calculated ending principal and latest confirmed snapshot are shown separately.',
+      },
+      {
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c002',
+        debtName: 'Generated Home Mortgage',
+        creditor: 'Northwind Bank',
+        effectiveDate: '2026-01-31',
+        calculatedBalance: '250000.00',
+        confirmedBalance: null,
+        basis:
+          'Calculated ending principal and latest confirmed snapshot are shown separately.',
+      },
+      {
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c002',
+        debtName: 'Generated Home Mortgage',
+        creditor: 'Northwind Bank',
+        effectiveDate: '2026-02-28',
+        calculatedBalance: '249000.00',
+        confirmedBalance: null,
+        basis:
+          'Calculated ending principal and latest confirmed snapshot are shown separately.',
+      },
+      {
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c002',
+        debtName: 'Generated Home Mortgage',
+        creditor: 'Northwind Bank',
+        effectiveDate: '2026-03-31',
+        calculatedBalance: '248000.00',
+        confirmedBalance: null,
+        basis:
+          'Calculated ending principal and latest confirmed snapshot are shown separately.',
       },
     ],
   },
@@ -1028,7 +1078,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.19.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.20.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1051,11 +1101,12 @@ describe('debt maintenance application', () => {
     expect(screen.getAllByText('Cash payments').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Principal adjustments').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Check').length).toBeGreaterThan(0);
-    const trendsSummary = screen.getByText('Debt balance trend');
-    const trendsReport = trendsSummary.closest('details');
-    expect(trendsReport).not.toHaveAttribute('open');
-    fireEvent.click(trendsSummary);
-    expect(trendsReport).toHaveAttribute('open');
+    expect(screen.queryByText('Debt balance trend')).toBeNull();
+    const historySummary = screen.getByText('Debt balance history by obligation');
+    const historyReport = historySummary.closest('details');
+    expect(historyReport).not.toHaveAttribute('open');
+    fireEvent.click(historySummary);
+    expect(historyReport).toHaveAttribute('open');
     expect(
       screen.getAllByText(
         /Application-calculated ledger balances from posted actual activity/i,
@@ -1063,17 +1114,48 @@ describe('debt maintenance application', () => {
     ).toBeGreaterThan(0);
     expect(
       screen.getByRole('img', {
-        name: /Line chart of ending principal balance/i,
+        name: /Line chart of debt balance history/i,
       }),
     ).toBeVisible();
-    expect(screen.getByText('Ending principal balance trend')).toBeVisible();
-    expect(screen.getAllByText('Ending principal balance').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('radio', { name: 'Bar chart' }));
-    expect(
-      screen.getByRole('img', {
-        name: /Bar chart of ending principal balance/i,
+    expect(screen.getByText('Ending principal balance by obligation')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Total debt balance' })).toBeVisible();
+    const legendControls = screen.getByLabelText('Debt balance history chart controls');
+    const mortgageLegend = within(legendControls).getByRole('button', {
+      name: 'Generated Home Mortgage — Northwind Bank',
+    });
+    expect(mortgageLegend).toHaveAttribute('aria-pressed', 'true');
+    const initialMaximum = screen.getByTestId(
+      'balance-history-y-axis-maximum',
+    ).textContent;
+    fireEvent.click(
+      within(legendControls).getByRole('button', { name: 'Total debt balance' }),
+    );
+    expect(screen.getByTestId('balance-history-y-axis-maximum').textContent).not.toBe(
+      initialMaximum,
+    );
+    fireEvent.click(mortgageLegend);
+    const disabledMortgageLegend = within(legendControls).getByRole('button', {
+      name: 'Generated Home Mortgage — Northwind Bank',
+    });
+    expect(disabledMortgageLegend).toHaveAttribute('aria-pressed', 'false');
+    expect(disabledMortgageLegend).toHaveClass('opacity-50');
+    fireEvent.click(
+      within(legendControls).getByRole('button', {
+        name: 'Fictional Equipment Note — Harbor Ridge Cooperative',
       }),
-    ).toBeVisible();
+    );
+    expect(screen.getByText(/No debt lines are selected/)).toBeVisible();
+    fireEvent.click(
+      within(legendControls).getByRole('button', { name: 'Total debt balance' }),
+    );
+    const zoomStatus = screen.getByTestId('balance-history-zoom').textContent;
+    fireEvent.wheel(screen.getByTestId('balance-history-chart'), { deltaY: -100 });
+    expect(screen.getByTestId('balance-history-zoom').textContent).not.toBe(zoomStatus);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }));
+    expect(screen.getByTestId('balance-history-zoom')).toHaveTextContent(
+      'Showing 3 of 3 periods',
+    );
+    expect(screen.getAllByText('$371,800.13').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByText('Interest expense analysis'));
     expect(screen.getByText('Monthly interest expense trend')).toBeVisible();
     expect(screen.getByText('Basis and assumptions')).toBeVisible();
@@ -1234,8 +1316,136 @@ describe('debt maintenance application', () => {
     expect(screen.queryByLabelText(/Source type/)).toBeNull();
     expect(screen.getByLabelText(/Amount/)).toBeVisible();
     expect(screen.getByLabelText(/Principal/)).toBeVisible();
+    expect(screen.getByText(/Principal is auto-calculated/)).toBeVisible();
     expect(screen.queryByLabelText(/Extra principal/)).toBeNull();
     expect(screen.queryByLabelText(/^Other/)).toBeNull();
+  });
+
+  it('auto-calculates principal for payment allocation entry', () => {
+    const onSubmit = vi.fn();
+    render(
+      <RecordTransactionForm
+        busy={false}
+        debt={sampleDebtDetail}
+        fieldErrors={undefined}
+        onCancel={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), {
+      target: { value: '1000.00' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('1000.00');
+
+    fireEvent.change(screen.getByLabelText(/Interest/), {
+      target: { value: '125.00' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('875.00');
+
+    fireEvent.change(screen.getByLabelText(/Escrow/), {
+      target: { value: '200.00' },
+    });
+    fireEvent.change(screen.getByLabelText(/Fees/), {
+      target: { value: '25.00' },
+    });
+    fireEvent.change(screen.getByLabelText(/Penalties/), {
+      target: { value: '50.00' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('600.00');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), {
+      target: { value: '1200.00' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('800.00');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Record transaction' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transaction: expect.objectContaining({
+          totalAmount: '1200.00',
+          allocations: expect.objectContaining({
+            principal: '800.00',
+            interest: '125.00',
+            escrow: '200.00',
+            fee: '25.00',
+            penalty: '50.00',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('blocks payment posting when nonprincipal allocations exceed the amount', () => {
+    const onSubmit = vi.fn();
+    render(
+      <RecordTransactionForm
+        busy={false}
+        debt={sampleDebtDetail}
+        fieldErrors={undefined}
+        onCancel={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), {
+      target: { value: '100.00' },
+    });
+    fireEvent.change(screen.getByLabelText(/Interest/), {
+      target: { value: '125.00' },
+    });
+
+    expect(
+      screen.getByText(
+        'Interest, escrow, fees, and penalties cannot exceed the payment amount.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Record transaction' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Record transaction' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('does not carry auto-calculated payment principal into nonpayment transactions', () => {
+    const onSubmit = vi.fn();
+    render(
+      <RecordTransactionForm
+        busy={false}
+        debt={sampleDebtDetail}
+        fieldErrors={undefined}
+        onCancel={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), {
+      target: { value: '125.00' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('125.00');
+
+    fireEvent.change(screen.getByLabelText(/Transaction type/), {
+      target: { value: 'escrow_disbursement' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), {
+      target: { value: '125.00' },
+    });
+    fireEvent.change(screen.getByLabelText(/Escrow/), {
+      target: { value: '125.00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Record transaction' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transaction: expect.objectContaining({
+          transactionType: 'escrow_disbursement',
+          allocations: expect.objectContaining({
+            principal: null,
+            escrow: '125.00',
+          }),
+        }),
+      }),
+    );
   });
 
   it('renders the record-balance-reconciliation form controls', () => {

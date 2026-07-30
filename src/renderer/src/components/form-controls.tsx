@@ -55,11 +55,13 @@ export const Field = ({
 export const FormActions = ({
   busy,
   cancelLabel = 'Cancel',
+  disabled = false,
   onCancel,
   submitLabel,
 }: {
   readonly busy: boolean;
   readonly cancelLabel?: string;
+  readonly disabled?: boolean;
   readonly onCancel: () => void;
   readonly submitLabel: string;
 }): React.JSX.Element => (
@@ -73,7 +75,7 @@ export const FormActions = ({
     </button>
     <button
       className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 focus:ring-2 focus:ring-blue-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-      disabled={busy}
+      disabled={busy || disabled}
       type="submit"
     >
       {busy ? 'Saving…' : submitLabel}

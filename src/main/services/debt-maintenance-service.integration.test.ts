@@ -1440,6 +1440,20 @@ describe('debt maintenance', () => {
       calculatedBalance: '124600.13',
       confirmedBalance: '124500.13',
     });
+    expect(
+      reports.balanceHistory.rows
+        .filter((row) => row.debtId === created.id)
+        .map((row) => row.effectiveDate),
+    ).toEqual([
+      '2026-01-31',
+      '2026-02-28',
+      '2026-03-31',
+      '2026-04-30',
+      '2026-05-31',
+      '2026-06-30',
+      '2026-07-28',
+    ]);
+    expect(reports.balanceHistory.rows[0]?.basis).toContain('ending principal');
     expect(reports.maturitySchedule.rows[0]).toMatchObject({
       debtId: created.id,
       requiredMonthlyPayment: '2450.00',
