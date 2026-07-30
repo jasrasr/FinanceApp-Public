@@ -35,6 +35,7 @@ import {
   postImportBatchRequestSchema,
   previewImportBatchPostingRequestSchema,
   reverseDebtTransactionRequestSchema,
+  voidDebtTransactionRequestSchema,
   rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
   restoreBackupRequestSchema,
@@ -379,6 +380,14 @@ export const registerDebtIpcHandlers = (
     debtDetailDtoSchema,
     isTrustedSender,
     (request) => service.reverseDebtTransaction(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.voidTransaction,
+    voidDebtTransactionRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.voidDebtTransaction(request),
   );
   registerHandler(
     ipcMain,

@@ -200,10 +200,13 @@ const EscrowActivityForm = ({
 };
 
 const escrowTransactions = (debt: DebtDetailDto): readonly DebtTransactionDto[] =>
-  debt.transactions.filter((transaction) =>
-    transaction.allocations.some(
-      (allocation) => allocation.allocationType === 'escrow',
-    ),
+  debt.transactions.filter(
+    (transaction) =>
+      transaction.transactionType !== 'reversal' &&
+      transaction.status === 'posted' &&
+      transaction.allocations.some(
+        (allocation) => allocation.allocationType === 'escrow',
+      ),
   );
 
 export const EscrowDetail = ({

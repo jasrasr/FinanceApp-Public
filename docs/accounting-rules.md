@@ -517,6 +517,9 @@ Posted activity is not silently deleted or overwritten.
 - Reversal total and allocations are exact opposites.
 - The original remains stored and is marked reversed.
 - A transaction may be reversed only once.
+- A user-facing void is a complete linked offset that marks the original
+  transaction `voided`; it removes the transaction's current financial effect
+  without deleting the stored audit trail.
 - Superseding corrections use a separate unique relationship.
 - User-facing transaction edits are superseding corrections, not silent updates:
   the original posted transaction remains stored and is marked superseded, an
@@ -525,9 +528,17 @@ Posted activity is not silently deleted or overwritten.
 - Current balances, dashboard metrics, reports, payoff starting balances, and
   exports use the current transaction chain and exclude the original plus its
   edit reversal when a replacement is current.
+- Escrow balance is calculated from one current transaction-chain rule shared by
+  debt detail, dashboard, escrow detail, reports, and exports. Escrow payment
+  allocations increase escrow, escrow disbursements and refunds reduce escrow,
+  escrow adjustments follow their signed posted allocation, superseded edit
+  chains are excluded from current effect, and voided chains net to zero.
 - If an edit changes activity dated on or before a current reconciliation's
   statement date, that reconciliation is marked as an exception requiring review
   rather than remaining silently reconciled.
+- If a void changes activity dated on or before a current reconciliation's
+  statement date, that reconciliation is also marked as an exception requiring
+  review.
 - A reversal creates a non-sensitive audit event.
 - If upgraded or legacy data contains a malformed reversal whose signed total or
   allocations do not completely offset the original transaction, the application

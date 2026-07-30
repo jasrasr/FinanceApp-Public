@@ -41,7 +41,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.21.0')).toBeVisible();
+      await expect(window.getByText('Version 0.22.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();
@@ -191,6 +191,45 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
       name: /Open Packaged Historical Mortgage/,
     })
     .click();
+  await window.getByRole('button', { name: 'Record escrow activity' }).click();
+  await window.getByLabel('Transaction type').selectOption('escrow_disbursement');
+  await window.getByLabel('Transaction date').fill('2021-06-15');
+  await window.getByRole('textbox', { name: 'Amount' }).fill('75.00');
+  await window.getByLabel('Description').fill('Generated packaged real estate tax.');
+  await window.locator('[name="transaction.allocations.escrow"]').fill('75.00');
+  await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
+  await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
+  await expect(
+    window.getByLabel('Core debt information').getByText('$225.00'),
+  ).toBeVisible();
+  await window
+    .locator('tr', { hasText: '2021-06-15' })
+    .getByRole('button', { name: 'Edit', exact: true })
+    .click();
+  await expect(window.getByRole('heading', { name: 'Edit transaction' })).toBeVisible();
+  await window.getByRole('textbox', { name: 'Amount' }).fill('50.00');
+  await window.locator('[name="transaction.allocations.escrow"]').fill('50.00');
+  await window.getByRole('button', { name: 'Save transaction edit' }).click();
+  await expect(window.getByText('Transaction edit was saved.')).toBeVisible();
+  await expect(
+    window.getByLabel('Core debt information').getByText('$250.00'),
+  ).toBeVisible();
+  await window
+    .locator('tr', { hasText: '2021-06-15' })
+    .getByRole('button', { name: 'Void', exact: true })
+    .click();
+  await expect(
+    window.getByRole('heading', { name: 'Void this transaction?' }),
+  ).toBeVisible();
+  await window.getByLabel('Void date').fill('2021-06-15');
+  await window
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Void transaction', exact: true })
+    .click();
+  await expect(window.getByText('Transaction was voided.')).toBeVisible();
+  await expect(
+    window.getByLabel('Core debt information').getByText('$300.00'),
+  ).toBeVisible();
   await window.getByRole('button', { name: 'Reverse' }).first().click();
   await expect(
     window.getByRole('heading', { name: 'Reverse this transaction?' }),

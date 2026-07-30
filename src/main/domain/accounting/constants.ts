@@ -31,6 +31,7 @@ export const POSTED_TRANSACTION_STATUSES = [
   'posted',
   'reversed',
   'superseded',
+  'voided',
 ] as const;
 
 export const TRANSACTION_SOURCE_TYPES = [

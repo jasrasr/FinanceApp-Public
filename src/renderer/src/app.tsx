@@ -27,6 +27,7 @@ import type {
   UpdateDebtRequest,
   ReverseDebtTransactionRequest,
   VoidBalanceReconciliationRequest,
+  VoidDebtTransactionRequest,
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
 import { AdvancedReports } from './components/advanced-reports';
@@ -58,11 +59,17 @@ type View =
   | 'escrow-detail'
   | 'data-management';
 type DetailPanel = 'overview' | 'transaction' | 'transaction-edit' | 'reconciliation';
-type Confirmation = 'archive' | 'restore' | 'reverse' | 'void-reconciliation' | null;
+type Confirmation =
+  'archive' | 'restore' | 'reverse' | 'void-transaction' | 'void-reconciliation' | null;
 type ReverseTarget = {
   readonly id: string;
   readonly expectedUpdatedAtUtc: string;
   readonly reversalDate: string;
+} | null;
+type VoidTransactionTarget = {
+  readonly id: string;
+  readonly expectedUpdatedAtUtc: string;
+  readonly voidDate: string;
 } | null;
 
 const invokeBridge = async <T,>(
@@ -144,6 +151,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [reverseTarget, setReverseTarget] = useState<ReverseTarget>(null);
+  const [voidTransactionTarget, setVoidTransactionTarget] =
+    useState<VoidTransactionTarget>(null);
   const [transactionEditTarget, setTransactionEditTarget] =
     useState<DebtTransactionDto | null>(null);
   const [reconciliationTarget, setReconciliationTarget] =
@@ -877,6 +886,51 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
+  const requestVoidTransaction = (
+    transactionId: string,
+    expectedUpdatedAtUtc: string,
+    defaultVoidDate: string,
+  ): void => {
+    setVoidTransactionTarget({
+      id: transactionId,
+      expectedUpdatedAtUtc,
+      voidDate: defaultVoidDate,
+    });
+    setConfirmation('void-transaction');
+    setError(null);
+    setFieldErrors(undefined);
+  };
+
+  const voidTransaction = async (): Promise<void> => {
+    if (!voidTransactionTarget) return;
+
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const request: VoidDebtTransactionRequest = {
+      id: voidTransactionTarget.id,
+      expectedUpdatedAtUtc: voidTransactionTarget.expectedUpdatedAtUtc,
+      voidDate: voidTransactionTarget.voidDate,
+      confirmed: true,
+    };
+    const result = await invokeBridge(() => bridge.voidDebtTransaction(request));
+
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Transaction was voided.');
+      setDetailPanel('overview');
+      setVoidTransactionTarget(null);
+      await loadDebts();
+      await loadDashboard();
+      await loadEscrowDetail();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setConfirmation(null);
+    setSaving(false);
+  };
+
   const requestCorrectReconciliation = (
     reconciliation: BalanceReconciliationDto,
   ): void => {
@@ -927,6 +981,11 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (confirmation === 'reverse') {
       await reverseTransaction();
+      return;
+    }
+
+    if (confirmation === 'void-transaction') {
+      await voidTransaction();
       return;
     }
 
@@ -1383,6 +1442,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   setDetailPanel('transaction-edit');
                 }}
                 onReverseTransaction={requestReverseTransaction}
+                onVoidTransaction={requestVoidTransaction}
                 onVoidReconciliation={requestVoidReconciliation}
               />
             </div>
@@ -1444,8 +1504,10 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
       {confirmation &&
       ((confirmation === 'reverse' && reverseTarget) ||
+        (confirmation === 'void-transaction' && voidTransactionTarget) ||
         (confirmation === 'void-reconciliation' && reconciliationTarget) ||
         (confirmation !== 'reverse' &&
+          confirmation !== 'void-transaction' &&
           confirmation !== 'void-reconciliation' &&
           selectedDebt)) ? (
         <ConfirmationDialog
@@ -1457,7 +1519,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 ? 'Restore debt'
                 : confirmation === 'void-reconciliation'
                   ? 'Void reconciliation'
-                  : 'Reverse transaction'
+                  : confirmation === 'void-transaction'
+                    ? 'Void transaction'
+                    : 'Reverse transaction'
           }
           description={
             confirmation === 'archive'
@@ -1466,11 +1530,14 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 ? 'This returns the debt to the default list while preserving all historical records.'
                 : confirmation === 'void-reconciliation'
                   ? 'This preserves the original reconciliation for history but removes it from current exception reporting.'
-                  : 'This posts a reversal transaction and preserves the original posted activity. Use the financial date when the reversal should affect balances and YTD activity.'
+                  : confirmation === 'void-transaction'
+                    ? 'This removes the transaction from current balances and reports by creating a linked offset. The original remains in audit history.'
+                    : 'This posts a reversal transaction and preserves the original posted activity. Use the financial date when the reversal should affect balances and YTD activity.'
           }
           onCancel={() => {
             setConfirmation(null);
             setReverseTarget(null);
+            setVoidTransactionTarget(null);
             setReconciliationTarget(null);
           }}
           onConfirm={() => void changeArchiveState()}
@@ -1481,7 +1548,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 ? 'Restore this debt?'
                 : confirmation === 'void-reconciliation'
                   ? 'Void this reconciliation?'
-                  : 'Reverse this transaction?'
+                  : confirmation === 'void-transaction'
+                    ? 'Void this transaction?'
+                    : 'Reverse this transaction?'
           }
         >
           {confirmation === 'reverse' && reverseTarget ? (
@@ -1502,6 +1571,27 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 }
                 type="date"
                 value={reverseTarget.reversalDate}
+              />
+            </label>
+          ) : null}
+          {confirmation === 'void-transaction' && voidTransactionTarget ? (
+            <label
+              className="block text-sm font-medium text-slate-700"
+              htmlFor="void-date"
+            >
+              Void date
+              <input
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:ring-blue-600"
+                id="void-date"
+                name="voidDate"
+                onChange={(event) =>
+                  setVoidTransactionTarget({
+                    ...voidTransactionTarget,
+                    voidDate: event.target.value,
+                  })
+                }
+                type="date"
+                value={voidTransactionTarget.voidDate}
               />
             </label>
           ) : null}

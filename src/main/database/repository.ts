@@ -42,6 +42,10 @@ export interface ReverseTransactionInput {
   readonly postingDate: string;
   readonly description: string;
   readonly occurredAtUtc: string;
+  readonly originalStatus?: 'reversed' | 'voided';
+  readonly auditEventType?: 'transaction_reversed' | 'transaction_voided';
+  readonly auditAction?: 'reverse' | 'void';
+  readonly auditSummary?: string;
 }
 
 export const insertDebt = (database: AppDatabase, input: DebtInsert): void => {
@@ -229,21 +233,42 @@ export const reversePostedTransaction = (
       .run();
     databaseTransaction
       .update(debtTransactions)
-      .set({ status: 'reversed', updatedAtUtc: timestamp })
+      .set({
+        status: input.originalStatus ?? 'reversed',
+        updatedAtUtc: timestamp,
+      })
       .where(eq(debtTransactions.id, original.id))
+      .run();
+    databaseTransaction
+      .update(balanceReconciliations)
+      .set({
+        reconciliationStatus: 'exception',
+        explanation:
+          'Prior posted activity was voided or reversed after this reconciliation; review the statement comparison.',
+        updatedAtUtc: timestamp,
+      })
+      .where(
+        and(
+          eq(balanceReconciliations.debtId, original.debtId),
+          eq(balanceReconciliations.lifecycleStatus, 'current'),
+          gte(balanceReconciliations.statementDate, input.effectiveDate),
+        ),
+      )
       .run();
     databaseTransaction
       .insert(auditEvents)
       .values(
         auditEventInsertSchema.parse({
           id: randomUUID(),
-          eventType: 'transaction_reversed',
+          eventType: input.auditEventType ?? 'transaction_reversed',
           entityType: 'debt_transaction',
           entityId: original.id,
-          action: 'reverse',
+          action: input.auditAction ?? 'reverse',
           occurredAtUtc: timestamp,
           source: 'system',
-          summary: 'Posted transaction was reversed by a linked transaction.',
+          summary:
+            input.auditSummary ??
+            'Posted transaction was reversed by a linked transaction.',
           beforeMetadataJson: null,
           afterMetadataJson: JSON.stringify({
             reversalTransactionId: reversalId,

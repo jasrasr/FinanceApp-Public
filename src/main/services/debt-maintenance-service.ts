@@ -36,6 +36,7 @@ import type {
   UpdateStagedImportRowReviewRequest,
   UpdateDebtRequest,
   VoidBalanceReconciliationRequest,
+  VoidDebtTransactionRequest,
 } from '../../shared/debt-contracts';
 import {
   addDebtTermRequestSchema,
@@ -65,6 +66,7 @@ import {
   previewImportBatchPostingRequestSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
+  voidDebtTransactionRequestSchema,
 } from '../../shared/debt-contracts';
 import {
   ALLOCATION_TYPES,
@@ -80,7 +82,6 @@ import {
 import { REPORTING_HISTORY_START_DATE } from '../../shared/reporting-constants';
 import type { AppDatabase } from '../database/connection';
 import {
-  calculateEscrowBalanceThroughDate,
   calculateLedgerBalanceThroughDate,
   createPayoffScenarioRecord,
   createBalanceReconciliationRecord,
@@ -194,6 +195,7 @@ export interface DebtMaintenanceService {
   createDebtTransaction(request: CreateDebtTransactionRequest): DebtDetailDto;
   editDebtTransaction(request: EditDebtTransactionRequest): DebtDetailDto;
   reverseDebtTransaction(request: ReverseDebtTransactionRequest): DebtDetailDto;
+  voidDebtTransaction(request: VoidDebtTransactionRequest): DebtDetailDto;
   createBalanceSnapshot(request: CreateBalanceSnapshotRequest): DebtDetailDto;
   createBalanceReconciliation(
     request: CreateBalanceReconciliationRequest,
@@ -645,7 +647,39 @@ const mapBalanceReconciliation = (
   updatedAtUtc: reconciliation.updatedAtUtc,
 });
 
-const calculateEscrowBalanceFromActivity = (record: DebtWithActivityRecord): number => {
+const currentActualTransactionEntriesThrough = (
+  record: DebtWithActivityRecord,
+  effectiveDate: string,
+): readonly DebtWithActivityRecord['transactions'][number][] => {
+  const originalStatuses = new Map(
+    record.transactions.map((entry) => [
+      entry.transaction.id,
+      entry.transaction.status,
+    ]),
+  );
+
+  return record.transactions.filter((entry) => {
+    if (entry.transaction.effectiveDate > effectiveDate) return false;
+    if (entry.transaction.status === 'superseded') return false;
+    if (
+      entry.transaction.transactionType === 'reversal' &&
+      entry.transaction.reversalOfTransactionId
+    ) {
+      const originalStatus = originalStatuses.get(
+        entry.transaction.reversalOfTransactionId,
+      );
+      if (originalStatus === 'superseded') return false;
+    }
+
+    return true;
+  });
+};
+
+const calculateEscrowBalanceFromActivity = (
+  record: DebtWithActivityRecord,
+  effectiveDate: string,
+): number => {
+  const currentEntries = currentActualTransactionEntriesThrough(record, effectiveDate);
   const transactionTypes = new Map(
     record.transactions.map((entry) => [
       entry.transaction.id,
@@ -673,9 +707,7 @@ const calculateEscrowBalanceFromActivity = (record: DebtWithActivityRecord): num
     return amountCents;
   };
 
-  const balance = record.transactions.reduce((total, entry) => {
-    if (entry.transaction.status === 'superseded') return total;
-
+  const balance = currentEntries.reduce((total, entry) => {
     return (
       total +
       entry.allocations
@@ -925,7 +957,9 @@ const mapSummary = (
       calculateLedgerBalanceThroughDate(database, debt.id, effectiveDate),
     ),
     currentBalanceEffectiveDate: effectiveDate,
-    calculatedEscrowBalance: centsToDollars(calculateEscrowBalanceFromActivity(record)),
+    calculatedEscrowBalance: centsToDollars(
+      calculateEscrowBalanceFromActivity(record, effectiveDate),
+    ),
     originationDate: debt.originationDate,
     maturityDate: debt.maturityDate,
     initialTerm: mapTerm(requireInitialTerm(record)),
@@ -972,7 +1006,9 @@ const mapDetail = (
     transactions: record.transactions.map(mapTransaction),
     balanceSnapshots: record.balanceSnapshots.map(mapBalanceSnapshot),
     balanceReconciliations: record.balanceReconciliations.map(mapBalanceReconciliation),
-    calculatedEscrowBalance: centsToDollars(calculateEscrowBalanceFromActivity(record)),
+    calculatedEscrowBalance: centsToDollars(
+      calculateEscrowBalanceFromActivity(record, effectiveDate),
+    ),
     archivedAtUtc: debt.archivedAtUtc,
     createdAtUtc: debt.createdAtUtc,
     updatedAtUtc: debt.updatedAtUtc,
@@ -1107,9 +1143,8 @@ const createDashboard = (
     );
 
     activeDebtCents += ledgerBalanceCents;
-    const debtEscrowBalanceCents = calculateEscrowBalanceThroughDate(
-      database,
-      record.debt.id,
+    const debtEscrowBalanceCents = calculateEscrowBalanceFromActivity(
+      record,
       effectiveDate,
     );
     escrowBalanceCents += debtEscrowBalanceCents;
@@ -4150,6 +4185,79 @@ export const createDebtMaintenanceService = ({
           postingDate: reversalDate,
           description: `Reversal of transaction ${original.id}.`,
           occurredAtUtc: timestamp,
+        });
+
+        return mapDetail(
+          database,
+          getRecordOrThrow(original.debtId),
+          currentFinancialDate(now),
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    voidDebtTransaction: (request) => {
+      try {
+        const parsed = voidDebtTransactionRequestSchema.parse(request);
+        const original = getDebtTransactionRecord(database, parsed.id);
+
+        if (!original) {
+          throw new ApplicationServiceError('not_found', 'Transaction was not found.');
+        }
+
+        const debt = getRecordOrThrow(original.debtId);
+
+        if (debt.debt.archivedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Restore this debt before voiding activity.',
+          );
+        }
+
+        if (original.status !== 'posted') {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Only a currently posted transaction can be voided.',
+          );
+        }
+
+        if (original.transactionType === 'reversal') {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Generated reversal transactions cannot be voided directly.',
+          );
+        }
+
+        if (
+          debt.transactions.some(
+            (entry) => entry.transaction.supersedesTransactionId === original.id,
+          )
+        ) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'This transaction has already been corrected and cannot be voided directly.',
+          );
+        }
+
+        const voidDate = ensureNotBefore(
+          'voidDate',
+          ensureCalendarDate('voidDate', parsed.voidDate),
+          debt.debt.originationDate,
+        );
+        const timestamp = nextTimestamp(now, original.updatedAtUtc);
+        reversePostedTransaction(database, {
+          originalTransactionId: original.id,
+          expectedUpdatedAtUtc: parsed.expectedUpdatedAtUtc,
+          effectiveDate: voidDate,
+          postingDate: voidDate,
+          description: `Void of transaction ${original.id}.`,
+          occurredAtUtc: timestamp,
+          originalStatus: 'voided',
+          auditEventType: 'transaction_voided',
+          auditAction: 'void',
+          auditSummary:
+            'Posted transaction was voided by a linked offsetting transaction.',
         });
 
         return mapDetail(

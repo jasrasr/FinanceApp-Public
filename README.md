@@ -222,6 +222,9 @@ Electron user-data directory that it removes after the workflow.
   linked reversal, creates a corrected replacement, and marks affected current
   reconciliations for review when the corrected activity predates the statement
   date.
+- Voiding an eligible posted transaction is presented as one Void action, but
+  internally preserves the original transaction, posts an exact linked offset,
+  marks the original voided, and removes the chain's current financial effect.
 - Reversals require an explicit financial reversal date. The reversal affects
   balances and year-to-date activity only in the year containing that financial
   date, not the year when the reversal is entered.
@@ -248,6 +251,9 @@ Electron user-data directory that it removes after the workflow.
   escrow activity by applicable debt. That view can also record mortgage escrow
   activity without duplicating accounting logic from debt-detail transaction
   entry.
+- Debt detail, dashboard, escrow detail, reports, and exports use the same
+  current transaction-chain rule for escrow balances, including edited,
+  superseded, reversed, voided, imported, and current posted activity.
 - Year-to-date metrics use posted non-superseded activity from January 1 through
   the dashboard effective date based on transaction effective dates, not created,
   updated, import, audit, or system timestamps.

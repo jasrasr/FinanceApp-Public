@@ -1112,3 +1112,57 @@ completed.
 - Recommended next phase:
   - Perform user acceptance testing on transaction correction wording and chart
     zoom behavior before adding more reporting complexity.
+
+## Phase 22: Escrow Integrity, Transaction Voiding, and Chart Panning Correction
+
+- Completion date: 2026-07-30
+- Application version: 0.22.0
+- Features implemented:
+  - Reproduced the generated mortgage escrow workflow and identified an escrow
+    calculation drift after editing an escrow disbursement.
+  - Centralized current transaction-chain escrow balance behavior so debt
+    detail, dashboard, escrow detail, reports, and exports use the same current
+    effect rule.
+  - Added a user-facing Void transaction workflow for eligible posted
+    transactions while preserving original rows and generated offsets for audit
+    history.
+  - Split transaction presentation into Current activity and an expandable Audit
+    history with plain-language chain labels.
+  - Added debt-history chart panning after zoom through Shift + mouse wheel,
+    click-and-drag, and keyboard previous/next controls.
+- Material architecture and accounting decisions:
+  - Voids are complete linked offsets, not deletes. The original transaction is
+    marked `voided`, the generated reversal offsets total and allocations, and
+    reconciliations affected by the change are marked for review.
+  - Escrow balances exclude superseded originals and edit-generated reversals,
+    allow voided chains to net to zero, and rely on transaction effective dates
+    for financial effect.
+  - The renderer receives only the narrow typed `voidDebtTransaction` bridge
+    operation; no generic IPC, SQL, filesystem, or Drizzle access was added.
+- Database schema or migration changes:
+  - Added migration `0006_famous_archangel.sql` to expand the
+    `debt_transactions.status` check constraint with `voided`.
+- New or changed IPC operations:
+  - Added `voidDebtTransaction` to the typed preload bridge and IPC handlers.
+  - Bridge version increased to 18.
+- New UI screens or workflows:
+  - Current transaction activity hides generated reversal rows and superseded
+    originals while audit history preserves the full chain.
+  - Eligible posted transactions now show a Void action with confirmation and a
+    user-selected void date.
+  - Debt history chart controls now support panning and returning to the latest
+    visible periods.
+- Validation and smoke-test results:
+  - Added service, renderer, Electron E2E, and packaged smoke coverage for edited
+    escrow activity, voided activity, shared escrow totals, and chart panning.
+  - Final command results should be recorded in the completion report for this
+    phase.
+- Known limitations and technical debt:
+  - The data-management export remains an audit export of posted rows; current
+    financial effect is determined by transaction-chain relationships rather
+    than by deleting or suppressing audit rows.
+  - Chart interaction state remains session-only and is not persisted.
+- Recommended next phase:
+  - Use additional fictional acceptance data to review void/edit wording,
+    current-vs-audit activity presentation, and escrow exports before adding new
+    features.

@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.21.0')).toBeVisible();
+    await expect(window.getByText('Version 0.22.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -124,7 +124,9 @@ test('completes the manual debt-maintenance workflow', async () => {
     ).toHaveValue('400.00');
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
-    await expect(window.getByText('$500.00', { exact: true })).toBeVisible();
+    await expect(
+      window.locator('tr', { hasText: '2026-01-15' }).getByText('$500.00').first(),
+    ).toBeVisible();
 
     await window
       .locator('tr', { hasText: '2026-01-15' })
@@ -246,6 +248,35 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(
       window.getByLabel('Core debt information').getByText('$425.00'),
     ).toBeVisible();
+    await window
+      .locator('tr', { hasText: '2026-02-15' })
+      .getByRole('button', { name: 'Edit', exact: true })
+      .click();
+    await expect(
+      window.getByRole('heading', { name: 'Edit transaction' }),
+    ).toBeVisible();
+    await window.getByRole('textbox', { name: 'Amount' }).fill('100.00');
+    await window.locator('[name="transaction.allocations.escrow"]').fill('100.00');
+    await window.getByRole('button', { name: 'Save transaction edit' }).click();
+    await expect(window.getByText('Transaction edit was saved.')).toBeVisible();
+    await expect(
+      window.getByLabel('Core debt information').getByText('$450.00'),
+    ).toBeVisible();
+    await window
+      .locator('tr', { hasText: '2026-02-15' })
+      .getByRole('button', { name: 'Void', exact: true })
+      .click();
+    await expect(
+      window.getByRole('heading', { name: 'Void this transaction?' }),
+    ).toBeVisible();
+    await window.getByLabel('Void date').fill('2026-02-15');
+    await window.getByRole('button', { name: 'Void transaction', exact: true }).click();
+    await expect(window.getByText('Transaction was voided.')).toBeVisible();
+    await expect(
+      window.getByLabel('Core debt information').getByText('$550.00'),
+    ).toBeVisible();
+    await window.getByText('View audit history').click();
+    await expect(window.getByText('Voided original')).toBeVisible();
 
     await window.getByRole('button', { name: 'Payoff scenarios' }).click();
     await expect(
@@ -307,6 +338,24 @@ test('completes the manual debt-maintenance workflow', async () => {
     expect(chartWheelPrevented).toBe(true);
     await expect(window.getByTestId('balance-history-zoom')).not.toHaveText(
       beforeZoom ?? '',
+    );
+    const beforePan = await window.getByTestId('balance-history-zoom').textContent();
+    const panPrevented = await chart.evaluate((element) => {
+      const event = new WheelEvent('wheel', {
+        cancelable: true,
+        deltaY: -100,
+        shiftKey: true,
+      });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    expect(panPrevented).toBe(true);
+    await expect(window.getByTestId('balance-history-zoom')).not.toHaveText(
+      beforePan ?? '',
+    );
+    await window.getByRole('button', { name: 'Next period' }).click();
+    await expect(window.getByTestId('balance-history-zoom')).toHaveText(
+      beforePan ?? '',
     );
     const outsideWheelPrevented = await window.locator('body').evaluate((element) => {
       const event = new WheelEvent('wheel', { cancelable: true, deltaY: -100 });

@@ -162,6 +162,15 @@ export const reverseDebtTransactionRequestSchema = z
   })
   .strict();
 
+export const voidDebtTransactionRequestSchema = z
+  .object({
+    id: uuidSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+    voidDate: financialDateInputSchema,
+    confirmed: z.literal(true),
+  })
+  .strict();
+
 export const editDebtTransactionRequestSchema = createDebtTransactionRequestSchema
   .extend({
     id: uuidSchema,
@@ -403,7 +412,7 @@ export const debtTransactionDtoSchema = z
     effectiveDate: financialDateInputSchema,
     postingDate: financialDateInputSchema,
     totalAmount: z.string(),
-    status: z.enum(['posted', 'reversed', 'superseded']),
+    status: z.enum(['posted', 'reversed', 'superseded', 'voided']),
     description: z.string(),
     sourceType: z.enum(['manual', 'import', 'statement', 'system', 'reconciliation']),
     sourceReference: z.string().nullable(),
@@ -1005,6 +1014,9 @@ export type EditDebtTransactionRequest = z.infer<
 >;
 export type ReverseDebtTransactionRequest = z.infer<
   typeof reverseDebtTransactionRequestSchema
+>;
+export type VoidDebtTransactionRequest = z.infer<
+  typeof voidDebtTransactionRequestSchema
 >;
 export type VoidBalanceReconciliationRequest = z.infer<
   typeof voidBalanceReconciliationRequestSchema

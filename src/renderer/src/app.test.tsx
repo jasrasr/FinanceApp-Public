@@ -19,9 +19,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 17,
+  bridgeVersion: 18,
   appMetadata: {
-    version: '0.21.0',
+    version: '0.22.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -112,6 +112,7 @@ const createBridge = (): AppBridge => ({
   createDebtTransaction: vi.fn(),
   editDebtTransaction: vi.fn(),
   reverseDebtTransaction: vi.fn(),
+  voidDebtTransaction: vi.fn(),
   createBalanceSnapshot: vi.fn(),
   createBalanceReconciliation: vi.fn(),
   voidBalanceReconciliation: vi.fn(),
@@ -835,7 +836,7 @@ describe('debt maintenance application', () => {
       screen.queryByRole('heading', { name: 'Confirmed balance snapshots' }),
     ).toBeNull();
     expect(
-      await screen.findByRole('heading', { name: 'Posted transactions' }),
+      await screen.findByRole('heading', { name: 'Current activity' }),
     ).toBeVisible();
     expect(
       screen.getByRole('heading', { name: 'Balance reconciliations' }),
@@ -1134,7 +1135,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.21.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.22.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1215,6 +1216,21 @@ describe('debt maintenance application', () => {
       expect(chartWheel.defaultPrevented).toBe(true);
     });
     expect(screen.getByTestId('balance-history-zoom').textContent).not.toBe(zoomStatus);
+    const zoomedStatus = screen.getByTestId('balance-history-zoom').textContent;
+    await waitFor(() => {
+      const panWheel = new WheelEvent('wheel', {
+        cancelable: true,
+        deltaY: -100,
+        shiftKey: true,
+      });
+      chart.dispatchEvent(panWheel);
+      expect(panWheel.defaultPrevented).toBe(true);
+    });
+    expect(screen.getByTestId('balance-history-zoom').textContent).not.toBe(
+      zoomedStatus,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+    expect(screen.getByTestId('balance-history-zoom').textContent).toBe(zoomedStatus);
     const outsideWheel = new WheelEvent('wheel', {
       cancelable: true,
       deltaY: -100,

@@ -95,7 +95,7 @@ activity.
 | `effective_date`             |    text |   Yes    | Economic financial date; manual entry uses the Transaction Date |
 | `posting_date`               |    text |   Yes    | Posting financial date; manual entry uses the Transaction Date  |
 | `total_amount_cents`         | integer |   Yes    | Nonzero signed safe-integer cents                               |
-| `status`                     |    text |   Yes    | Posted, reversed, or superseded                                 |
+| `status`                     |    text |   Yes    | Posted, reversed, superseded, or voided                         |
 | `description`                |    text |   Yes    | Human-readable explanation                                      |
 | `source_type`                |    text |   Yes    | Manual, import, statement, system, or reconciliation            |
 | `source_reference`           |    text |    No    | External or internal provenance reference                       |
@@ -123,6 +123,12 @@ uses `reversal_of_transaction_id` to offset the original; the corrected
 replacement uses `supersedes_transaction_id` to identify the original it
 replaces. Imported replacements preserve import provenance in `source_type` and
 `source_reference`.
+
+User-facing voids are not physical deletes. The original transaction is retained
+and marked `voided`; a linked reversal offsets the original total and every
+allocation. Voided originals and generated reversal rows remain available for
+audit history. Current activity views and current-balance/reporting calculations
+use only the effective transaction chain.
 
 Application-calculated debt balances are derived from balance-affecting
 allocations rather than full transaction totals. Payment interest and escrow
@@ -161,6 +167,12 @@ before repository validation.
 Dashboard, debt-list, report, reconciliation, and payoff-starting-balance
 services use allocation-level balance logic when calculating debt principal
 balances.
+
+Escrow balances use the same current transaction-chain logic as debt-principal
+balances: superseded originals and edit-generated reversals are excluded, voided
+chains net to zero through linked offsetting rows, and only current effective
+escrow activity controls debt detail, dashboard, escrow detail, reports, and
+exports.
 
 ## `balance_snapshots`
 

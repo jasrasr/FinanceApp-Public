@@ -601,6 +601,127 @@ describe('debt creation', () => {
     expect(eventTypes).toContain('transaction_replacement_recorded');
   });
 
+  it('uses one current transaction-chain calculation for edited and voided escrow activity', () => {
+    const request = validRequest('Generated Escrow Integrity Mortgage');
+    request.debt.debtType = 'mortgage';
+    request.debt.taxCategory = 'mortgage_interest';
+    request.debt.originalPrincipal = '100000.00';
+    request.debt.originationDate = '2026-01-01';
+    request.initialTerm.effectiveStartDate = '2026-01-01';
+    const created = service.createDebt(request);
+
+    service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2026-03-01',
+        postingDate: '2026-03-01',
+        status: 'posted',
+        totalAmount: '1500.00',
+        description: 'Generated mortgage payment with escrow.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '1000.00',
+          interest: '300.00',
+          escrow: '200.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    const afterExpense = service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        transactionType: 'escrow_disbursement',
+        effectiveDate: '2026-03-15',
+        postingDate: '2026-03-15',
+        status: 'posted',
+        totalAmount: '75.00',
+        description: 'Generated real estate tax payment.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: null,
+          interest: null,
+          escrow: '75.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    const expense = afterExpense.transactions.find(
+      (transaction) => transaction.transactionType === 'escrow_disbursement',
+    )!;
+
+    const afterEdit = service.editDebtTransaction({
+      id: expense.id,
+      debtId: created.id,
+      expectedUpdatedAtUtc: expense.updatedAtUtc,
+      transaction: {
+        transactionType: 'escrow_disbursement',
+        effectiveDate: '2026-03-15',
+        postingDate: '2026-03-15',
+        status: 'posted',
+        totalAmount: '50.00',
+        description: 'Generated corrected real estate tax payment.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: null,
+          interest: null,
+          escrow: '50.00',
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    const dashboardAfterEdit = service.getDashboard({});
+    const dashboardEscrow = dashboardAfterEdit.escrowBalances.find(
+      (item) => item.debtId === created.id,
+    );
+
+    expect(afterEdit.calculatedEscrowBalance).toBe('150.00');
+    expect(dashboardAfterEdit.totals.escrowBalance).toBe('150.00');
+    expect(dashboardEscrow?.amount).toBe('150.00');
+
+    const replacement = afterEdit.transactions.find(
+      (transaction) => transaction.supersedesTransactionId === expense.id,
+    )!;
+    const afterVoid = service.voidDebtTransaction({
+      id: replacement.id,
+      expectedUpdatedAtUtc: replacement.updatedAtUtc,
+      voidDate: '2026-03-15',
+      confirmed: true,
+    });
+    const dashboardAfterVoid = service.getDashboard({});
+    const originalRecord = context.database
+      .select()
+      .from(debtTransactions)
+      .where(eq(debtTransactions.id, replacement.id))
+      .get();
+    const voidingReversal = context.database
+      .select()
+      .from(debtTransactions)
+      .where(eq(debtTransactions.reversalOfTransactionId, replacement.id))
+      .get();
+
+    expect(afterVoid.calculatedEscrowBalance).toBe('200.00');
+    expect(dashboardAfterVoid.totals.escrowBalance).toBe('200.00');
+    expect(originalRecord?.status).toBe('voided');
+    expect(voidingReversal).toMatchObject({
+      transactionType: 'reversal',
+      totalAmountCents: -5_000,
+      reversalOfTransactionId: replacement.id,
+    });
+  });
+
   it('prevents duplicate active replacements for a transaction edit', () => {
     const created = service.createDebt(validRequest());
     const afterPayment = service.createDebtTransaction(

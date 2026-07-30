@@ -42,6 +42,7 @@ import type {
   UpdateStagedImportRowReviewRequest,
   UpdateDebtRequest,
   VoidBalanceReconciliationRequest,
+  VoidDebtTransactionRequest,
 } from './debt-contracts';
 
 export interface DebtBridge {
@@ -109,6 +110,9 @@ export interface DebtBridge {
   reverseDebtTransaction(
     request: ReverseDebtTransactionRequest,
   ): Promise<ApplicationResult<DebtDetailDto>>;
+  voidDebtTransaction(
+    request: VoidDebtTransactionRequest,
+  ): Promise<ApplicationResult<DebtDetailDto>>;
   createBalanceSnapshot(
     request: CreateBalanceSnapshotRequest,
   ): Promise<ApplicationResult<DebtDetailDto>>;
@@ -124,6 +128,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 17;
+  readonly bridgeVersion: 18;
   readonly appMetadata: AppMetadataDto;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   DebtReportsDto,
   GetDebtReportsRequest,
@@ -723,6 +723,11 @@ const BalanceHistoryChart = ({
   const series = useMemo(() => balanceHistorySeries(rows), [rows]);
   const allKeys = useMemo(() => series.map((item) => item.key), [series]);
   const chartRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{
+    readonly x: number;
+    readonly start: number;
+    readonly end: number;
+  } | null>(null);
   const periods = useMemo(
     () => [...new Set(rows.map((row) => row.effectiveDate))].sort(),
     [rows],
@@ -760,6 +765,33 @@ const BalanceHistoryChart = ({
   const tickIndexes = visibleTickIndexes(visiblePeriods.length);
   const formatChange = (change: number | null): string =>
     change === null ? 'not applicable' : formatDollarString(change.toFixed(2));
+  const isZoomed = zoom.end - zoom.start + 1 < periods.length;
+
+  const panChart = useCallback(
+    (periodDelta: number): void => {
+      if (periodDelta === 0 || periods.length === 0) return;
+      setZoom((current) => {
+        const widthInPeriods = current.end - current.start + 1;
+        const start = Math.max(
+          0,
+          Math.min(current.start + periodDelta, periods.length - widthInPeriods),
+        );
+        return { start, end: start + widthInPeriods - 1 };
+      });
+    },
+    [periods.length],
+  );
+
+  const resetZoom = (): void =>
+    setZoom({ start: 0, end: Math.max(0, periods.length - 1) });
+
+  const returnToLatest = (): void => {
+    setZoom((current) => {
+      const widthInPeriods = current.end - current.start + 1;
+      const start = Math.max(0, periods.length - widthInPeriods);
+      return { start, end: Math.max(start, periods.length - 1) };
+    });
+  };
 
   const toggleSeries = (key: string): void => {
     setVisibleKeys((current) =>
@@ -774,8 +806,14 @@ const BalanceHistoryChart = ({
     if (!chart) return undefined;
 
     const zoomChart = (event: WheelEvent): void => {
-      if (periods.length <= 2) return;
       event.preventDefault();
+      if (event.shiftKey) {
+        const horizontalDelta =
+          Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        panChart(horizontalDelta > 0 ? 1 : -1);
+        return;
+      }
+      if (periods.length <= 2) return;
       setZoom((current) => {
         const currentSize = current.end - current.start + 1;
         const direction = event.deltaY < 0 ? -1 : 1;
@@ -795,7 +833,7 @@ const BalanceHistoryChart = ({
 
     chart.addEventListener('wheel', zoomChart, { passive: false });
     return () => chart.removeEventListener('wheel', zoomChart);
-  }, [periods.length, visibleSeries.length]);
+  }, [panChart, periods.length, visibleSeries.length]);
 
   if (rows.length === 0) return <EmptyState />;
 
@@ -814,11 +852,38 @@ const BalanceHistoryChart = ({
           </div>
           <button
             className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:ring-2 focus:ring-blue-200 focus:outline-none"
-            onClick={() => setZoom({ start: 0, end: Math.max(0, periods.length - 1) })}
+            onClick={resetZoom}
             type="button"
           >
             Reset zoom
           </button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!isZoomed || zoom.start === 0}
+            onClick={() => panChart(-1)}
+            type="button"
+          >
+            Previous period
+          </button>
+          <button
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!isZoomed || zoom.end >= periods.length - 1}
+            onClick={() => panChart(1)}
+            type="button"
+          >
+            Next period
+          </button>
+          {isZoomed && zoom.end < periods.length - 1 ? (
+            <button
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              onClick={returnToLatest}
+              type="button"
+            >
+              Return to latest periods
+            </button>
+          ) : null}
         </div>
         <div
           aria-label="Debt balance history chart controls"
@@ -879,6 +944,34 @@ const BalanceHistoryChart = ({
             ref={chartRef}
             role="img"
             aria-label={`Line chart of debt balance history from ${visiblePeriods.at(0) ?? ''} through ${visiblePeriods.at(-1) ?? ''}. Chart data is available in a disclosure.`}
+            onPointerDown={(event) => {
+              if (!isZoomed) return;
+              dragStateRef.current = {
+                x: event.clientX,
+                start: zoom.start,
+                end: zoom.end,
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const dragState = dragStateRef.current;
+              if (!dragState || periods.length === 0) return;
+              const rect = event.currentTarget.getBoundingClientRect();
+              const widthInPeriods = dragState.end - dragState.start + 1;
+              const pixelsPerPeriod = Math.max(1, rect.width / widthInPeriods);
+              const delta = Math.round((dragState.x - event.clientX) / pixelsPerPeriod);
+              const start = Math.max(
+                0,
+                Math.min(dragState.start + delta, periods.length - widthInPeriods),
+              );
+              setZoom({ start, end: start + widthInPeriods - 1 });
+            }}
+            onPointerUp={() => {
+              dragStateRef.current = null;
+            }}
+            onPointerCancel={() => {
+              dragStateRef.current = null;
+            }}
           >
             <svg
               aria-hidden="true"
