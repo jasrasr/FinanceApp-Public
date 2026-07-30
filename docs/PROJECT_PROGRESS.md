@@ -1214,3 +1214,44 @@ completed.
   - Install the repaired 0.22.1 package and confirm startup against the live
     database, relying on the existing Desktop emergency copy as the recovery
     point if needed.
+
+## Phase 24: Transaction Visibility, Escrow Activity, and Chart Pan Correction
+
+- Completion date: 2026-07-30
+- Application version: 0.22.2
+- Features implemented:
+  - Corrected Current activity so reversed originals, generated reversals,
+    voided rows, superseded originals, and zero-effect correction-chain members
+    no longer appear as active transaction rows.
+  - Preserved the full original, reversal, replacement, and void chain in audit
+    history with plain-language labels.
+  - Updated escrow activity in debt detail and escrow detail to show only
+    current effective escrow-affecting rows by default.
+  - Changed escrow activity display to signed escrow balance impact and added a
+    running balance column plus visible balance check.
+  - Tightened debt-history chart drag panning so pointer drag does not select
+    axis labels or page text and panning stays inside the selected report range.
+- Material architecture and accounting decisions:
+  - No schema or IPC changes. The correction is presentation-layer filtering and
+    display conversion using existing transaction status and relationship DTOs.
+  - Escrow display signs match calculated escrow balance impact rather than raw
+    persisted allocation signs.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - No IPC changes.
+- New UI screens or workflows:
+  - Existing Current activity, Audit history, Escrow activity, Escrow detail, and
+    Debt balance history chart interactions were corrected in place.
+- Validation and smoke-test results:
+  - Added renderer tests for current transaction visibility, audit-chain
+    traceability, signed escrow rows, visible escrow balance reconciliation, and
+    chart drag-selection suppression.
+  - Final command results should be recorded in the completion report for this
+    patch.
+- Known limitations and technical debt:
+  - Chart interaction remains a lightweight SVG implementation with
+    session-only zoom and pan state.
+- Recommended next phase:
+  - Continue acceptance testing with fictional edited, voided, reversed, and
+    escrow-heavy data before expanding import or reporting scope.

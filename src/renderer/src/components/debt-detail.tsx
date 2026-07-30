@@ -10,6 +10,11 @@ import {
   formatTimestamp,
 } from './display-format';
 import { labelFromValue } from './form-utils';
+import {
+  centsToDollarString,
+  currentEscrowActivityRows,
+  isCurrentActivityTransaction,
+} from './current-activity';
 
 const Definition = ({
   label,
@@ -48,9 +53,6 @@ export interface DebtDetailProps {
     defaultVoidDate: string,
   ) => void;
 }
-
-const isCurrentActivityTransaction = (transaction: DebtTransactionDto): boolean =>
-  transaction.transactionType !== 'reversal' && transaction.status !== 'superseded';
 
 const transactionHistoryLabel = (transaction: DebtTransactionDto): string => {
   if (transaction.transactionType === 'reversal') {
@@ -327,7 +329,7 @@ export const DebtDetail = ({
           </h3>
           <p className="mt-1 text-sm text-slate-600">
             Shows transactions that currently affect balances. Generated reversals and
-            superseded originals are kept in audit history.
+            reversed, voided, or superseded originals are kept in audit history.
           </p>
         </div>
       </div>
@@ -535,13 +537,7 @@ export const DebtDetail = ({
         </div>
       </div>
 
-      {debt.transactions.filter(
-        (transaction) =>
-          isCurrentActivityTransaction(transaction) &&
-          transaction.allocations.some(
-            (allocation) => allocation.allocationType === 'escrow',
-          ),
-      ).length === 0 ? (
+      {currentEscrowActivityRows(debt).length === 0 ? (
         <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-8 py-10 text-center">
           <h4 className="text-base font-semibold text-slate-900">
             No escrow activity recorded
@@ -565,48 +561,46 @@ export const DebtDetail = ({
                 <th className="px-4 py-3 text-right font-semibold" scope="col">
                   Escrow amount
                 </th>
+                <th className="px-4 py-3 text-right font-semibold" scope="col">
+                  Running balance
+                </th>
                 <th className="px-4 py-3 font-semibold" scope="col">
                   Notes
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {debt.transactions
-                .filter(
-                  (transaction) =>
-                    isCurrentActivityTransaction(transaction) &&
-                    transaction.allocations.some(
-                      (allocation) => allocation.allocationType === 'escrow',
-                    ),
-                )
-                .map((transaction: DebtTransactionDto) => {
-                  const escrowAllocation = transaction.allocations.find(
-                    (allocation) => allocation.allocationType === 'escrow',
-                  );
+              {currentEscrowActivityRows(debt).map((row) => {
+                const { transaction } = row;
 
-                  return (
-                    <tr key={`escrow-${transaction.id}`}>
-                      <td className="py-4 pr-4 align-top">
-                        <span className="block font-medium text-slate-900">
-                          {transaction.effectiveDate}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 align-top text-slate-700">
-                        {labelFromValue(transaction.transactionType)}
-                      </td>
-                      <td className="px-4 py-4 align-top text-right tabular-nums">
-                        {escrowAllocation
-                          ? formatAbsoluteDollarString(escrowAllocation.amount)
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-4 align-top text-slate-700">
-                        {transaction.description}
-                      </td>
-                    </tr>
-                  );
-                })}
+                return (
+                  <tr key={`escrow-${transaction.id}`}>
+                    <td className="py-4 pr-4 align-top">
+                      <span className="block font-medium text-slate-900">
+                        {transaction.effectiveDate}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 align-top text-slate-700">
+                      {labelFromValue(transaction.transactionType)}
+                    </td>
+                    <td className="px-4 py-4 align-top text-right tabular-nums">
+                      {formatDollarString(centsToDollarString(row.escrowAmountCents))}
+                    </td>
+                    <td className="px-4 py-4 align-top text-right tabular-nums">
+                      {formatDollarString(centsToDollarString(row.runningBalanceCents))}
+                    </td>
+                    <td className="px-4 py-4 align-top text-slate-700">
+                      {transaction.description}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          <p className="mt-3 text-xs text-slate-600">
+            Current escrow balance check: starting $0.00 plus visible signed activity
+            equals {formatDollarString(debt.calculatedEscrowBalance)}.
+          </p>
         </div>
       )}
     </section>

@@ -21,7 +21,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 18,
   appMetadata: {
-    version: '0.22.1',
+    version: '0.22.2',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -846,6 +846,127 @@ describe('debt maintenance application', () => {
     expect(screen.getByRole('button', { name: 'Reconcile balance' })).toBeVisible();
   });
 
+  it('shows only current effective transaction rows while audit history keeps the full chain', async () => {
+    const bridge = createBridge();
+    const currentChainDetail: DebtDetailDto = {
+      ...sampleDebtDetail,
+      debtType: 'mortgage',
+      calculatedEscrowBalance: '50.00',
+      transactions: [
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c101',
+          description: 'Generated reversed original payment.',
+          status: 'reversed',
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c102',
+          transactionType: 'reversal',
+          totalAmount: '500.00',
+          description: 'Generated manual reversal row.',
+          reversalOfTransactionId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c101',
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c103',
+          description: 'Generated voided escrow deposit.',
+          status: 'voided',
+          allocations: [
+            {
+              ...sampleDebtDetail.transactions[0]!.allocations[0]!,
+              id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c104',
+              allocationType: 'escrow',
+              amount: '-40.00',
+            },
+          ],
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c105',
+          description: 'Generated void offset row.',
+          transactionType: 'reversal',
+          totalAmount: '40.00',
+          reversalOfTransactionId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c103',
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c106',
+          description: 'Generated superseded escrow disbursement.',
+          transactionType: 'escrow_disbursement',
+          totalAmount: '75.00',
+          status: 'superseded',
+          allocations: [
+            {
+              ...sampleDebtDetail.transactions[0]!.allocations[0]!,
+              id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c107',
+              allocationType: 'escrow',
+              amount: '75.00',
+            },
+          ],
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c108',
+          description: 'Generated superseding edit reversal row.',
+          transactionType: 'reversal',
+          totalAmount: '-75.00',
+          reversalOfTransactionId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c106',
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c109',
+          description: 'Generated corrected escrow disbursement.',
+          transactionType: 'escrow_disbursement',
+          totalAmount: '20.00',
+          supersedesTransactionId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c106',
+          allocations: [
+            {
+              ...sampleDebtDetail.transactions[0]!.allocations[0]!,
+              id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c110',
+              allocationType: 'escrow',
+              amount: '20.00',
+            },
+          ],
+        },
+      ],
+    };
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [sampleDebtSummary],
+    }));
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: currentChainDetail,
+    }));
+
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Open Fictional Equipment Note — Harbor Ridge Cooperative/,
+      }),
+    );
+
+    expect(
+      (await screen.findAllByText('Generated corrected escrow disbursement.'))[0],
+    ).toBeVisible();
+    expect(screen.queryByText('Generated reversed original payment.')).toBeNull();
+    expect(screen.queryByText('Generated manual reversal row.')).toBeNull();
+    expect(screen.queryByText('Generated voided escrow deposit.')).toBeNull();
+    expect(screen.queryByText('Generated superseded escrow disbursement.')).toBeNull();
+    expect(screen.queryByText('Generated superseding edit reversal row.')).toBeNull();
+
+    fireEvent.click(screen.getByText('View audit history'));
+    expect(screen.getByText('Reversed original')).toBeVisible();
+    expect(screen.getAllByText('Linked reversal').length).toBeGreaterThan(0);
+    expect(screen.getByText('Voided original')).toBeVisible();
+    expect(screen.getByText('Superseded original')).toBeVisible();
+    expect(screen.getByText('Reversal generated by edit')).toBeVisible();
+    expect(screen.getByText('Corrected')).toBeVisible();
+  });
+
   it('edits a posted transaction through the typed bridge with positive auto-principal entry', async () => {
     const bridge = createBridge();
     bridge.listDebts = vi.fn(async () => ({
@@ -997,6 +1118,147 @@ describe('debt maintenance application', () => {
     expect(screen.getAllByText('$300.00').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('shows signed current escrow activity that reconciles to dashboard and debt detail balances', async () => {
+    const bridge = createBridge();
+    const mortgageSummary = {
+      ...sampleDebtSummary,
+      debtType: 'mortgage' as const,
+      calculatedEscrowBalance: '50.00',
+    };
+    const mortgageDetail: DebtDetailDto = {
+      ...sampleDebtDetail,
+      debtType: 'mortgage',
+      calculatedEscrowBalance: '50.00',
+      transactions: [
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c201',
+          description: 'Generated current escrow deposit.',
+          allocations: [
+            {
+              ...sampleDebtDetail.transactions[0]!.allocations[0]!,
+              id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c202',
+              allocationType: 'escrow',
+              amount: '-100.00',
+            },
+          ],
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c203',
+          transactionType: 'escrow_disbursement',
+          totalAmount: '30.00',
+          description: 'Generated current escrow disbursement.',
+          allocations: [
+            {
+              ...sampleDebtDetail.transactions[0]!.allocations[0]!,
+              id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c204',
+              allocationType: 'escrow',
+              amount: '30.00',
+            },
+          ],
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c205',
+          transactionType: 'escrow_disbursement',
+          totalAmount: '20.00',
+          description: 'Generated corrected escrow disbursement.',
+          supersedesTransactionId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c206',
+          allocations: [
+            {
+              ...sampleDebtDetail.transactions[0]!.allocations[0]!,
+              id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c207',
+              allocationType: 'escrow',
+              amount: '20.00',
+            },
+          ],
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c208',
+          description: 'Generated reversed escrow deposit.',
+          status: 'reversed',
+          allocations: [
+            {
+              ...sampleDebtDetail.transactions[0]!.allocations[0]!,
+              id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c209',
+              allocationType: 'escrow',
+              amount: '-40.00',
+            },
+          ],
+        },
+        {
+          ...sampleDebtDetail.transactions[0]!,
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c210',
+          description: 'Generated voided escrow row.',
+          status: 'voided',
+          allocations: [
+            {
+              ...sampleDebtDetail.transactions[0]!.allocations[0]!,
+              id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c211',
+              allocationType: 'escrow',
+              amount: '-25.00',
+            },
+          ],
+        },
+      ],
+    };
+    bridge.getDashboard = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        ...sampleDashboard,
+        totals: { ...sampleDashboard.totals, escrowBalance: '50.00' },
+        escrowBalances: [
+          {
+            debtId: sampleDebtDetail.id,
+            debtName: sampleDebtDetail.name,
+            creditor: sampleDebtDetail.creditor,
+            amount: '50.00',
+            effectiveDate: '2026-07-28',
+            basis: 'Calculated escrow balance.',
+          },
+        ],
+      },
+    }));
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [mortgageSummary],
+    }));
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: mortgageDetail,
+    }));
+
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Current escrow balance/ }),
+    );
+
+    expect(await screen.findByText('Generated current escrow deposit.')).toBeVisible();
+    expect(screen.getByText('Generated current escrow disbursement.')).toBeVisible();
+    expect(screen.getByText('Generated corrected escrow disbursement.')).toBeVisible();
+    expect(screen.queryByText('Generated reversed escrow deposit.')).toBeNull();
+    expect(screen.queryByText('Generated voided escrow row.')).toBeNull();
+    expect(screen.getByText('-$30.00')).toBeVisible();
+    expect(screen.getByText('-$20.00')).toBeVisible();
+    expect(screen.getAllByText('$100.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('$50.00').length).toBeGreaterThanOrEqual(2);
+    expect(
+      screen.getByText(/starting \$0\.00 plus visible signed activity equals \$50\.00/),
+    ).toBeVisible();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Fictional Equipment Note — Harbor Ridge Cooperative',
+      }),
+    );
+    expect((await screen.findAllByText('$50.00'))[0]).toBeVisible();
+    expect(screen.getAllByText('Generated current escrow deposit.')[0]).toBeVisible();
+    expect(screen.getByText('-$30.00')).toBeVisible();
+  });
+
   it('posts escrow activity from escrow detail and refreshes balances', async () => {
     const bridge = createBridge();
     const mortgageSummary = {
@@ -1135,7 +1397,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.22.1')).toBeVisible();
+    expect(await screen.findByText('Version 0.22.2')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1229,6 +1491,29 @@ describe('debt maintenance application', () => {
     expect(screen.getByTestId('balance-history-zoom').textContent).not.toBe(
       zoomedStatus,
     );
+    const draggedStatus = screen.getByTestId('balance-history-zoom').textContent;
+    fireEvent.pointerDown(chart, {
+      clientX: 180,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(chart, {
+      clientX: 178,
+      pointerId: 1,
+    });
+    expect(screen.getByTestId('balance-history-zoom').textContent).toBe(draggedStatus);
+    fireEvent.pointerMove(chart, {
+      clientX: 100,
+      pointerId: 1,
+    });
+    expect(document.body.style.userSelect).toBe('none');
+    expect(window.getSelection()?.toString() ?? '').toBe('');
+    expect(screen.getByTestId('balance-history-zoom').textContent).not.toBe(
+      draggedStatus,
+    );
+    fireEvent.pointerUp(chart, {
+      pointerId: 1,
+    });
+    expect(document.body.style.userSelect).toBe('');
     fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
     expect(screen.getByTestId('balance-history-zoom').textContent).toBe(zoomedStatus);
     const outsideWheel = new WheelEvent('wheel', {

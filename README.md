@@ -254,6 +254,14 @@ Electron user-data directory that it removes after the workflow.
 - Debt detail, dashboard, escrow detail, reports, and exports use the same
   current transaction-chain rule for escrow balances, including edited,
   superseded, reversed, voided, imported, and current posted activity.
+- Normal Current activity lists show only current posted transactions that still
+  control balances. Reversed originals, generated reversal rows, voided rows,
+  superseded originals, and zero-effect chain members remain available through
+  audit history instead of appearing as active activity.
+- Escrow activity lists display signed balance impact: deposits and increasing
+  adjustments are positive, while disbursements, refunds, and decreasing
+  adjustments are negative. Running balances reconcile visible activity to the
+  displayed current escrow balance.
 - Year-to-date metrics use posted non-superseded activity from January 1 through
   the dashboard effective date based on transaction effective dates, not created,
   updated, import, audit, or system timestamps.
@@ -324,8 +332,9 @@ Electron user-data directory that it removes after the workflow.
 - Debt balance history by obligation is shown as an interactive line chart with
   one line per debt and one total-debt line. It uses application-calculated
   ending principal balances by period, supports session-only legend toggles,
-  chart-only mouse-wheel zoom with dynamic date ticks, and an accessible
-  disclosure for chart data that is not displayed by default.
+  chart-only mouse-wheel zoom, thresholded drag-to-pan without text selection,
+  dynamic date ticks, and an accessible disclosure for chart data that is not
+  displayed by default.
 - Interest analysis separates monthly interest expense trends from annual
   interest comparisons. Monthly charts default to a recent readable period and
   support month-by-month comparison across years. Interest expense is displayed

@@ -144,7 +144,12 @@ Mortgage escrow is tracked separately from debt principal and interest.
   also contains a separate principal allocation.
 
 The calculated escrow balance is derived from posted escrow allocations and is
-displayed separately from the debt ledger balance.
+displayed separately from the debt ledger balance. User-facing escrow activity
+lists show current effective escrow rows only and convert posted allocation signs
+to escrow balance impact: payment deposits and increasing adjustments are
+positive, while disbursements, refunds, and decreasing adjustments are negative.
+The running escrow balance is a presentation control total and must reconcile
+visible signed activity to the displayed current escrow balance.
 
 ## Effective-Dated Terms
 
@@ -528,6 +533,11 @@ Posted activity is not silently deleted or overwritten.
 - Current balances, dashboard metrics, reports, payoff starting balances, and
   exports use the current transaction chain and exclude the original plus its
   edit reversal when a replacement is current.
+- Current activity presentation shows only current posted transactions that
+  still affect balances. Reversed originals, generated reversal rows, voided
+  transactions, superseded originals, and transaction-chain members with zero
+  current financial effect are excluded from the active list and remain visible
+  in audit history.
 - Escrow balance is calculated from one current transaction-chain rule shared by
   debt detail, dashboard, escrow detail, reports, and exports. Escrow payment
   allocations increase escrow, escrow disbursements and refunds reduce escrow,

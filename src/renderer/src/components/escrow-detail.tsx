@@ -2,12 +2,12 @@ import { useState } from 'react';
 import type {
   CreateDebtTransactionRequest,
   DebtDetailDto,
-  DebtTransactionDto,
 } from '../../../shared/debt-contracts';
 import { combinedDebtLabel } from './debt-label';
-import { formatAbsoluteDollarString, formatDollarString } from './display-format';
+import { formatDollarString } from './display-format';
 import { Field } from './form-controls';
 import { inputClassName, labelFromValue } from './form-utils';
+import { centsToDollarString, currentEscrowActivityRows } from './current-activity';
 
 export interface EscrowDetailProps {
   readonly debts: readonly DebtDetailDto[];
@@ -199,16 +199,6 @@ const EscrowActivityForm = ({
   );
 };
 
-const escrowTransactions = (debt: DebtDetailDto): readonly DebtTransactionDto[] =>
-  debt.transactions.filter(
-    (transaction) =>
-      transaction.transactionType !== 'reversal' &&
-      transaction.status === 'posted' &&
-      transaction.allocations.some(
-        (allocation) => allocation.allocationType === 'escrow',
-      ),
-  );
-
 export const EscrowDetail = ({
   debts,
   effectiveDate,
@@ -318,16 +308,17 @@ export const EscrowDetail = ({
                     <th className="px-4 py-3 text-right font-semibold" scope="col">
                       Escrow amount
                     </th>
+                    <th className="px-4 py-3 text-right font-semibold" scope="col">
+                      Running balance
+                    </th>
                     <th className="px-4 py-3 font-semibold" scope="col">
                       Description
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {escrowTransactions(debt).map((transaction) => {
-                    const escrowAllocation = transaction.allocations.find(
-                      (allocation) => allocation.allocationType === 'escrow',
-                    );
+                  {currentEscrowActivityRows(debt).map((row) => {
+                    const { transaction } = row;
 
                     return (
                       <tr key={transaction.id}>
@@ -338,9 +329,14 @@ export const EscrowDetail = ({
                           {labelFromValue(transaction.transactionType)}
                         </td>
                         <td className="px-4 py-4 text-right align-top tabular-nums">
-                          {escrowAllocation
-                            ? formatAbsoluteDollarString(escrowAllocation.amount)
-                            : '—'}
+                          {formatDollarString(
+                            centsToDollarString(row.escrowAmountCents),
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-right align-top tabular-nums">
+                          {formatDollarString(
+                            centsToDollarString(row.runningBalanceCents),
+                          )}
                         </td>
                         <td className="px-4 py-4 align-top text-slate-600">
                           {transaction.description}
@@ -350,6 +346,10 @@ export const EscrowDetail = ({
                   })}
                 </tbody>
               </table>
+              <p className="mt-3 text-xs text-slate-600">
+                Current escrow balance check: starting $0.00 plus visible signed
+                activity equals {formatDollarString(debt.calculatedEscrowBalance)}.
+              </p>
             </div>
           </section>
         ))}

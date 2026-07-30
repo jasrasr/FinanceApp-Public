@@ -724,16 +724,20 @@ const BalanceHistoryChart = ({
   const allKeys = useMemo(() => series.map((item) => item.key), [series]);
   const chartRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{
-    readonly x: number;
+    readonly pointerId: number;
+    readonly originX: number;
     readonly start: number;
     readonly end: number;
+    dragging: boolean;
   } | null>(null);
+  const priorBodyUserSelectRef = useRef<string | null>(null);
   const periods = useMemo(
     () => [...new Set(rows.map((row) => row.effectiveDate))].sort(),
     [rows],
   );
   const [visibleKeys, setVisibleKeys] = useState<readonly string[]>(allKeys);
   const [zoom, setZoom] = useState({ start: 0, end: Math.max(0, periods.length - 1) });
+  const [isDraggingChart, setIsDraggingChart] = useState(false);
 
   const visibleSeries = series.filter((item) => visibleKeys.includes(item.key));
   const visiblePeriods = periods.slice(zoom.start, zoom.end + 1);
@@ -834,6 +838,16 @@ const BalanceHistoryChart = ({
     chart.addEventListener('wheel', zoomChart, { passive: false });
     return () => chart.removeEventListener('wheel', zoomChart);
   }, [panChart, periods.length, visibleSeries.length]);
+
+  const restoreSelection = useCallback((): void => {
+    if (priorBodyUserSelectRef.current !== null) {
+      document.body.style.userSelect = priorBodyUserSelectRef.current;
+      priorBodyUserSelectRef.current = null;
+    }
+    setIsDraggingChart(false);
+  }, []);
+
+  useEffect(() => restoreSelection, [restoreSelection]);
 
   if (rows.length === 0) return <EmptyState />;
 
@@ -939,43 +953,69 @@ const BalanceHistoryChart = ({
           </p>
         ) : (
           <div
-            className="mt-4"
+            className={`mt-4 touch-pan-y ${isDraggingChart ? 'cursor-grabbing select-none' : isZoomed ? 'cursor-grab' : ''}`}
             data-testid="balance-history-chart"
             ref={chartRef}
             role="img"
             aria-label={`Line chart of debt balance history from ${visiblePeriods.at(0) ?? ''} through ${visiblePeriods.at(-1) ?? ''}. Chart data is available in a disclosure.`}
             onPointerDown={(event) => {
               if (!isZoomed) return;
+              event.preventDefault();
               dragStateRef.current = {
-                x: event.clientX,
+                pointerId: event.pointerId,
+                originX: event.clientX,
                 start: zoom.start,
                 end: zoom.end,
+                dragging: false,
               };
-              event.currentTarget.setPointerCapture(event.pointerId);
+              event.currentTarget.setPointerCapture?.(event.pointerId);
             }}
             onPointerMove={(event) => {
               const dragState = dragStateRef.current;
-              if (!dragState || periods.length === 0) return;
+              if (
+                !dragState ||
+                dragState.pointerId !== event.pointerId ||
+                periods.length === 0
+              ) {
+                return;
+              }
+              const pixelDelta = dragState.originX - event.clientX;
+              if (!dragState.dragging && Math.abs(pixelDelta) < 4) return;
+              if (!dragState.dragging) {
+                dragState.dragging = true;
+                priorBodyUserSelectRef.current = document.body.style.userSelect;
+                document.body.style.userSelect = 'none';
+                setIsDraggingChart(true);
+              }
+              event.preventDefault();
               const rect = event.currentTarget.getBoundingClientRect();
               const widthInPeriods = dragState.end - dragState.start + 1;
               const pixelsPerPeriod = Math.max(1, rect.width / widthInPeriods);
-              const delta = Math.round((dragState.x - event.clientX) / pixelsPerPeriod);
+              const delta = Math.round(pixelDelta / pixelsPerPeriod);
               const start = Math.max(
                 0,
                 Math.min(dragState.start + delta, periods.length - widthInPeriods),
               );
               setZoom({ start, end: start + widthInPeriods - 1 });
             }}
-            onPointerUp={() => {
+            onPointerUp={(event) => {
+              if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
               dragStateRef.current = null;
+              restoreSelection();
             }}
-            onPointerCancel={() => {
+            onPointerCancel={(event) => {
+              if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
               dragStateRef.current = null;
+              restoreSelection();
             }}
           >
             <svg
               aria-hidden="true"
-              className="h-auto w-full"
+              className="pointer-events-none h-auto w-full select-none"
               focusable="false"
               height={height}
               viewBox={`0 0 ${width} ${height}`}

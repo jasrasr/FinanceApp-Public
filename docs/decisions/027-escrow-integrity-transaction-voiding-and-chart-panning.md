@@ -26,10 +26,17 @@ history chart needed panning after zoom.
   Drizzle access is exposed.
 - Normal transaction history is split into current activity and audit history so
   users do not need to interpret generated reversal rows to understand current
-  balances.
+  balances. Current activity shows only current posted non-reversal rows that
+  still control balances; reversed, voided, superseded, generated reversal, and
+  zero-effect chain rows remain in audit history.
+- Escrow activity presentation uses the same current-chain rule as escrow
+  balance calculation and displays signed escrow balance impact with a running
+  balance control total.
 - Debt history chart panning is renderer-only session state. Shift + mouse wheel,
   click-and-drag, and keyboard buttons pan the visible date window within the
-  selected report range while preserving the zoom width.
+  selected report range while preserving the zoom width. Drag panning begins
+  only after a small movement threshold and temporarily suppresses text
+  selection in the chart interaction region.
 
 ## Consequences
 
