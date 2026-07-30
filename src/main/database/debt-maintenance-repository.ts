@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, lte, ne } from 'drizzle-orm';
+import { and, asc, eq, gte, isNotNull, isNull, lte, ne } from 'drizzle-orm';
 import type { AppDatabase } from './connection';
 import {
   auditEvents,
@@ -81,6 +81,16 @@ export interface ImportBatchWithRowsRecord {
 export interface PostedTransactionInput {
   readonly transaction: DebtTransactionInsert;
   readonly allocations: readonly TransactionAllocationInsert[];
+}
+
+export interface EditPostedTransactionRecordInput {
+  readonly originalTransactionId: string;
+  readonly expectedUpdatedAtUtc: string;
+  readonly reversal: PostedTransactionInput;
+  readonly replacement: PostedTransactionInput;
+  readonly updatedAtUtc: string;
+  readonly affectedReconciliationDate: string;
+  readonly auditInputs: readonly AuditEventInsert[];
 }
 
 export interface CreateBalanceReconciliationRecordInput {
@@ -324,24 +334,37 @@ export const calculateLedgerBalanceThroughDate = (
     .filter((id): id is string => id !== null);
   const originalTypes =
     reversedTransactionIds.length === 0
-      ? new Map<string, DebtTransactionRecord['transactionType']>()
+      ? new Map<string, Pick<DebtTransactionRecord, 'transactionType' | 'status'>>()
       : new Map(
           database
             .select({
               id: debtTransactions.id,
               transactionType: debtTransactions.transactionType,
+              status: debtTransactions.status,
             })
             .from(debtTransactions)
             .all()
             .filter((transaction) => reversedTransactionIds.includes(transaction.id))
-            .map((transaction) => [transaction.id, transaction.transactionType]),
+            .map((transaction) => [
+              transaction.id,
+              {
+                transactionType: transaction.transactionType,
+                status: transaction.status,
+              },
+            ]),
         );
 
   let balanceActivity = 0;
   for (const row of rows) {
+    const original = row.reversalOfTransactionId
+      ? originalTypes.get(row.reversalOfTransactionId)
+      : undefined;
+    if (row.transactionType === 'reversal' && original?.status === 'superseded') {
+      continue;
+    }
     const effectiveTransactionType =
       row.transactionType === 'reversal' && row.reversalOfTransactionId
-        ? (originalTypes.get(row.reversalOfTransactionId) ?? row.transactionType)
+        ? (original?.transactionType ?? row.transactionType)
         : row.transactionType;
 
     if (
@@ -407,23 +430,36 @@ export const calculateEscrowBalanceThroughDate = (
     .filter((id): id is string => id !== null);
   const originalTypes =
     reversedTransactionIds.length === 0
-      ? new Map<string, DebtTransactionRecord['transactionType']>()
+      ? new Map<string, Pick<DebtTransactionRecord, 'transactionType' | 'status'>>()
       : new Map(
           database
             .select({
               id: debtTransactions.id,
               transactionType: debtTransactions.transactionType,
+              status: debtTransactions.status,
             })
             .from(debtTransactions)
             .all()
             .filter((transaction) => reversedTransactionIds.includes(transaction.id))
-            .map((transaction) => [transaction.id, transaction.transactionType]),
+            .map((transaction) => [
+              transaction.id,
+              {
+                transactionType: transaction.transactionType,
+                status: transaction.status,
+              },
+            ]),
         );
 
   const balance = rows.reduce((total, row) => {
+    const original = row.reversalOfTransactionId
+      ? originalTypes.get(row.reversalOfTransactionId)
+      : undefined;
+    if (row.transactionType === 'reversal' && original?.status === 'superseded') {
+      return total;
+    }
     const effectiveTransactionType =
       row.transactionType === 'reversal' && row.reversalOfTransactionId
-        ? (originalTypes.get(row.reversalOfTransactionId) ?? row.transactionType)
+        ? (original?.transactionType ?? row.transactionType)
         : row.transactionType;
 
     if (effectiveTransactionType === 'payment') return total - row.amountCents;
@@ -485,6 +521,121 @@ export const createPostedTransactionRecord = (
   database.transaction((transactionDb) => {
     transactionDb.insert(debtTransactions).values(transaction).run();
     transactionDb.insert(transactionAllocations).values(allocations).run();
+    transactionDb.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const editPostedTransactionRecord = (
+  database: AppDatabase,
+  input: EditPostedTransactionRecordInput,
+): void => {
+  const reversal = debtTransactionInsertSchema.parse(input.reversal.transaction);
+  const reversalAllocations = input.reversal.allocations.map((allocation) =>
+    transactionAllocationInsertSchema.parse(allocation),
+  );
+  const replacement = debtTransactionInsertSchema.parse(input.replacement.transaction);
+  const replacementAllocations = input.replacement.allocations.map((allocation) =>
+    transactionAllocationInsertSchema.parse(allocation),
+  );
+  const audit = input.auditInputs.map((event) => auditEventInsertSchema.parse(event));
+
+  if (
+    reversal.transactionType !== 'reversal' ||
+    reversal.reversalOfTransactionId !== input.originalTransactionId
+  ) {
+    throw new Error('Transaction edit must include a linked reversal.');
+  }
+
+  if (replacement.supersedesTransactionId !== input.originalTransactionId) {
+    throw new Error('Transaction edit must include a linked replacement.');
+  }
+
+  if (
+    reversalAllocations.some(
+      (allocation) => allocation.transactionId !== reversal.id,
+    ) ||
+    replacementAllocations.some(
+      (allocation) => allocation.transactionId !== replacement.id,
+    )
+  ) {
+    throw new Error('Every allocation must reference its transaction.');
+  }
+
+  const signErrors = [
+    ...validateTransactionSignConvention(reversal, reversalAllocations),
+    ...validateTransactionSignConvention(replacement, replacementAllocations),
+  ];
+
+  if (signErrors.length > 0) {
+    throw new Error(signErrors.join(' '));
+  }
+
+  database.transaction((transactionDb) => {
+    const original = transactionDb
+      .select()
+      .from(debtTransactions)
+      .where(eq(debtTransactions.id, input.originalTransactionId))
+      .get();
+
+    if (!original) {
+      throw new RepositoryNotFoundError('Transaction was not found.');
+    }
+
+    if (original.status !== 'posted') {
+      throw new RepositoryConflictError(
+        'Only a currently posted transaction can be edited.',
+      );
+    }
+
+    if (original.transactionType === 'reversal') {
+      throw new RepositoryConflictError('Reversal transactions cannot be edited.');
+    }
+
+    if (original.updatedAtUtc !== input.expectedUpdatedAtUtc) {
+      throw new RepositoryConflictError(
+        'Transaction changed before the edit was saved.',
+      );
+    }
+
+    const existingReplacement = transactionDb
+      .select({ id: debtTransactions.id })
+      .from(debtTransactions)
+      .where(eq(debtTransactions.supersedesTransactionId, original.id))
+      .get();
+
+    if (existingReplacement) {
+      throw new RepositoryConflictError(
+        'This transaction already has a replacement transaction.',
+      );
+    }
+
+    transactionDb.insert(debtTransactions).values(reversal).run();
+    transactionDb.insert(transactionAllocations).values(reversalAllocations).run();
+    transactionDb.insert(debtTransactions).values(replacement).run();
+    transactionDb.insert(transactionAllocations).values(replacementAllocations).run();
+    transactionDb
+      .update(debtTransactions)
+      .set({ status: 'superseded', updatedAtUtc: input.updatedAtUtc })
+      .where(eq(debtTransactions.id, original.id))
+      .run();
+
+    transactionDb
+      .update(balanceReconciliations)
+      .set({
+        reconciliationStatus: 'exception',
+        explanation:
+          'Prior posted activity was edited after this reconciliation; review the statement comparison.',
+        updatedAtUtc: input.updatedAtUtc,
+      })
+      .where(
+        and(
+          eq(balanceReconciliations.debtId, original.debtId),
+          eq(balanceReconciliations.lifecycleStatus, 'current'),
+          gte(balanceReconciliations.statementDate, input.affectedReconciliationDate),
+        ),
+      )
+      .run();
+
     transactionDb.insert(auditEvents).values(audit).run();
   });
 };

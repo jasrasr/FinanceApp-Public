@@ -444,8 +444,11 @@ Debt balance history by obligation uses the active report date range and filters
 and shows application-calculated ending principal balance at each report period
 end. The normal visualization is an interactive line chart with one line per debt
 and one total-debt line. Legend visibility is a report-session display choice
-only; it does not change stored financial data. The table paired with the chart
-provides period-end balances and period-over-period changes.
+only; it does not change stored financial data. Mouse-wheel input over the chart
+zooms only the visible date domain and must not scroll the page. Chart ticks are
+calculated from the visible date range rather than rendering every monthly
+period. Period-end balances and period-over-period changes are available through
+an accessible chart-data disclosure that is closed by default.
 
 Interest analysis is separate from debt balance trends. Monthly interest expense
 charts omit zero-only periods when they add no analytical value and default to a
@@ -515,6 +518,16 @@ Posted activity is not silently deleted or overwritten.
 - The original remains stored and is marked reversed.
 - A transaction may be reversed only once.
 - Superseding corrections use a separate unique relationship.
+- User-facing transaction edits are superseding corrections, not silent updates:
+  the original posted transaction remains stored and is marked superseded, an
+  exact linked reversal offsets the original, and a corrected replacement
+  transaction links back to the original.
+- Current balances, dashboard metrics, reports, payoff starting balances, and
+  exports use the current transaction chain and exclude the original plus its
+  edit reversal when a replacement is current.
+- If an edit changes activity dated on or before a current reconciliation's
+  statement date, that reconciliation is marked as an exception requiring review
+  rather than remaining silently reconciled.
 - A reversal creates a non-sensitive audit event.
 - If upgraded or legacy data contains a malformed reversal whose signed total or
   allocations do not completely offset the original transaction, the application

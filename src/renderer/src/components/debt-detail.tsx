@@ -36,6 +36,7 @@ export interface DebtDetailProps {
   readonly onCorrectReconciliation: (reconciliation: BalanceReconciliationDto) => void;
   readonly onVoidReconciliation: (reconciliation: BalanceReconciliationDto) => void;
   readonly onRecordTransaction: () => void;
+  readonly onEditTransaction: (transaction: DebtTransactionDto) => void;
   readonly onReverseTransaction: (
     transactionId: string,
     expectedUpdatedAtUtc: string,
@@ -53,6 +54,7 @@ export const DebtDetail = ({
   onCorrectReconciliation,
   onVoidReconciliation,
   onRecordTransaction,
+  onEditTransaction,
   onReverseTransaction,
 }: DebtDetailProps): React.JSX.Element => (
   <section aria-labelledby="debt-detail-heading">
@@ -388,22 +390,40 @@ export const DebtDetail = ({
                   <td className="px-4 py-4 align-top text-right">
                     {!debt.archivedAtUtc &&
                     transaction.status === 'posted' &&
-                    transaction.transactionType !== 'reversal' ? (
-                      <button
-                        className="font-semibold text-blue-700 hover:text-blue-900 focus:underline focus:outline-none"
-                        onClick={() =>
-                          onReverseTransaction(
-                            transaction.id,
-                            transaction.updatedAtUtc,
-                            transaction.effectiveDate,
-                          )
-                        }
-                        type="button"
-                      >
-                        Reverse
-                      </button>
+                    transaction.transactionType !== 'reversal' &&
+                    transaction.transactionType !==
+                      'approved_reconciliation_adjustment' ? (
+                      <div className="flex justify-end gap-3">
+                        <button
+                          className="font-semibold text-blue-700 hover:text-blue-900 focus:underline focus:outline-none"
+                          onClick={() => onEditTransaction(transaction)}
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="font-semibold text-blue-700 hover:text-blue-900 focus:underline focus:outline-none"
+                          onClick={() =>
+                            onReverseTransaction(
+                              transaction.id,
+                              transaction.updatedAtUtc,
+                              transaction.effectiveDate,
+                            )
+                          }
+                          type="button"
+                        >
+                          Reverse
+                        </button>
+                      </div>
                     ) : (
-                      <span className="text-xs text-slate-400">Not available</span>
+                      <span className="text-xs text-slate-400">
+                        {transaction.transactionType === 'reversal'
+                          ? 'Reversals cannot be edited'
+                          : transaction.transactionType ===
+                              'approved_reconciliation_adjustment'
+                            ? 'Use reconciliation correction'
+                            : 'Not available'}
+                      </span>
                     )}
                   </td>
                 </tr>

@@ -41,7 +41,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.20.0')).toBeVisible();
+      await expect(window.getByText('Version 0.21.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();
@@ -156,8 +156,21 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
     window.getByLabel('Core debt information').getByText('$300.00'),
   ).toBeVisible();
 
+  await window.getByRole('button', { name: 'Edit', exact: true }).first().click();
+  await expect(window.getByRole('heading', { name: 'Edit transaction' })).toBeVisible();
+  await expect(window.getByRole('textbox', { name: 'Amount' })).toHaveValue('1500.00');
+  await expect(
+    window.locator('[name="transaction.allocations.principal"]'),
+  ).toHaveValue('1000.00');
+  await window.locator('[name="transaction.allocations.interest"]').fill('250.00');
+  await expect(
+    window.locator('[name="transaction.allocations.principal"]'),
+  ).toHaveValue('950.00');
+  await window.getByRole('button', { name: 'Save transaction edit' }).click();
+  await expect(window.getByText('Transaction edit was saved.')).toBeVisible();
+
   await window.getByRole('button', { name: 'Dashboard' }).click();
-  await expectDashboardMetric(window, 'Total active debt', '$99,000.00');
+  await expectDashboardMetric(window, 'Total active debt', '$99,050.00');
   await expectDashboardMetric(window, 'Principal reduction YTD', '$0.00');
   await expectDashboardMetric(window, 'Interest activity YTD', '$0.00');
   await expectDashboardMetric(window, 'Current escrow balance', '$300.00');
@@ -230,7 +243,9 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
     .fill('100000.00');
   await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
   await expect(window.getByText('Balance reconciliation was recorded.')).toBeVisible();
-  await expect(window.getByText('Superseded')).toBeVisible();
+  await expect(
+    window.getByLabel('Balance reconciliations').getByText('Superseded'),
+  ).toBeVisible();
   await expect(window.getByText('Reconciled').first()).toBeVisible();
 
   await window.getByRole('button', { name: 'Dashboard' }).click();
@@ -373,18 +388,38 @@ const expectHistoricalMortgageExportIntegrity = (exportDirectory: string): void 
   }
 
   expect(
-    transactions.find((transaction) => transaction.transaction_type === 'payment'),
+    transactions.find(
+      (transaction) =>
+        transaction.transaction_type === 'payment' &&
+        transaction.status === 'superseded',
+    ),
   ).toMatchObject({
     transaction_date: '2021-06-01',
     total_amount_cents: '-150000',
-    status: 'reversed',
   });
   expect(
-    transactions.find((transaction) => transaction.transaction_type === 'reversal'),
+    transactions.find(
+      (transaction) =>
+        transaction.transaction_type === 'payment' && transaction.status === 'reversed',
+    ),
   ).toMatchObject({
-    transaction_date: '2021-06-02',
-    total_amount_cents: '150000',
+    transaction_date: '2021-06-01',
+    total_amount_cents: '-150000',
   });
+  expect(
+    transactions.filter((transaction) => transaction.transaction_type === 'reversal'),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        transaction_date: '2021-06-01',
+        total_amount_cents: '150000',
+      }),
+      expect.objectContaining({
+        transaction_date: '2021-06-02',
+        total_amount_cents: '150000',
+      }),
+    ]),
+  );
   expect(netByAllocationType.get('principal')).toBe(0);
   expect(netByAllocationType.get('interest')).toBe(0);
   expect(netByAllocationType.get('escrow')).toBe(0);

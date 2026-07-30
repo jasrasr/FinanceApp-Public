@@ -4,6 +4,7 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  editDebtTransactionRequestSchema,
   createManualBackupRequestSchema,
   createPayoffScenarioRequestSchema,
   addDebtTermRequestSchema,
@@ -48,6 +49,7 @@ import {
   type CreateBalanceReconciliationRequest,
   type CreateBalanceSnapshotRequest,
   type CreateDebtTransactionRequest,
+  type EditDebtTransactionRequest,
   type CreateManualBackupRequest,
   type CreatePayoffScenarioRequest,
   type ArchiveDebtRequest,
@@ -82,7 +84,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 16,
+    bridgeVersion: 17,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -238,6 +240,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.createTransaction,
           createDebtTransactionRequestSchema.parse(request),
+        ),
+      ),
+    editDebtTransaction: async (request: EditDebtTransactionRequest) =>
+      debtDetailResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.editTransaction,
+          editDebtTransactionRequestSchema.parse(request),
         ),
       ),
     reverseDebtTransaction: async (request: ReverseDebtTransactionRequest) =>

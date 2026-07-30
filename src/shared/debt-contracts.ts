@@ -162,6 +162,13 @@ export const reverseDebtTransactionRequestSchema = z
   })
   .strict();
 
+export const editDebtTransactionRequestSchema = createDebtTransactionRequestSchema
+  .extend({
+    id: uuidSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+  })
+  .strict();
+
 export const voidBalanceReconciliationRequestSchema = z
   .object({
     id: uuidSchema,
@@ -992,6 +999,9 @@ export type UpdateDebtRequest = z.infer<typeof updateDebtRequestSchema>;
 export type AddDebtTermRequest = z.infer<typeof addDebtTermRequestSchema>;
 export type CreateDebtTransactionRequest = z.infer<
   typeof createDebtTransactionRequestSchema
+>;
+export type EditDebtTransactionRequest = z.infer<
+  typeof editDebtTransactionRequestSchema
 >;
 export type ReverseDebtTransactionRequest = z.infer<
   typeof reverseDebtTransactionRequestSchema

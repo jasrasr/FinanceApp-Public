@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   DebtReportsDto,
   GetDebtReportsRequest,
@@ -689,6 +689,30 @@ const markerForPoint = ({
   return <circle cx={x} cy={y} r="3.5" />;
 };
 
+const visibleTickIndexes = (periodCount: number): readonly number[] => {
+  if (periodCount <= 1) return [0];
+  const maxTicks =
+    periodCount > 36 ? 7 : periodCount > 18 ? 6 : Math.min(8, periodCount);
+  const step = Math.max(1, Math.ceil((periodCount - 1) / (maxTicks - 1)));
+  const indexes = new Set<number>([0, periodCount - 1]);
+  for (let index = step; index < periodCount - 1; index += step) {
+    indexes.add(index);
+  }
+  return [...indexes].sort((a, b) => a - b);
+};
+
+const balanceHistoryTickLabel = (
+  period: string,
+  visiblePeriodCount: number,
+): string => {
+  const month = period.slice(0, 7);
+  if (visiblePeriodCount > 36) {
+    const monthNumber = period.slice(5, 7);
+    return monthNumber === '01' ? period.slice(0, 4) : periodLabel(month);
+  }
+  return periodLabel(month);
+};
+
 const BalanceHistoryChart = ({
   onSelectDebt,
   rows,
@@ -698,6 +722,7 @@ const BalanceHistoryChart = ({
 }): React.JSX.Element => {
   const series = useMemo(() => balanceHistorySeries(rows), [rows]);
   const allKeys = useMemo(() => series.map((item) => item.key), [series]);
+  const chartRef = useRef<HTMLDivElement | null>(null);
   const periods = useMemo(
     () => [...new Set(rows.map((row) => row.effectiveDate))].sort(),
     [rows],
@@ -712,7 +737,12 @@ const BalanceHistoryChart = ({
       .slice(zoom.start, zoom.end + 1)
       .map((value) => Math.max(0, value.balance)),
   );
-  const maximum = Math.max(...visibleValues, 1);
+  const rawMinimum = Math.min(...visibleValues, 0);
+  const rawMaximum = Math.max(...visibleValues, 1);
+  const rawSpan = Math.max(1, rawMaximum - rawMinimum);
+  const forceZero = rawMinimum <= 0 || rawMinimum / Math.max(rawMaximum, 1) < 0.25;
+  const minimum = forceZero ? 0 : Math.max(0, rawMinimum - rawSpan * 0.1);
+  const maximum = rawMaximum + rawSpan * 0.1;
   const width = 820;
   const height = 320;
   const chartLeft = 86;
@@ -726,7 +756,8 @@ const BalanceHistoryChart = ({
       ? chartLeft
       : chartLeft + (index * (chartRight - chartLeft)) / (visiblePeriods.length - 1);
   const yFor = (value: number): number =>
-    chartBottom - (Math.max(0, value) / maximum) * chartHeight;
+    chartBottom - ((Math.max(0, value) - minimum) / (maximum - minimum)) * chartHeight;
+  const tickIndexes = visibleTickIndexes(visiblePeriods.length);
   const formatChange = (change: number | null): string =>
     change === null ? 'not applicable' : formatDollarString(change.toFixed(2));
 
@@ -738,25 +769,33 @@ const BalanceHistoryChart = ({
     );
   };
 
-  const zoomChart = (event: React.WheelEvent<HTMLDivElement>): void => {
-    if (periods.length <= 2) return;
-    event.preventDefault();
-    setZoom((current) => {
-      const currentSize = current.end - current.start + 1;
-      const direction = event.deltaY < 0 ? -1 : 1;
-      const nextSize = Math.max(
-        2,
-        Math.min(
-          periods.length,
-          currentSize + direction * Math.max(1, Math.round(currentSize * 0.2)),
-        ),
-      );
-      const center = (current.start + current.end) / 2;
-      let start = Math.round(center - (nextSize - 1) / 2);
-      start = Math.max(0, Math.min(start, periods.length - nextSize));
-      return { start, end: start + nextSize - 1 };
-    });
-  };
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return undefined;
+
+    const zoomChart = (event: WheelEvent): void => {
+      if (periods.length <= 2) return;
+      event.preventDefault();
+      setZoom((current) => {
+        const currentSize = current.end - current.start + 1;
+        const direction = event.deltaY < 0 ? -1 : 1;
+        const nextSize = Math.max(
+          2,
+          Math.min(
+            periods.length,
+            currentSize + direction * Math.max(1, Math.round(currentSize * 0.2)),
+          ),
+        );
+        const center = (current.start + current.end) / 2;
+        let start = Math.round(center - (nextSize - 1) / 2);
+        start = Math.max(0, Math.min(start, periods.length - nextSize));
+        return { start, end: start + nextSize - 1 };
+      });
+    };
+
+    chart.addEventListener('wheel', zoomChart, { passive: false });
+    return () => chart.removeEventListener('wheel', zoomChart);
+  }, [periods.length, visibleSeries.length]);
 
   if (rows.length === 0) return <EmptyState />;
 
@@ -818,8 +857,15 @@ const BalanceHistoryChart = ({
         <p className="sr-only" data-testid="balance-history-y-axis-maximum">
           Y-axis maximum: {formatDollarString(maximum.toFixed(2))}
         </p>
+        <p className="sr-only" data-testid="balance-history-y-axis-minimum">
+          Y-axis minimum: {formatDollarString(minimum.toFixed(2))}
+        </p>
         <p className="mt-2 text-xs text-slate-500" data-testid="balance-history-zoom">
-          Showing {visiblePeriods.length} of {periods.length} periods
+          Visible range:{' '}
+          {visiblePeriods.length > 0
+            ? `${visiblePeriods.at(0)} through ${visiblePeriods.at(-1)}`
+            : 'none'}{' '}
+          ({visiblePeriods.length} of {periods.length} periods)
         </p>
         {visibleSeries.length === 0 ? (
           <p className="mt-4 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
@@ -830,9 +876,9 @@ const BalanceHistoryChart = ({
           <div
             className="mt-4"
             data-testid="balance-history-chart"
-            onWheel={zoomChart}
+            ref={chartRef}
             role="img"
-            aria-label={`Line chart of debt balance history from ${visiblePeriods.at(0) ?? ''} through ${visiblePeriods.at(-1) ?? ''}. Tabular detail follows.`}
+            aria-label={`Line chart of debt balance history from ${visiblePeriods.at(0) ?? ''} through ${visiblePeriods.at(-1) ?? ''}. Chart data is available in a disclosure.`}
           >
             <svg
               aria-hidden="true"
@@ -873,20 +919,24 @@ const BalanceHistoryChart = ({
                 {formatDollarString(maximum.toFixed(2))}
               </text>
               <text fill="#475569" fontSize="11" x="18" y={chartBottom + 4}>
-                $0.00
+                {formatDollarString(minimum.toFixed(2))}
               </text>
-              {visiblePeriods.map((period, index) => (
-                <text
-                  fill="#475569"
-                  fontSize="10"
-                  key={period}
-                  textAnchor="middle"
-                  x={xFor(index)}
-                  y={chartBottom + 18 + (index % 2) * 12}
-                >
-                  {periodLabel(period.slice(0, 7))}
-                </text>
-              ))}
+              {tickIndexes.map((index) => {
+                const period = visiblePeriods[index] ?? '';
+                return (
+                  <text
+                    data-testid="balance-history-x-tick"
+                    fill="#475569"
+                    fontSize="10"
+                    key={period}
+                    textAnchor="middle"
+                    x={xFor(index)}
+                    y={chartBottom + 22}
+                  >
+                    {balanceHistoryTickLabel(period, visiblePeriods.length)}
+                  </text>
+                );
+              })}
               {visibleSeries.map((item, seriesIndex) => {
                 const values = item.values.slice(zoom.start, zoom.end + 1);
                 const points = values
@@ -896,6 +946,7 @@ const BalanceHistoryChart = ({
                 return (
                   <g key={item.key}>
                     <polyline
+                      data-testid="balance-history-line"
                       fill="none"
                       points={points}
                       stroke={color}
@@ -906,7 +957,13 @@ const BalanceHistoryChart = ({
                       const x = xFor(index);
                       const y = yFor(value.balance);
                       return (
-                        <g fill="white" key={`${item.key}-${value.periodEndDate}`}>
+                        <g
+                          className="opacity-0 hover:opacity-100 focus:opacity-100"
+                          data-testid="balance-history-active-marker"
+                          fill="white"
+                          key={`${item.key}-${value.periodEndDate}`}
+                          tabIndex={0}
+                        >
                           <title>{`${value.periodEndDate}: ${item.label}; ending balance ${formatDollarString(value.balance.toFixed(2))}; change ${formatChange(value.changeFromPriorPeriod)}.`}</title>
                           <g stroke={color} strokeWidth="2">
                             {markerForPoint({ marker: item.marker, x, y })}
@@ -921,47 +978,54 @@ const BalanceHistoryChart = ({
           </div>
         )}
       </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="text-left text-xs text-slate-500 uppercase">
-            <tr>
-              <th className="px-3 py-2">Period end</th>
-              <th className="px-3 py-2">Series</th>
-              <th className="px-3 py-2 text-right">Ending balance</th>
-              <th className="px-3 py-2 text-right">Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleSeries.flatMap((item) =>
-              item.values.slice(zoom.start, zoom.end + 1).map((value) => (
-                <tr
-                  className="border-t border-slate-100"
-                  key={`${item.key}-${value.periodEndDate}`}
-                >
-                  <td className="px-3 py-2">{value.periodEndDate}</td>
-                  <td className="px-3 py-2">
-                    {item.debtId ? (
-                      <DebtButton
-                        id={item.debtId}
-                        name={item.label}
-                        onSelectDebt={onSelectDebt}
-                      />
-                    ) : (
-                      <span className="font-semibold text-slate-900">{item.label}</span>
-                    )}
-                  </td>
-                  <MoneyCell value={value.balance.toFixed(2)} />
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
-                    {value.changeFromPriorPeriod === null
-                      ? '—'
-                      : formatDollarString(value.changeFromPriorPeriod.toFixed(2))}
-                  </td>
-                </tr>
-              )),
-            )}
-          </tbody>
-        </table>
-      </div>
+      <details className="rounded-lg border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-200 focus:outline-none">
+          View chart data
+        </summary>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-left text-xs text-slate-500 uppercase">
+              <tr>
+                <th className="px-3 py-2">Period end</th>
+                <th className="px-3 py-2">Series</th>
+                <th className="px-3 py-2 text-right">Ending balance</th>
+                <th className="px-3 py-2 text-right">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleSeries.flatMap((item) =>
+                item.values.slice(zoom.start, zoom.end + 1).map((value) => (
+                  <tr
+                    className="border-t border-slate-100"
+                    key={`${item.key}-${value.periodEndDate}`}
+                  >
+                    <td className="px-3 py-2">{value.periodEndDate}</td>
+                    <td className="px-3 py-2">
+                      {item.debtId ? (
+                        <DebtButton
+                          id={item.debtId}
+                          name={item.label}
+                          onSelectDebt={onSelectDebt}
+                        />
+                      ) : (
+                        <span className="font-semibold text-slate-900">
+                          {item.label}
+                        </span>
+                      )}
+                    </td>
+                    <MoneyCell value={value.balance.toFixed(2)} />
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">
+                      {value.changeFromPriorPeriod === null
+                        ? '—'
+                        : formatDollarString(value.changeFromPriorPeriod.toFixed(2))}
+                    </td>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   );
 };

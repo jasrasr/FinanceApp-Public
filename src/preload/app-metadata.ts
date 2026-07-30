@@ -1,7 +1,7 @@
 import { appMetadataDtoSchema, type AppMetadataDto } from '../shared/debt-contracts';
 
 const deterministicValidationMetadata = {
-  version: '0.20.0',
+  version: '0.21.0',
   lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
 } as const;
 

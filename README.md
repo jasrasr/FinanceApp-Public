@@ -15,7 +15,8 @@ for maintaining debts and supporting future debt-paydown analysis.
   descriptive update, archive, and restore.
 - Initial and subsequent effective-dated debt-term periods with preserved history.
 - Manual posted activity entry for payments, draws, fees, penalties, interest,
-  principal adjustments, mortgage escrow activity, and reversals.
+  principal adjustments, mortgage escrow activity, reversals, and user-facing
+  transaction edits implemented as linked superseding corrections.
 - Statement-based balance reconciliation against the ledger balance calculated
   through the reconciliation date, including a supporting confirmed balance
   snapshot, automatic reconciliation status assignment, explicit approved
@@ -216,6 +217,11 @@ Electron user-data directory that it removes after the workflow.
 - For payments, principal is auto-calculated in the form as the payment amount
   remaining after interest, escrow, fees, and penalties. Nonprincipal
   allocations cannot exceed the payment amount.
+- Editing an eligible posted transaction is presented as one Edit and Save
+  workflow, but internally preserves the original transaction, posts an exact
+  linked reversal, creates a corrected replacement, and marks affected current
+  reconciliations for review when the corrected activity predates the statement
+  date.
 - Reversals require an explicit financial reversal date. The reversal affects
   balances and year-to-date activity only in the year containing that financial
   date, not the year when the reversal is entered.
@@ -311,8 +317,9 @@ Electron user-data directory that it removes after the workflow.
   balance movement.
 - Debt balance history by obligation is shown as an interactive line chart with
   one line per debt and one total-debt line. It uses application-calculated
-  ending principal balances by period, supports session-only legend toggles and
-  chart zoom, and remains paired with accessible tabular detail.
+  ending principal balances by period, supports session-only legend toggles,
+  chart-only mouse-wheel zoom with dynamic date ticks, and an accessible
+  disclosure for chart data that is not displayed by default.
 - Interest analysis separates monthly interest expense trends from annual
   interest comparisons. Monthly charts default to a recent readable period and
   support month-by-month comparison across years. Interest expense is displayed

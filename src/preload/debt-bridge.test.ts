@@ -21,6 +21,7 @@ describe('typed preload bridge', () => {
       'createDebtTransaction',
       'createManualBackup',
       'createPayoffScenario',
+      'editDebtTransaction',
       'exportData',
       'getDashboard',
       'getDataManagementStatus',
@@ -43,9 +44,9 @@ describe('typed preload bridge', () => {
       'updateStagedImportRowReview',
       'voidBalanceReconciliation',
     ]);
-    expect(bridge.bridgeVersion).toBe(16);
+    expect(bridge.bridgeVersion).toBe(17);
     expect(bridge.appMetadata).toEqual({
-      version: '0.20.0',
+      version: '0.21.0',
       lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);

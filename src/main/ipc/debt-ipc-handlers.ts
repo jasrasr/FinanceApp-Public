@@ -4,6 +4,7 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  editDebtTransactionRequestSchema,
   createManualBackupRequestSchema,
   createPayoffScenarioRequestSchema,
   addDebtTermRequestSchema,
@@ -362,6 +363,14 @@ export const registerDebtIpcHandlers = (
     debtDetailDtoSchema,
     isTrustedSender,
     (request) => service.createDebtTransaction(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.editTransaction,
+    editDebtTransactionRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.editDebtTransaction(request),
   );
   registerHandler(
     ipcMain,

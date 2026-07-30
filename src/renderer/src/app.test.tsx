@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AppBridge } from '../../shared/app-bridge';
 import type {
@@ -19,9 +19,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 16,
+  bridgeVersion: 17,
   appMetadata: {
-    version: '0.20.0',
+    version: '0.21.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -110,6 +110,7 @@ const createBridge = (): AppBridge => ({
   updateDebt: vi.fn(),
   addDebtTerm: vi.fn(),
   createDebtTransaction: vi.fn(),
+  editDebtTransaction: vi.fn(),
   reverseDebtTransaction: vi.fn(),
   createBalanceSnapshot: vi.fn(),
   createBalanceReconciliation: vi.fn(),
@@ -844,6 +845,61 @@ describe('debt maintenance application', () => {
     expect(screen.getByRole('button', { name: 'Reconcile balance' })).toBeVisible();
   });
 
+  it('edits a posted transaction through the typed bridge with positive auto-principal entry', async () => {
+    const bridge = createBridge();
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [sampleDebtSummary],
+    }));
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: sampleDebtDetail,
+    }));
+    bridge.editDebtTransaction = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        ...sampleDebtDetail,
+        currentBalance: '124550.00',
+      },
+    }));
+
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Open Fictional Equipment Note — Harbor Ridge Cooperative/,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Edit transaction' }),
+    ).toBeVisible();
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('500.00');
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('400.00');
+    fireEvent.change(screen.getByLabelText(/Interest/), {
+      target: { value: '50.00' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('450.00');
+    fireEvent.click(screen.getByRole('button', { name: 'Save transaction edit' }));
+
+    expect(await screen.findByText('Transaction edit was saved.')).toBeVisible();
+    expect(bridge.editDebtTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: sampleDebtDetail.transactions[0]!.id,
+        expectedUpdatedAtUtc: sampleDebtDetail.transactions[0]!.updatedAtUtc,
+        transaction: expect.objectContaining({
+          totalAmount: '500.00',
+          allocations: expect.objectContaining({
+            principal: '450.00',
+            interest: '50.00',
+          }),
+        }),
+      }),
+    );
+  });
+
   it('renders dashboard metrics and empty dashboard sections', async () => {
     render(<App bridge={createBridge()} />);
 
@@ -1078,7 +1134,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.20.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.21.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1149,12 +1205,36 @@ describe('debt maintenance application', () => {
       within(legendControls).getByRole('button', { name: 'Total debt balance' }),
     );
     const zoomStatus = screen.getByTestId('balance-history-zoom').textContent;
-    fireEvent.wheel(screen.getByTestId('balance-history-chart'), { deltaY: -100 });
+    const chart = screen.getByTestId('balance-history-chart');
+    await waitFor(() => {
+      const chartWheel = new WheelEvent('wheel', {
+        cancelable: true,
+        deltaY: -100,
+      });
+      chart.dispatchEvent(chartWheel);
+      expect(chartWheel.defaultPrevented).toBe(true);
+    });
     expect(screen.getByTestId('balance-history-zoom').textContent).not.toBe(zoomStatus);
+    const outsideWheel = new WheelEvent('wheel', {
+      cancelable: true,
+      deltaY: -100,
+    });
+    document.body.dispatchEvent(outsideWheel);
+    expect(outsideWheel.defaultPrevented).toBe(false);
+    expect(screen.getAllByTestId('balance-history-x-tick').length).toBeLessThanOrEqual(
+      8,
+    );
+    expect(screen.queryAllByTestId('balance-history-line').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('balance-history-active-marker')[0]).toHaveClass(
+      'opacity-0',
+    );
+    expect(screen.getByText('View chart data')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }));
     expect(screen.getByTestId('balance-history-zoom')).toHaveTextContent(
-      'Showing 3 of 3 periods',
+      '2026-01-31 through 2026-03-31',
     );
+    expect(screen.queryByRole('table', { name: /Debt balance history/i })).toBeNull();
+    fireEvent.click(screen.getByText('View chart data'));
     expect(screen.getAllByText('$371,800.13').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByText('Interest expense analysis'));
     expect(screen.getByText('Monthly interest expense trend')).toBeVisible();

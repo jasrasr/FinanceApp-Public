@@ -1,5 +1,6 @@
 import type {
   CreateDebtTransactionRequest,
+  DebtTransactionDto,
   DebtDetailDto,
 } from '../../../shared/debt-contracts';
 import { useMemo, useState } from 'react';
@@ -11,8 +12,10 @@ export interface RecordTransactionFormProps {
   readonly busy: boolean;
   readonly debt: DebtDetailDto;
   readonly fieldErrors?: Readonly<Record<string, readonly string[]>>;
+  readonly initialTransaction?: DebtTransactionDto;
   readonly onCancel: () => void;
   readonly onSubmit: (request: CreateDebtTransactionRequest) => void;
+  readonly submitLabel?: string;
 }
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -25,6 +28,7 @@ const nullableValue = (data: FormData, name: string): string | null => {
 };
 
 const transactionTypeOptions = POSTED_ACTIVITY_TRANSACTION_TYPES;
+type EditableTransactionType = (typeof transactionTypeOptions)[number];
 const allocationFields = [
   ['principal', 'Principal'],
   ['interest', 'Interest'],
@@ -57,22 +61,45 @@ const parseCurrencyInputCents = (raw: string): number | null => {
 };
 
 const currencyInputFromCents = (cents: number): string => (cents / 100).toFixed(2);
+const absoluteCurrencyInput = (value: string): string =>
+  Math.abs(Number(value)).toFixed(2);
+
+const allocationInputValue = (
+  transaction: DebtTransactionDto | undefined,
+  allocationType: (typeof allocationFields)[number][0],
+): string => {
+  const allocation = transaction?.allocations.find(
+    (candidate) => candidate.allocationType === allocationType,
+  );
+  return allocation ? absoluteCurrencyInput(allocation.amount) : '';
+};
 
 export const RecordTransactionForm = ({
   busy,
   debt,
   fieldErrors,
+  initialTransaction,
   onCancel,
   onSubmit,
+  submitLabel = 'Record transaction',
 }: RecordTransactionFormProps): React.JSX.Element => {
+  const initialTransactionType =
+    initialTransaction &&
+    transactionTypeOptions.some(
+      (option) => option === initialTransaction.transactionType,
+    )
+      ? (initialTransaction.transactionType as EditableTransactionType)
+      : 'payment';
   const [transactionType, setTransactionType] =
-    useState<CreateDebtTransactionRequest['transaction']['transactionType']>('payment');
-  const [totalAmount, setTotalAmount] = useState('');
+    useState<EditableTransactionType>(initialTransactionType);
+  const [totalAmount, setTotalAmount] = useState(
+    initialTransaction ? absoluteCurrencyInput(initialTransaction.totalAmount) : '',
+  );
   const [nonPrincipalAllocations, setNonPrincipalAllocations] = useState({
-    interest: '',
-    escrow: '',
-    fee: '',
-    penalty: '',
+    interest: allocationInputValue(initialTransaction, 'interest'),
+    escrow: allocationInputValue(initialTransaction, 'escrow'),
+    fee: allocationInputValue(initialTransaction, 'fee'),
+    penalty: allocationInputValue(initialTransaction, 'penalty'),
   });
 
   const autoPrincipal = useMemo(() => {
@@ -167,15 +194,12 @@ export const RecordTransactionForm = ({
         >
           <select
             className={inputClassName}
-            defaultValue="payment"
             id="transaction.transactionType"
             name="transaction.transactionType"
             onChange={(event) =>
-              setTransactionType(
-                event.target
-                  .value as CreateDebtTransactionRequest['transaction']['transactionType'],
-              )
+              setTransactionType(event.target.value as EditableTransactionType)
             }
+            value={transactionType}
           >
             {transactionTypeOptions.map((option) => (
               <option key={option} value={option}>
@@ -191,7 +215,7 @@ export const RecordTransactionForm = ({
         >
           <input
             className={inputClassName}
-            defaultValue={today()}
+            defaultValue={initialTransaction?.effectiveDate ?? today()}
             id="transaction.transactionDate"
             name="transaction.transactionDate"
             required
@@ -228,6 +252,7 @@ export const RecordTransactionForm = ({
           >
             <input
               className={inputClassName}
+              defaultValue={initialTransaction?.description ?? ''}
               id="transaction.description"
               name="transaction.description"
             />
@@ -299,6 +324,11 @@ export const RecordTransactionForm = ({
                         : ''
                     : undefined
                 }
+                defaultValue={
+                  transactionType === 'payment'
+                    ? undefined
+                    : allocationInputValue(initialTransaction, fieldName)
+                }
               />
               {transactionType === 'payment' && fieldName === 'principal' ? (
                 <p className="mt-1 text-xs text-slate-500" id="auto-principal-helper">
@@ -319,7 +349,7 @@ export const RecordTransactionForm = ({
         busy={busy}
         disabled={transactionType === 'payment' && autoPrincipal.negative}
         onCancel={onCancel}
-        submitLabel="Record transaction"
+        submitLabel={submitLabel}
       />
     </form>
   );

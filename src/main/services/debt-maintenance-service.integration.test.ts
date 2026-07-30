@@ -516,6 +516,145 @@ describe('debt creation', () => {
     expect(latest.calculatedEscrowBalance).toBe('125.00');
   });
 
+  it('edits a posted payment by superseding it with a linked reversal and replacement', () => {
+    const created = service.createDebt(validRequest());
+    const afterPayment = service.createDebtTransaction(
+      validTransactionRequest(created.id),
+    );
+    const original = afterPayment.transactions[0]!;
+
+    const updated = service.editDebtTransaction({
+      id: original.id,
+      debtId: created.id,
+      expectedUpdatedAtUtc: original.updatedAtUtc,
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2026-01-15',
+        postingDate: '2026-01-15',
+        status: 'posted',
+        totalAmount: '500.00',
+        description: 'Generated corrected payment.',
+        sourceType: 'manual',
+        sourceReference: null,
+        allocations: {
+          principal: '450.00',
+          interest: '50.00',
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    const transactions = context.database
+      .select()
+      .from(debtTransactions)
+      .where(eq(debtTransactions.debtId, created.id))
+      .all();
+    const originalRecord = transactions.find(
+      (transaction) => transaction.id === original.id,
+    );
+    const reversal = transactions.find(
+      (transaction) => transaction.reversalOfTransactionId === original.id,
+    );
+    const replacement = transactions.find(
+      (transaction) => transaction.supersedesTransactionId === original.id,
+    );
+    const dashboard = service.getDashboard({});
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-12-31',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+    const eventTypes = context.database
+      .select({ eventType: auditEvents.eventType })
+      .from(auditEvents)
+      .all()
+      .map((event) => event.eventType);
+
+    expect(originalRecord?.status).toBe('superseded');
+    expect(reversal).toMatchObject({
+      transactionType: 'reversal',
+      totalAmountCents: 50_000,
+      reversalOfTransactionId: original.id,
+    });
+    expect(replacement).toMatchObject({
+      transactionType: 'payment',
+      totalAmountCents: -50_000,
+      supersedesTransactionId: original.id,
+    });
+    expect(updated.currentBalance).toBe('124550.13');
+    expect(dashboard.totals.principalReductionYtd).toBe('450.00');
+    expect(dashboard.totals.interestActivityYtd).toBe('50.00');
+    expect(reports.monthlyRollforward.rows[0]).toEqual(
+      expect.objectContaining({
+        principalReduction: '450.00',
+        endingBalance: '124550.13',
+      }),
+    );
+    expect(eventTypes).toContain('transaction_superseded');
+    expect(eventTypes).toContain('transaction_replacement_recorded');
+  });
+
+  it('prevents duplicate active replacements for a transaction edit', () => {
+    const created = service.createDebt(validRequest());
+    const afterPayment = service.createDebtTransaction(
+      validTransactionRequest(created.id),
+    );
+    const original = afterPayment.transactions[0]!;
+    const request = {
+      ...validTransactionRequest(created.id),
+      id: original.id,
+      expectedUpdatedAtUtc: original.updatedAtUtc,
+    };
+
+    service.editDebtTransaction(request);
+
+    expect(() => service.editDebtTransaction(request)).toThrow(
+      /already has a current replacement/,
+    );
+  });
+
+  it('marks current reconciliations for review when edited activity affects the statement date', () => {
+    const created = service.createDebt(validRequest());
+    const afterPayment = service.createDebtTransaction(
+      validTransactionRequest(created.id),
+    );
+    const original = afterPayment.transactions[0]!;
+    service.createBalanceReconciliation(validReconciliationRequest(created.id));
+
+    const updated = service.editDebtTransaction({
+      id: original.id,
+      debtId: created.id,
+      expectedUpdatedAtUtc: original.updatedAtUtc,
+      transaction: {
+        ...validTransactionRequest(created.id).transaction,
+        totalAmount: '500.00',
+        allocations: {
+          principal: '450.00',
+          interest: '50.00',
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    const currentReconciliation = updated.balanceReconciliations.find(
+      (reconciliation) => reconciliation.lifecycleStatus === 'current',
+    );
+
+    expect(currentReconciliation).toMatchObject({
+      reconciliationStatus: 'exception',
+    });
+  });
+
   it('tracks mortgage escrow deposits and disbursements separately from principal debt balance', () => {
     const request = validRequest('Fictional Mortgage With Escrow');
     request.debt.debtType = 'mortgage';

@@ -1061,3 +1061,54 @@ completed.
 - Recommended next phase:
   - Run additional user acceptance testing on report readability and payment
     allocation entry before adding new reporting categories.
+
+## Phase 21: Debt-History Chart and Posted-Transaction Editing Refinement
+
+- Completion date: 2026-07-30
+- Application version: 0.21.0
+- Features implemented:
+  - Refined the debt balance history chart so mouse-wheel input over the chart
+    zooms only the chart and normal page scrolling continues outside the chart.
+  - Changed chart zoom to update the visible date domain, recalculate readable
+    X-axis ticks, show the visible date range, remove normal point markers, and
+    hide full chart data behind an optional disclosure.
+  - Added a user-facing Edit transaction workflow for eligible posted
+    transactions.
+  - Implemented transaction edits as atomic superseding corrections that retain
+    the original transaction, post a linked reversal, create a corrected
+    replacement, and preserve audit history.
+- Material architecture and accounting decisions:
+  - The existing unified transaction ledger and self-reference columns are used
+    for edit provenance; no raw SQL, Drizzle, filesystem, or generic IPC access
+    is exposed to the renderer.
+  - Current balances, dashboards, reports, exports, and payoff inputs use the
+    current transaction chain and exclude superseded originals plus their edit
+    reversals.
+  - Edits affecting activity on or before a current reconciliation statement
+    date mark the reconciliation as an exception requiring review.
+  - Chart visibility and zoom remain renderer-only report-session state.
+- Database schema or migration changes:
+  - No schema or migration changes.
+- New or changed IPC operations:
+  - Added narrow typed `editDebtTransaction` bridge/IPC operation.
+- New UI screens or workflows:
+  - Posted transaction history now shows Edit for eligible transactions and
+    explains restricted transactions.
+  - Edit transaction uses the existing positive-entry form, including automatic
+    payment-principal calculation.
+  - Debt balance history chart data is available through a closed-by-default
+    disclosure instead of a full table in the normal view.
+- Validation and smoke-test results:
+  - Added service, renderer, preload, IPC, Electron E2E, and packaged smoke
+    coverage for transaction editing and chart interaction.
+  - Focused command results should be recorded in the completion report for this
+    phase.
+- Known limitations and technical debt:
+  - Reconciliation review after transaction editing is represented by an
+    exception status rather than a dedicated stale/review status because no
+    schema migration was introduced.
+  - The chart continues to use lightweight SVG rendering rather than a dedicated
+    charting library.
+- Recommended next phase:
+  - Perform user acceptance testing on transaction correction wording and chart
+    zoom behavior before adding more reporting complexity.

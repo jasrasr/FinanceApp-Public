@@ -117,6 +117,13 @@ Reversal rows use their own financial `effective_date` and `posting_date`,
 provided by the reversal workflow. They do not derive financial date treatment
 from `created_at_utc` or `updated_at_utc`.
 
+User-facing posted-transaction edits reuse the existing self-reference columns.
+The original transaction is retained and marked `superseded`; a linked reversal
+uses `reversal_of_transaction_id` to offset the original; the corrected
+replacement uses `supersedes_transaction_id` to identify the original it
+replaces. Imported replacements preserve import provenance in `source_type` and
+`source_reference`.
+
 Application-calculated debt balances are derived from balance-affecting
 allocations rather than full transaction totals. Payment interest and escrow
 allocations do not reduce debt principal. Interest allocations increase debt

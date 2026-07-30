@@ -3,6 +3,7 @@ import type { AppBridge } from '../../shared/app-bridge';
 import type {
   CreateBalanceReconciliationRequest,
   CreateDebtTransactionRequest,
+  EditDebtTransactionRequest,
   AddDebtTermRequest,
   ApplicationError,
   ApplicationResult,
@@ -16,6 +17,7 @@ import type {
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
+  DebtTransactionDto,
   GetDebtReportsRequest,
   ImportBatchDto,
   ImportBatchSummaryDto,
@@ -55,7 +57,7 @@ type View =
   | 'reports'
   | 'escrow-detail'
   | 'data-management';
-type DetailPanel = 'overview' | 'transaction' | 'reconciliation';
+type DetailPanel = 'overview' | 'transaction' | 'transaction-edit' | 'reconciliation';
 type Confirmation = 'archive' | 'restore' | 'reverse' | 'void-reconciliation' | null;
 type ReverseTarget = {
   readonly id: string;
@@ -142,6 +144,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [reverseTarget, setReverseTarget] = useState<ReverseTarget>(null);
+  const [transactionEditTarget, setTransactionEditTarget] =
+    useState<DebtTransactionDto | null>(null);
   const [reconciliationTarget, setReconciliationTarget] =
     useState<BalanceReconciliationDto | null>(null);
 
@@ -755,6 +759,35 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
+  const editTransaction = async (
+    request: CreateDebtTransactionRequest,
+  ): Promise<void> => {
+    if (!transactionEditTarget) return;
+
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const editRequest: EditDebtTransactionRequest = {
+      ...request,
+      id: transactionEditTarget.id,
+      expectedUpdatedAtUtc: transactionEditTarget.updatedAtUtc,
+    };
+    const result = await invokeBridge(() => bridge.editDebtTransaction(editRequest));
+
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Transaction edit was saved.');
+      setDetailPanel('overview');
+      setTransactionEditTarget(null);
+      await loadDebts();
+      await loadDashboard();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
   const recordEscrowActivity = async (
     request: CreateDebtTransactionRequest,
   ): Promise<void> => {
@@ -1240,6 +1273,43 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 </section>
               ) : null}
 
+              {detailPanel === 'transaction-edit' && transactionEditTarget ? (
+                <section
+                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
+                  aria-labelledby="transaction-edit-workflow-heading"
+                >
+                  <p className="text-sm font-medium text-slate-500">
+                    {combinedDebtLabel(selectedDebt)}
+                  </p>
+                  <h2
+                    className="mt-1 text-2xl font-semibold text-slate-950"
+                    id="transaction-edit-workflow-heading"
+                  >
+                    Edit transaction
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Debt Tracker preserves the original posted transaction, records an
+                    offsetting reversal, and creates a linked corrected replacement.
+                  </p>
+                  <div className="mt-8">
+                    <RecordTransactionForm
+                      busy={saving}
+                      debt={selectedDebt}
+                      fieldErrors={fieldErrors}
+                      initialTransaction={transactionEditTarget}
+                      onCancel={() => {
+                        setDetailPanel('overview');
+                        setTransactionEditTarget(null);
+                        setError(null);
+                        setFieldErrors(undefined);
+                      }}
+                      onSubmit={(request) => void editTransaction(request)}
+                      submitLabel="Save transaction edit"
+                    />
+                  </div>
+                </section>
+              ) : null}
+
               {detailPanel === 'reconciliation' ? (
                 <section
                   className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
@@ -1302,7 +1372,15 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   setError(null);
                   setFieldErrors(undefined);
                   setSuccessMessage(null);
+                  setTransactionEditTarget(null);
                   setDetailPanel('transaction');
+                }}
+                onEditTransaction={(transaction) => {
+                  setError(null);
+                  setFieldErrors(undefined);
+                  setSuccessMessage(null);
+                  setTransactionEditTarget(transaction);
+                  setDetailPanel('transaction-edit');
                 }}
                 onReverseTransaction={requestReverseTransaction}
                 onVoidReconciliation={requestVoidReconciliation}

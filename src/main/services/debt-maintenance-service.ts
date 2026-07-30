@@ -6,6 +6,7 @@ import type {
   CreateBalanceReconciliationRequest,
   CreateBalanceSnapshotRequest,
   CreateDebtTransactionRequest,
+  EditDebtTransactionRequest,
   ArchiveDebtRequest,
   CreateDebtRequest,
   CreatePayoffScenarioRequest,
@@ -43,6 +44,7 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  editDebtTransactionRequestSchema,
   createDebtRequestSchema,
   createPayoffScenarioRequestSchema,
   getDashboardRequestSchema,
@@ -85,6 +87,7 @@ import {
   createBalanceSnapshotRecord,
   createImportBatchRecord,
   createPostedTransactionRecord,
+  editPostedTransactionRecord,
   appendDebtTermRecord,
   getDebtActivityRecord,
   getDebtTransactionRecord,
@@ -189,6 +192,7 @@ export interface DebtMaintenanceService {
   updateDebt(request: UpdateDebtRequest): DebtDetailDto;
   addDebtTerm(request: AddDebtTermRequest): DebtDetailDto;
   createDebtTransaction(request: CreateDebtTransactionRequest): DebtDetailDto;
+  editDebtTransaction(request: EditDebtTransactionRequest): DebtDetailDto;
   reverseDebtTransaction(request: ReverseDebtTransactionRequest): DebtDetailDto;
   createBalanceSnapshot(request: CreateBalanceSnapshotRequest): DebtDetailDto;
   createBalanceReconciliation(
@@ -1030,24 +1034,34 @@ const postedActualTransactionsThrough = (
   record: DebtWithActivityRecord,
   startDate: string,
   endDate: string,
-): readonly DebtTransactionWithAllocationsRecord[] =>
-  record.transactions.filter(
+): readonly DebtTransactionWithAllocationsRecord[] => {
+  const supersededTransactionIds = new Set(
+    record.transactions
+      .filter(({ transaction }) => transaction.status === 'superseded')
+      .map(({ transaction }) => transaction.id),
+  );
+
+  return record.transactions.filter(
     ({ transaction }) =>
       transaction.status !== 'superseded' &&
+      !(
+        transaction.transactionType === 'reversal' &&
+        transaction.reversalOfTransactionId &&
+        supersededTransactionIds.has(transaction.reversalOfTransactionId)
+      ) &&
       isWithinDateRange(transaction.effectiveDate, startDate, endDate),
   );
+};
 
 const openingPrincipalRepresentedByBorrowingTransaction = (
   record: DebtWithActivityRecord,
   startDate: string,
   endDate: string,
 ): boolean =>
-  record.transactions.some(
+  postedActualTransactionsThrough(record, startDate, endDate).some(
     ({ transaction }) =>
-      transaction.status !== 'superseded' &&
       transaction.transactionType === 'borrowing_draw' &&
       transaction.effectiveDate === record.debt.originationDate &&
-      isWithinDateRange(transaction.effectiveDate, startDate, endDate) &&
       transaction.totalAmountCents === record.debt.originalPrincipalCents,
   );
 
@@ -1472,16 +1486,15 @@ const calculateReportPrincipalBalanceThroughDate = (
   date: string,
 ): number => {
   if (date < record.debt.originationDate) return 0;
-  return record.transactions
-    .filter(
-      ({ transaction }) =>
-        transaction.status !== 'superseded' && transaction.effectiveDate <= date,
-    )
-    .reduce(
-      (balance, { allocations }) =>
-        balance + allocationTotal(allocations, ['principal', 'extra_principal']),
-      record.debt.originalPrincipalCents,
-    );
+  return postedActualTransactionsThrough(
+    record,
+    record.debt.originationDate,
+    date,
+  ).reduce(
+    (balance, { allocations }) =>
+      balance + allocationTotal(allocations, ['principal', 'extra_principal']),
+    record.debt.originalPrincipalCents,
+  );
 };
 
 const allocationTotal = (
@@ -3869,6 +3882,236 @@ export const createDebtMaintenanceService = ({
         return mapDetail(
           database,
           getRecordOrThrow(parsed.debtId),
+          currentFinancialDate(now),
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    editDebtTransaction: (request) => {
+      try {
+        const parsed = editDebtTransactionRequestSchema.parse(request);
+        const original = getDebtTransactionRecord(database, parsed.id);
+
+        if (!original) {
+          throw new ApplicationServiceError('not_found', 'Transaction was not found.');
+        }
+
+        const debt = getRecordOrThrow(original.debtId);
+
+        if (debt.debt.archivedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Restore this debt before editing activity.',
+          );
+        }
+
+        if (
+          debt.transactions.some(
+            (entry) =>
+              entry.transaction.supersedesTransactionId === original.id &&
+              entry.transaction.status === 'posted',
+          )
+        ) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Transaction can no longer be edited because it already has a current replacement.',
+          );
+        }
+
+        if (original.status !== 'posted') {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Only a currently posted transaction can be edited.',
+          );
+        }
+
+        if (original.transactionType === 'reversal') {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Reversal transactions cannot be edited.',
+          );
+        }
+
+        if (
+          original.transactionType === 'approved_reconciliation_adjustment' ||
+          original.sourceType === 'reconciliation'
+        ) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Reconciliation-approved adjustments require the reconciliation correction workflow.',
+          );
+        }
+
+        const originalEntry = debt.transactions.find(
+          (entry) => entry.transaction.id === original.id,
+        );
+
+        if (!originalEntry) {
+          throw new ApplicationServiceError(
+            'internal',
+            'Transaction allocations were not available for editing.',
+          );
+        }
+
+        const effectiveDate = ensureNotBefore(
+          'transaction.effectiveDate',
+          ensureCalendarDate(
+            'transaction.effectiveDate',
+            parsed.transaction.effectiveDate,
+          ),
+          debt.debt.originationDate,
+        );
+        const postingDate = ensureNotBefore(
+          'transaction.postingDate',
+          ensureCalendarDate('transaction.postingDate', parsed.transaction.postingDate),
+          debt.debt.originationDate,
+        );
+
+        if (postingDate < effectiveDate) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              'transaction.postingDate': [
+                'Posting date cannot precede the effective date.',
+              ],
+            },
+          );
+        }
+
+        const timestamp = nextTimestamp(now, original.updatedAtUtc);
+        const reversalId = createId();
+        const replacementId = createId();
+        const reversal: DebtTransactionInsert = {
+          id: reversalId,
+          debtId: original.debtId,
+          transactionType: 'reversal',
+          effectiveDate: original.effectiveDate,
+          postingDate: original.effectiveDate,
+          totalAmountCents: -original.totalAmountCents,
+          status: 'posted',
+          description: `Superseding edit reversal of transaction ${original.id}.`,
+          sourceType: 'system',
+          sourceReference: original.id,
+          reversalOfTransactionId: original.id,
+          supersedesTransactionId: null,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+        };
+        const reversalAllocations = originalEntry.allocations.map(
+          (allocation): TransactionAllocationInsert => ({
+            id: createId(),
+            transactionId: reversalId,
+            allocationType: allocation.allocationType,
+            amountCents: -allocation.amountCents,
+            notes: 'Superseding edit reversal of original allocation.',
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          }),
+        );
+        const direction = manualTransactionDirection(
+          parsed.transaction.transactionType,
+        );
+        const replacement: DebtTransactionInsert = {
+          id: replacementId,
+          debtId: original.debtId,
+          transactionType: parsed.transaction.transactionType,
+          effectiveDate,
+          postingDate,
+          totalAmountCents: convertManualTransactionAmount(
+            'transaction.totalAmount',
+            parsed.transaction.totalAmount,
+            direction,
+          ),
+          status: 'posted',
+          description:
+            nullableText(parsed.transaction.description) ??
+            `Corrected ${parsed.transaction.transactionType.replaceAll('_', ' ')} recorded.`,
+          sourceType:
+            original.sourceType === 'import' ? 'import' : parsed.transaction.sourceType,
+          sourceReference:
+            original.sourceType === 'import'
+              ? original.sourceReference
+              : nullableText(parsed.transaction.sourceReference),
+          reversalOfTransactionId: null,
+          supersedesTransactionId: original.id,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+        };
+        const replacementAllocations = buildManualTransactionAllocations(
+          createId,
+          replacementId,
+          timestamp,
+          'transaction.allocations',
+          parsed.transaction.allocations,
+          direction,
+        );
+        const signErrors = [
+          ...validateTransactionSignConvention(reversal, reversalAllocations),
+          ...validateTransactionSignConvention(replacement, replacementAllocations),
+        ];
+
+        if (signErrors.length > 0) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            postedTransactionFieldErrors(signErrors),
+          );
+        }
+
+        const affectedReconciliationDate =
+          original.effectiveDate < effectiveDate
+            ? original.effectiveDate
+            : effectiveDate;
+
+        editPostedTransactionRecord(database, {
+          originalTransactionId: original.id,
+          expectedUpdatedAtUtc: parsed.expectedUpdatedAtUtc,
+          reversal: {
+            transaction: reversal,
+            allocations: reversalAllocations,
+          },
+          replacement: {
+            transaction: replacement,
+            allocations: replacementAllocations,
+          },
+          updatedAtUtc: timestamp,
+          affectedReconciliationDate,
+          auditInputs: [
+            createTransactionAudit(
+              createId(),
+              original.id,
+              'transaction_superseded',
+              'supersede',
+              timestamp,
+              'Posted transaction was superseded by a corrected replacement.',
+              {
+                reversalTransactionId: reversalId,
+                replacementTransactionId: replacementId,
+              },
+            ),
+            createTransactionAudit(
+              createId(),
+              replacementId,
+              'transaction_replacement_recorded',
+              'create_replacement',
+              timestamp,
+              'Corrected replacement transaction was recorded.',
+              {
+                originalTransactionId: original.id,
+                allocationTypes: replacementAllocations.map(
+                  (allocation) => allocation.allocationType,
+                ),
+              },
+            ),
+          ],
+        });
+
+        return mapDetail(
+          database,
+          getRecordOrThrow(original.debtId),
           currentFinancialDate(now),
         );
       } catch (error) {
