@@ -40,6 +40,10 @@ const PRIOR_MIGRATION_TAGS = [
   '0003_peaceful_ghost_rider',
   '0004_youthful_starbolt',
 ] as const;
+const PRIOR_0005_MIGRATION_TAGS = [
+  ...PRIOR_MIGRATION_TAGS,
+  '0005_large_omega_sentinel',
+] as const;
 const FIXED_TIMESTAMP = '2026-07-27T13:00:00.000Z';
 
 let context: DatabaseContext;
@@ -74,12 +78,14 @@ const createFictionalDebt = () => {
   return debtId;
 };
 
-const createPriorMigrationFolder = (): string => {
+const createPriorMigrationFolder = (
+  tags: readonly string[] = PRIOR_MIGRATION_TAGS,
+): string => {
   const directory = mkdtempSync(join(tmpdir(), 'debt-tracker-prior-migrations-'));
   const metaDirectory = join(directory, 'meta');
   mkdirSync(metaDirectory, { recursive: true });
 
-  for (const tag of PRIOR_MIGRATION_TAGS) {
+  for (const tag of tags) {
     copyFileSync(
       resolve(MIGRATIONS_FOLDER, `${tag}.sql`),
       resolve(directory, `${tag}.sql`),
@@ -98,11 +104,7 @@ const createPriorMigrationFolder = (): string => {
     JSON.stringify(
       {
         ...journal,
-        entries: journal.entries.filter((entry) =>
-          PRIOR_MIGRATION_TAGS.includes(
-            entry.tag as (typeof PRIOR_MIGRATION_TAGS)[number],
-          ),
-        ),
+        entries: journal.entries.filter((entry) => tags.includes(entry.tag)),
       },
       null,
       2,
@@ -288,6 +290,350 @@ describe('database migrations and isolation', () => {
 
     expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
     expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
+
+    rmSync(priorMigrationFolder, { force: true, recursive: true });
+  });
+
+  it('upgrades a representative 0005 database with transaction foreign-key references through 0006', () => {
+    context.close();
+    temporary.cleanup();
+
+    const priorMigrationFolder = createPriorMigrationFolder(PRIOR_0005_MIGRATION_TAGS);
+    temporary = createTemporaryDatabaseLocation();
+    context = openMigratedDatabase(temporary.databasePath, priorMigrationFolder);
+
+    const debtId = createFictionalDebt();
+    insertDebtTerm(context.database, {
+      id: randomUUID(),
+      debtId,
+      effectiveStartDate: '2025-01-15',
+      effectiveEndDate: null,
+      interestRateType: 'fixed',
+      interestRateMicros: 49_000,
+      dayCountConvention: 'actual_365',
+      calculationConvention: 'simple_daily',
+      requiredPaymentCents: 48_500,
+      paymentFrequency: 'monthly',
+      notes: 'Generated prior terms.',
+      createdAtUtc: FIXED_TIMESTAMP,
+      updatedAtUtc: FIXED_TIMESTAMP,
+    });
+
+    const originalPaymentId = randomUUID();
+    const editReversalId = randomUUID();
+    const replacementPaymentId = randomUUID();
+    const escrowDisbursementId = randomUUID();
+    const manualReversalId = randomUUID();
+    const insertTransaction = context.sqlite.prepare(
+      `INSERT INTO debt_transactions (
+        id, debt_id, transaction_type, effective_date, posting_date,
+        total_amount_cents, status, description, source_type, source_reference,
+        reversal_of_transaction_id, supersedes_transaction_id, created_at_utc,
+        updated_at_utc
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const insertAllocation = context.sqlite.prepare(
+      `INSERT INTO transaction_allocations (
+        id, transaction_id, allocation_type, amount_cents, notes,
+        created_at_utc, updated_at_utc
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    );
+
+    insertTransaction.run(
+      originalPaymentId,
+      debtId,
+      'payment',
+      '2026-01-15',
+      '2026-01-15',
+      -50_000,
+      'superseded',
+      'Generated superseded payment.',
+      'manual',
+      null,
+      null,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      originalPaymentId,
+      'principal',
+      -40_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      originalPaymentId,
+      'interest',
+      -10_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+
+    insertTransaction.run(
+      editReversalId,
+      debtId,
+      'reversal',
+      '2026-01-15',
+      '2026-01-15',
+      50_000,
+      'posted',
+      'Generated edit reversal.',
+      'system',
+      originalPaymentId,
+      originalPaymentId,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      editReversalId,
+      'principal',
+      40_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      editReversalId,
+      'interest',
+      10_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+
+    insertTransaction.run(
+      replacementPaymentId,
+      debtId,
+      'payment',
+      '2026-01-15',
+      '2026-01-15',
+      -55_000,
+      'reversed',
+      'Generated replacement payment.',
+      'manual',
+      null,
+      null,
+      originalPaymentId,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      replacementPaymentId,
+      'principal',
+      -42_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      replacementPaymentId,
+      'interest',
+      -8_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      replacementPaymentId,
+      'escrow',
+      -5_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+
+    insertTransaction.run(
+      manualReversalId,
+      debtId,
+      'reversal',
+      '2026-01-16',
+      '2026-01-16',
+      55_000,
+      'posted',
+      'Generated manual reversal.',
+      'system',
+      replacementPaymentId,
+      replacementPaymentId,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      manualReversalId,
+      'principal',
+      42_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      manualReversalId,
+      'interest',
+      8_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      manualReversalId,
+      'escrow',
+      5_000,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+
+    insertTransaction.run(
+      escrowDisbursementId,
+      debtId,
+      'escrow_disbursement',
+      '2026-02-01',
+      '2026-02-01',
+      12_500,
+      'posted',
+      'Generated escrow disbursement.',
+      'manual',
+      null,
+      null,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+    insertAllocation.run(
+      randomUUID(),
+      escrowDisbursementId,
+      'escrow',
+      12_500,
+      null,
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+    );
+
+    context.sqlite
+      .prepare(
+        `INSERT INTO balance_reconciliations (
+          id, debt_id, statement_date, statement_ending_balance_cents,
+          application_calculated_balance_cents, calculated_difference_cents,
+          reconciliation_status, explanation, approved_adjustment_transaction_id,
+          source_reference, supporting_notes, lifecycle_status,
+          supersedes_reconciliation_id, superseded_by_reconciliation_id,
+          voided_at_utc, superseded_at_utc, created_at_utc, updated_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        randomUUID(),
+        debtId,
+        '2026-02-28',
+        2_470_000,
+        2_470_000,
+        0,
+        'reconciled',
+        null,
+        null,
+        'Generated prior statement',
+        null,
+        'current',
+        null,
+        null,
+        null,
+        null,
+        FIXED_TIMESTAMP,
+        FIXED_TIMESTAMP,
+      );
+
+    const before = context.sqlite
+      .prepare(
+        `SELECT COUNT(*) AS transaction_count,
+          COALESCE(SUM(total_amount_cents), 0) AS transaction_total,
+          (SELECT COUNT(*) FROM transaction_allocations) AS allocation_count,
+          (SELECT COALESCE(SUM(amount_cents), 0) FROM transaction_allocations)
+            AS allocation_total,
+          (SELECT COUNT(*) FROM balance_reconciliations) AS reconciliation_count
+         FROM debt_transactions`,
+      )
+      .get();
+
+    expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
+    expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+    context.close();
+
+    context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+
+    const after = context.sqlite
+      .prepare(
+        `SELECT COUNT(*) AS transaction_count,
+          COALESCE(SUM(total_amount_cents), 0) AS transaction_total,
+          (SELECT COUNT(*) FROM transaction_allocations) AS allocation_count,
+          (SELECT COALESCE(SUM(amount_cents), 0) FROM transaction_allocations)
+            AS allocation_total,
+          (SELECT COUNT(*) FROM balance_reconciliations) AS reconciliation_count
+         FROM debt_transactions`,
+      )
+      .get();
+    const statuses = context.sqlite
+      .prepare(
+        'SELECT status, COUNT(*) AS count FROM debt_transactions GROUP BY status ORDER BY status',
+      )
+      .all();
+    const temporaryRebuildTable = context.sqlite
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '__new_debt_transactions'",
+      )
+      .get();
+    const migrationCount = context.sqlite
+      .prepare('SELECT COUNT(*) AS count FROM __drizzle_migrations')
+      .get() as { count: number };
+
+    expect(after).toEqual(before);
+    expect(statuses).toEqual([
+      { status: 'posted', count: 3 },
+      { status: 'reversed', count: 1 },
+      { status: 'superseded', count: 1 },
+    ]);
+    expect(temporaryRebuildTable).toBeUndefined();
+    expect(migrationCount.count).toBe(7);
+    expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
+    expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+
+    context.sqlite
+      .prepare(
+        `INSERT INTO debt_transactions (
+          id, debt_id, transaction_type, effective_date, posting_date,
+          total_amount_cents, status, description, source_type, source_reference,
+          reversal_of_transaction_id, supersedes_transaction_id, created_at_utc,
+          updated_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        randomUUID(),
+        debtId,
+        'payment',
+        '2026-03-01',
+        '2026-03-01',
+        -1_000,
+        'voided',
+        'Generated voided row constraint check.',
+        'manual',
+        null,
+        null,
+        null,
+        FIXED_TIMESTAMP,
+        FIXED_TIMESTAMP,
+      );
 
     rmSync(priorMigrationFolder, { force: true, recursive: true });
   });

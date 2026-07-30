@@ -1166,3 +1166,51 @@ completed.
   - Use additional fictional acceptance data to review void/edit wording,
     current-vs-audit activity presentation, and escrow exports before adding new
     features.
+
+## Phase 23: Emergency Packaged Startup Migration Repair
+
+- Completion date: 2026-07-30
+- Application version: 0.22.1
+- Features implemented:
+  - Diagnosed packaged startup failure against an isolated copy of the existing
+    user database.
+  - Reproduced `DrizzleError` during migration `0006_famous_archangel` at
+    `DROP TABLE debt_transactions` with SQLite
+    `SQLITE_CONSTRAINT_TRIGGER`.
+  - Repaired migration application so generated SQLite table-rebuild migrations
+    run with foreign-key enforcement disabled before Drizzle starts its migration
+    transaction, then immediately re-enable and validate foreign keys and
+    integrity.
+  - Improved startup diagnostics to include sanitized migration identifier,
+    SQLite error code, sanitized message, and failing stage.
+- Material architecture and accounting decisions:
+  - The released migration file was not edited. The repair is in migration
+    execution and post-migration validation.
+  - Existing debts, transactions, allocations, reconciliations, scenarios,
+    imports, backups, and audit history are preserved; no posted financial
+    records are rewritten or deleted.
+- Database schema or migration changes:
+  - No new schema migration.
+  - Migration execution now validates `PRAGMA foreign_key_check` and
+    `PRAGMA integrity_check` after applying migrations.
+- New or changed IPC operations:
+  - No IPC changes.
+- New UI screens or workflows:
+  - No UI workflow changes.
+- Validation and smoke-test results:
+  - Added regression coverage for upgrading a representative generated 0005
+    database containing posted, reversed, superseded, escrow, allocation, and
+    reconciliation foreign-key references.
+  - Verified an isolated copy of the existing user database migrated from six to
+    seven applied migrations with matching counts/control totals before and
+    after migration, empty `foreign_key_check`, and `integrity_check` equal to
+    `ok`.
+  - Final command results should be recorded in the completion report for this
+    patch.
+- Known limitations and technical debt:
+  - Startup diagnostics remain intentionally sanitized and do not include raw SQL
+    values, database paths, or financial data.
+- Recommended next phase:
+  - Install the repaired 0.22.1 package and confirm startup against the live
+    database, relying on the existing Desktop emergency copy as the recovery
+    point if needed.

@@ -63,6 +63,12 @@ describe('startup diagnostics', () => {
       databasePath: join(userDataDirectory, 'debt-tracker.sqlite3'),
       errorName: 'MigrationError',
       isPackaged: false,
+      migrationFailure: {
+        migrationIdentifier: '0006_famous_archangel',
+        sanitizedMessage: 'SQLite foreign-key constraint failed during migration.',
+        sqliteErrorCode: 'SQLITE_CONSTRAINT_TRIGGER',
+        stage: 'apply_migrations',
+      },
       status: 'database_initialization_failed',
       userDataDirectory,
     });
@@ -73,6 +79,12 @@ describe('startup diagnostics', () => {
 
     expect(diagnostic.status).toBe('database_initialization_failed');
     expect(diagnostic.errorName).toBe('MigrationError');
+    expect(diagnostic.migrationIdentifier).toBe('0006_famous_archangel');
+    expect(diagnostic.sqliteErrorCode).toBe('SQLITE_CONSTRAINT_TRIGGER');
+    expect(diagnostic.migrationFailureStage).toBe('apply_migrations');
+    expect(diagnostic.sanitizedErrorMessage).toBe(
+      'SQLite foreign-key constraint failed during migration.',
+    );
     expect(JSON.stringify(diagnostic)).not.toContain('Error:');
   });
 });

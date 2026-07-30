@@ -6,6 +6,12 @@ export interface StartupDiagnosticInput {
   readonly backupRootDirectory: string;
   readonly databasePath: string;
   readonly errorName?: string;
+  readonly migrationFailure?: {
+    readonly migrationIdentifier: string | null;
+    readonly sanitizedMessage: string;
+    readonly sqliteErrorCode: string | null;
+    readonly stage: string;
+  };
   readonly isPackaged: boolean;
   readonly status: 'ok' | 'database_initialization_failed';
   readonly userDataDirectory: string;
@@ -23,6 +29,7 @@ export const writeStartupDiagnostics = ({
   backupRootDirectory,
   databasePath,
   errorName,
+  migrationFailure,
   isPackaged,
   status,
   userDataDirectory,
@@ -46,6 +53,10 @@ export const writeStartupDiagnostics = ({
           applicationRootDirectory,
         ),
         errorName: errorName ?? null,
+        migrationIdentifier: migrationFailure?.migrationIdentifier ?? null,
+        sqliteErrorCode: migrationFailure?.sqliteErrorCode ?? null,
+        migrationFailureStage: migrationFailure?.stage ?? null,
+        sanitizedErrorMessage: migrationFailure?.sanitizedMessage ?? null,
       },
       null,
       2,

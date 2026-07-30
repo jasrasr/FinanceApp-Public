@@ -370,9 +370,10 @@ Electron user-data directory that it removes after the workflow.
 - Uninstall does not delete user financial data or backups silently.
 - Upgrades use the same app identifier and user-data location, so the existing
   database is preserved and migrated at startup.
-- Startup diagnostics are written under user data with sanitized status fields
-  only; raw database paths, financial values, and stack traces are not exposed
-  to the renderer.
+- Startup diagnostics are written under user data with sanitized status fields.
+  Migration failures include migration identifier, SQLite error code, sanitized
+  message, and failing stage; raw database paths, financial values, and stack
+  traces are not exposed to the renderer.
 
 ## Workbook Import Rules
 

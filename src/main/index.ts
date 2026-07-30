@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseContext } from './database/connection';
+import { DatabaseMigrationError } from './database/connection';
 import { initializeApplicationDatabase } from './database/database-startup';
 import { resolveApplicationDatabasePath } from './database/database-path';
 import {
@@ -148,6 +149,8 @@ const startApplication = async (): Promise<void> => {
       databasePath,
       errorName: error instanceof Error ? error.name : 'UnknownError',
       isPackaged: app.isPackaged,
+      migrationFailure:
+        error instanceof DatabaseMigrationError ? error.details : undefined,
       status: 'database_initialization_failed',
       userDataDirectory,
     });
