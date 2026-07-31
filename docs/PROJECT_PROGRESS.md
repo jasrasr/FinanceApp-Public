@@ -1373,3 +1373,37 @@ completed.
 - Recommended next phase:
   - Continue fictional-data accessibility review of dense multi-year report
     ranges.
+
+## Phase 28: Chart Border and Tooltip Simplification
+
+- Completion date: 2026-07-31
+- Application version: 0.22.6
+- Features implemented:
+  - Removed all outlines from month-comparison bars while preserving stable
+    fill-color year mapping and grouped spacing.
+  - Simplified balance, monthly, comparison, and annual segment focus/hover
+    details to compact period/name/amount content.
+  - Kept annual segment percentage detail without repeating the annual total.
+- Material architecture and accounting decisions:
+  - Tooltip content remains presentation-only and uses the existing focusable
+    SVG data targets, with no timing state or ledger effect.
+- Database schema or migration changes:
+  - None.
+- New or changed IPC operations:
+  - None.
+- New UI screens or workflows:
+  - Existing report charts were refined in place.
+- Validation and smoke-test results:
+  - `npm run format` and `npm run check` passed. The gate completed with 10
+    test files and 130 tests passing, database integrity passing, production
+    build passing, and the active Electron E2E workflow passing; packaged source
+    specs were skipped in that suite.
+  - `npm run package:smoke` passed packaged launch and upgrade-preservation
+    tests. The runner reported the existing Node `fs.R_OK` deprecation and
+    temporary installed-app cleanup warnings.
+- Known limitations and technical debt:
+  - Tooltip details continue to use native SVG title behavior for immediate
+    pointer and keyboard access.
+- Recommended next phase:
+  - Continue fictional-data accessibility review of chart focus and hover
+    behavior.

@@ -21,8 +21,10 @@ total debt series always uses its own solid style.
 Use focusable SVG data elements with native title content for consistent hover
 and keyboard details across balance, monthly, comparison, and annual charts.
 Titles contain only debt names and the exact period/amount information relevant
-to that chart. Annual segment titles include the full bar total and segment
-percentage; hiding a series removes its data elements and titles.
+to that chart. Annual segment titles include the segment percentage without
+repeating the total already shown above the bar; hiding a series removes its
+data elements and titles. Month-comparison bars use fill only, with no outline
+style used as an accessibility distinction.
 
 ## Consequences
 

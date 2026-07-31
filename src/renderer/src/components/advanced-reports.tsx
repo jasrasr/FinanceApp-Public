@@ -113,7 +113,6 @@ const InterestMiniChart = ({
   readonly label: string;
   readonly rows: readonly {
     readonly label: string;
-    readonly change?: number | null;
     readonly period?: string;
     readonly value: string;
   }[];
@@ -175,7 +174,7 @@ const InterestMiniChart = ({
           const y = yFor(row.value);
           return (
             <g key={row.label} tabIndex={0}>
-              <title data-testid="monthly-interest-tooltip">{`${row.period ?? row.label}: ${formatDollarString(Math.abs(Number(row.value)).toFixed(2))} total interest expense${row.change === undefined ? '' : `; change from prior visible period ${row.change === null ? 'not applicable' : formatDollarString(row.change.toFixed(2))}`}.`}</title>
+              <title data-testid="monthly-interest-tooltip">{`${row.period ?? row.label}\n${formatDollarString(Math.abs(Number(row.value)).toFixed(2))}`}</title>
               {chartType === 'bar' ? (
                 <rect
                   fill="#fef3c7"
@@ -268,12 +267,8 @@ const InterestComparisonChart = ({
               key={year}
             >
               <span
-                className="inline-block h-3 w-3 border border-slate-700"
-                style={{
-                  backgroundColor: treatment.fill,
-                  borderColor: treatment.stroke,
-                  borderStyle: treatment.dash ? 'dashed' : 'solid',
-                }}
+                className="inline-block h-3 w-3"
+                style={{ backgroundColor: treatment.fill }}
               />
               {year}
             </span>
@@ -314,12 +309,11 @@ const InterestComparisonChart = ({
                   baseX - (years.length * barWidth) / 2 + yearIndex * (barWidth + 2);
                 return (
                   <g key={year}>
-                    <title data-testid="interest-comparison-tooltip">{`${monthName(monthIndex)} ${year}: ${formatDollarString(Math.abs(value).toFixed(2))} interest expense.`}</title>
+                    <title data-testid="interest-comparison-tooltip">{`${monthName(monthIndex)} ${year}\n${formatDollarString(Math.abs(value).toFixed(2))}`}</title>
                     <rect
+                      data-testid="interest-comparison-bar"
                       fill={interestYearTreatment(yearIndex).fill}
                       height={chartBottom - y}
-                      stroke={interestYearTreatment(yearIndex).stroke}
-                      strokeDasharray={interestYearTreatment(yearIndex).dash}
                       tabIndex={0}
                       width={barWidth}
                       x={x}
@@ -795,8 +789,6 @@ const BalanceHistoryChart = ({
   const yFor = (value: number): number =>
     chartBottom - ((Math.max(0, value) - minimum) / (maximum - minimum)) * chartHeight;
   const tickIndexes = visibleTickIndexes(visiblePeriods.length);
-  const formatChange = (change: number | null): string =>
-    change === null ? 'not applicable' : formatDollarString(change.toFixed(2));
   const isZoomed = zoom.end - zoom.start + 1 < periods.length;
 
   const panChart = useCallback(
@@ -1129,7 +1121,7 @@ const BalanceHistoryChart = ({
                           key={`${item.key}-${value.periodEndDate}`}
                           tabIndex={0}
                         >
-                          <title data-testid="balance-history-tooltip">{`${value.periodEndDate}: ${item.label}; ending principal balance ${formatDollarString(value.balance.toFixed(2))}; change from prior period ${formatChange(value.changeFromPriorPeriod)}.`}</title>
+                          <title data-testid="balance-history-tooltip">{`${value.periodEndDate}\n${item.label}\n${formatDollarString(value.balance.toFixed(2))}`}</title>
                           <g stroke={item.color} strokeWidth="2">
                             {markerForPoint({ marker: item.marker, x, y })}
                           </g>
@@ -1326,7 +1318,7 @@ const InterestAnnualStackedChart = ({
                     x={x - barWidth / 2}
                     y={currentTop}
                   >
-                    <title data-testid="annual-interest-segment-tooltip">{`${year}, ${debtName}: ${formatDollarString(value.toFixed(2))} interest expense; annual total ${formatDollarString(annualTotal.toFixed(2))}; ${percentage.toFixed(1)}% of annual interest.`}</title>
+                    <title data-testid="annual-interest-segment-tooltip">{`${year}\n${debtName}\n${formatDollarString(value.toFixed(2))}\n${percentage.toFixed(1)}% of annual interest`}</title>
                   </rect>
                 );
               })}
@@ -1575,12 +1567,7 @@ const ReportInterestAnalysis = ({
               <InterestMiniChart
                 chartType="line"
                 label="Line chart of monthly interest expense"
-                rows={monthlyVisibleRows.map((row, index) => ({
-                  change:
-                    index === 0
-                      ? null
-                      : Number(row.interestActivity) -
-                        Number(monthlyVisibleRows[index - 1]?.interestActivity ?? 0),
+                rows={monthlyVisibleRows.map((row) => ({
                   label: periodLabel(row.period),
                   period: row.period,
                   value: Math.abs(Number(row.interestActivity)).toFixed(2),

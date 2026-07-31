@@ -25,7 +25,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 18,
   appMetadata: {
-    version: '0.22.5',
+    version: '0.22.6',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -1420,7 +1420,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.22.5')).toBeVisible();
+    expect(await screen.findByText('Version 0.22.6')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1486,9 +1486,10 @@ describe('debt maintenance application', () => {
         .getAllByTestId('balance-history-tooltip')
         .some(
           (tooltip) =>
-            /2026-01-31: Generated Home Mortgage/.test(tooltip.textContent ?? '') &&
-            /ending principal balance/.test(tooltip.textContent ?? '') &&
-            /change from prior period/.test(tooltip.textContent ?? ''),
+            /2026-01-31\nGenerated Home Mortgage\n/.test(tooltip.textContent ?? '') &&
+            !/creditor|ending principal balance|change from prior period/i.test(
+              tooltip.textContent ?? '',
+            ),
         ),
     ).toBe(true);
     expect(
@@ -1598,7 +1599,7 @@ describe('debt maintenance application', () => {
     fireEvent.click(screen.getByText('Interest expense analysis'));
     expect(screen.getByText('Monthly interest expense trend')).toBeVisible();
     expect(screen.getAllByTestId('monthly-interest-tooltip')[0]).toHaveTextContent(
-      /2026-01.*total interest expense/,
+      /2026-01\s+\$100.00/,
     );
     expect(screen.getAllByText(/Date range:/).length).toBeGreaterThan(0);
     expect(
@@ -1639,7 +1640,7 @@ describe('debt maintenance application', () => {
       '$1,200.00',
     );
     const annualSegment = screen.getByTestId('annual-interest-segment-tooltip');
-    expect(annualSegment).toHaveTextContent(/annual total/);
+    expect(annualSegment).not.toHaveTextContent(/annual total/);
     expect(annualSegment).toHaveTextContent(/% of annual interest/);
     expect(annualSegment.parentElement).not.toHaveAttribute('stroke-dasharray');
     fireEvent.click(screen.getByRole('radio', { name: 'Compare months across years' }));
@@ -1650,8 +1651,15 @@ describe('debt maintenance application', () => {
       }),
     ).toBeVisible();
     expect(screen.getAllByTestId('interest-comparison-tooltip')[0]).toHaveTextContent(
-      /interest expense/,
+      /Jan 2026\s+\$100.00/,
     );
+    expect(
+      screen
+        .getAllByTestId('interest-comparison-bar')
+        .every(
+          (bar) => !bar.hasAttribute('stroke') && !bar.hasAttribute('stroke-dasharray'),
+        ),
+    ).toBe(true);
     expect(screen.getAllByText('Interest expense').length).toBeGreaterThan(0);
     fireEvent.change(screen.getByLabelText('Date preset'), {
       target: { value: 'all_activity' },
