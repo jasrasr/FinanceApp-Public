@@ -1336,3 +1336,40 @@ completed.
 - Recommended next phase:
   - Continue fictional-data acceptance testing for report accessibility and
     chart interaction boundaries.
+
+## Phase 27: Report Ordering and Chart Interaction Refinement
+
+- Completion date: 2026-07-31
+- Application version: 0.22.5
+- Features implemented:
+  - Reordered advanced reports to balance history, interest analysis, monthly
+    rollforward, annual rollforward, then the remaining reports.
+  - Simplified balance-history labels to debt names and assigned stable solid
+    colors before dashed fallback styles.
+  - Added focusable chart data details for balance, monthly interest,
+    month-comparison, and annual stacked segments.
+  - Added annual segment totals and percentages to focus/hover details while
+    keeping bar segments free of dashed borders.
+- Material architecture and accounting decisions:
+  - Chart details are presentation-only and derive from existing report DTO
+    values; creditor data remains available to other workflows.
+  - Hidden series are removed from both rendering and focusable detail targets.
+- Database schema or migration changes:
+  - None.
+- New or changed IPC operations:
+  - None.
+- New UI screens or workflows:
+  - Existing advanced report charts and section ordering were refined in place.
+- Validation and smoke-test results:
+  - `npm run format` and `npm run check` passed. The gate completed with 10
+    test files and 130 tests passing, database integrity passing, production
+    build passing, and the active Electron E2E workflow passing; packaged source
+    specs were skipped in that suite.
+  - `npm run package:smoke` passed packaged launch and upgrade-preservation
+    tests. Existing npm native-script review and Node `fs.R_OK` deprecation
+    warnings were reported.
+- Known limitations and technical debt:
+  - Tooltip details use focusable SVG title content and remain session-local.
+- Recommended next phase:
+  - Continue fictional-data accessibility review of dense multi-year report
+    ranges.

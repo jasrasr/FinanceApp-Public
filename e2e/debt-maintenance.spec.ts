@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.22.4')).toBeVisible();
+    await expect(window.getByText('Version 0.22.5')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
@@ -77,7 +77,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Save changes' }).click();
     await expect(
       window.getByRole('heading', {
-        name: 'Updated Fictional Harbor Mortgage Note — Harbor Ridge Cooperative',
+        name: 'Updated Fictional Harbor Mortgage Note',
       }),
     ).toBeVisible();
 
@@ -383,7 +383,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await balanceLegend.getByRole('button', { name: 'Total debt balance' }).click();
     await balanceLegend
       .getByRole('button', {
-        name: 'Updated Fictional Harbor Mortgage Note — Harbor Ridge Cooperative',
+        name: 'Updated Fictional Harbor Mortgage Note',
       })
       .click();
     await expect(window.getByText(/No debt lines are selected/)).toBeVisible();

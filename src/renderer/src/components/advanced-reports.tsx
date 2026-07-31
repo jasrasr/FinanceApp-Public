@@ -113,6 +113,7 @@ const InterestMiniChart = ({
   readonly label: string;
   readonly rows: readonly {
     readonly label: string;
+    readonly change?: number | null;
     readonly period?: string;
     readonly value: string;
   }[];
@@ -173,8 +174,8 @@ const InterestMiniChart = ({
           const x = xFor(index);
           const y = yFor(row.value);
           return (
-            <g key={row.label}>
-              <title>{`${row.label}: ${formatDollarString(row.value)} interest expense.`}</title>
+            <g key={row.label} tabIndex={0}>
+              <title data-testid="monthly-interest-tooltip">{`${row.period ?? row.label}: ${formatDollarString(Math.abs(Number(row.value)).toFixed(2))} total interest expense${row.change === undefined ? '' : `; change from prior visible period ${row.change === null ? 'not applicable' : formatDollarString(row.change.toFixed(2))}`}.`}</title>
               {chartType === 'bar' ? (
                 <rect
                   fill="#fef3c7"
@@ -313,12 +314,13 @@ const InterestComparisonChart = ({
                   baseX - (years.length * barWidth) / 2 + yearIndex * (barWidth + 2);
                 return (
                   <g key={year}>
-                    <title>{`${monthName(monthIndex)} ${year}: ${formatDollarString(value.toFixed(2))} interest expense.`}</title>
+                    <title data-testid="interest-comparison-tooltip">{`${monthName(monthIndex)} ${year}: ${formatDollarString(Math.abs(value).toFixed(2))} interest expense.`}</title>
                     <rect
                       fill={interestYearTreatment(yearIndex).fill}
                       height={chartBottom - y}
                       stroke={interestYearTreatment(yearIndex).stroke}
                       strokeDasharray={interestYearTreatment(yearIndex).dash}
+                      tabIndex={0}
                       width={barWidth}
                       x={x}
                       y={y}
@@ -487,6 +489,8 @@ export const AdvancedReports = ({
 
       {!loading && reports ? (
         <div className="space-y-6">
+          <ReportBalanceHistory reports={reports} onSelectDebt={onSelectDebt} />
+          <ReportInterestAnalysis reports={reports} />
           <ReportRollforward
             title="Monthly debt rollforward"
             section={reports.monthlyRollforward}
@@ -495,8 +499,6 @@ export const AdvancedReports = ({
             title="Annual debt rollforward"
             section={reports.annualRollforward}
           />
-          <ReportBalanceHistory reports={reports} onSelectDebt={onSelectDebt} />
-          <ReportInterestAnalysis reports={reports} />
           <ReportSchedule reports={reports} onSelectDebt={onSelectDebt} />
           <ReportSensitivity
             title="Interest-rate sensitivity"
@@ -598,6 +600,7 @@ type BalanceHistorySeries = {
   readonly key: string;
   readonly label: string;
   readonly debtId: string | null;
+  readonly color: string;
   readonly dash: string;
   readonly marker: 'circle' | 'square' | 'diamond';
   readonly values: readonly {
@@ -606,6 +609,31 @@ type BalanceHistorySeries = {
     readonly changeFromPriorPeriod: number | null;
   }[];
 };
+
+const balanceHistoryColors = [
+  '#1d4ed8',
+  '#047857',
+  '#b45309',
+  '#7c3aed',
+  '#be123c',
+  '#0891b2',
+  '#4d7c0f',
+  '#c2410c',
+];
+
+const balanceHistoryStyle = (
+  index: number,
+): { readonly color: string; readonly dash: string } => ({
+  color: balanceHistoryColors[index % balanceHistoryColors.length] ?? '#1d4ed8',
+  dash:
+    index < balanceHistoryColors.length
+      ? '0'
+      : index % 3 === 1
+        ? '8 4'
+        : index % 3 === 2
+          ? '2 4'
+          : '12 4 2 4',
+});
 
 const balanceHistorySeries = (
   rows: DebtReportsDto['balanceHistory']['rows'],
@@ -628,9 +656,9 @@ const balanceHistorySeries = (
       let prior: number | null = null;
       return {
         key: debtId,
-        label: `${sortedRows[0]?.debtName ?? 'Debt'} — ${sortedRows[0]?.creditor ?? 'Creditor'}`,
+        label: sortedRows[0]?.debtName ?? 'Debt',
         debtId,
-        dash: index % 3 === 0 ? '0' : index % 3 === 1 ? '8 4' : '2 4',
+        ...balanceHistoryStyle(index),
         marker: index % 3 === 0 ? 'circle' : index % 3 === 1 ? 'square' : 'diamond',
         values: dates.map((date) => {
           const balance = valuesByDate.get(date) ?? 0;
@@ -647,6 +675,7 @@ const balanceHistorySeries = (
     key: 'total',
     label: 'Total debt balance',
     debtId: null,
+    color: '#0f172a',
     dash: '0',
     marker: 'diamond',
     values: dates.map((date) => {
@@ -759,7 +788,6 @@ const BalanceHistoryChart = ({
   const chartTop = 28;
   const chartBottom = height - 74;
   const chartHeight = chartBottom - chartTop;
-  const colors = ['#0f172a', '#1d4ed8', '#047857', '#b45309', '#7c3aed', '#be123c'];
   const xFor = (index: number): number =>
     visiblePeriods.length === 1
       ? chartLeft
@@ -910,7 +938,7 @@ const BalanceHistoryChart = ({
           >
             {visibleKeys.length > 0 ? 'Select none' : 'Select all'}
           </button>
-          {series.map((item, index) => {
+          {series.map((item) => {
             const visible = visibleKeys.includes(item.key);
             return (
               <button
@@ -928,11 +956,9 @@ const BalanceHistoryChart = ({
                   aria-hidden="true"
                   className="mr-2 inline-block h-0.5 w-5 align-middle"
                   style={{
-                    backgroundColor: colors[index % colors.length],
+                    backgroundColor: item.color,
                     borderTop:
-                      item.dash === '0'
-                        ? undefined
-                        : `2px dashed ${colors[index % colors.length]}`,
+                      item.dash === '0' ? undefined : `2px dashed ${item.color}`,
                   }}
                 />
                 {item.label}
@@ -1022,7 +1048,7 @@ const BalanceHistoryChart = ({
           >
             <svg
               aria-hidden="true"
-              className="pointer-events-none h-auto w-full select-none"
+              className="h-auto w-full select-none"
               focusable="false"
               height={height}
               viewBox={`0 0 ${width} ${height}`}
@@ -1077,20 +1103,19 @@ const BalanceHistoryChart = ({
                   </text>
                 );
               })}
-              {visibleSeries.map((item, seriesIndex) => {
+              {visibleSeries.map((item) => {
                 const values = item.values.slice(zoom.start, zoom.end + 1);
                 const points = values
                   .map((value, index) => `${xFor(index)},${yFor(value.balance)}`)
                   .join(' ');
-                const color = colors[seriesIndex % colors.length];
                 return (
-                  <g key={item.key}>
+                  <g aria-label={item.label} key={item.key}>
                     <polyline
                       data-testid="balance-history-line"
                       fill="none"
                       points={points}
-                      stroke={color}
-                      strokeDasharray={item.key === 'total' ? undefined : item.dash}
+                      stroke={item.color}
+                      strokeDasharray={item.dash === '0' ? undefined : item.dash}
                       strokeWidth={item.key === 'total' ? '3' : '2'}
                     />
                     {values.map((value, index) => {
@@ -1104,8 +1129,8 @@ const BalanceHistoryChart = ({
                           key={`${item.key}-${value.periodEndDate}`}
                           tabIndex={0}
                         >
-                          <title>{`${value.periodEndDate}: ${item.label}; ending balance ${formatDollarString(value.balance.toFixed(2))}; change ${formatChange(value.changeFromPriorPeriod)}.`}</title>
-                          <g stroke={color} strokeWidth="2">
+                          <title data-testid="balance-history-tooltip">{`${value.periodEndDate}: ${item.label}; ending principal balance ${formatDollarString(value.balance.toFixed(2))}; change from prior period ${formatChange(value.changeFromPriorPeriod)}.`}</title>
+                          <g stroke={item.color} strokeWidth="2">
                             {markerForPoint({ marker: item.marker, x, y })}
                           </g>
                         </g>
@@ -1288,17 +1313,20 @@ const InterestAnnualStackedChart = ({
                 const segmentHeight = (value / maximum) * (chartBottom - chartTop);
                 currentTop -= segmentHeight;
                 const x = 72 + yearIndex * ((width - 120) / years.length);
+                const annualTotal = totals[yearIndex] ?? 0;
+                const percentage = annualTotal === 0 ? 0 : (value / annualTotal) * 100;
                 return (
                   <rect
                     key={debtId}
                     fill={colorFor(debtIndex)}
                     height={segmentHeight}
                     stroke="white"
+                    tabIndex={0}
                     width={barWidth}
                     x={x - barWidth / 2}
                     y={currentTop}
                   >
-                    <title>{`${year}, ${debtName}: ${formatDollarString(value.toFixed(2))}; annual total ${formatDollarString(totals[yearIndex]?.toFixed(2) ?? '0.00')}.`}</title>
+                    <title data-testid="annual-interest-segment-tooltip">{`${year}, ${debtName}: ${formatDollarString(value.toFixed(2))} interest expense; annual total ${formatDollarString(annualTotal.toFixed(2))}; ${percentage.toFixed(1)}% of annual interest.`}</title>
                   </rect>
                 );
               })}
@@ -1547,10 +1575,15 @@ const ReportInterestAnalysis = ({
               <InterestMiniChart
                 chartType="line"
                 label="Line chart of monthly interest expense"
-                rows={monthlyVisibleRows.map((row) => ({
+                rows={monthlyVisibleRows.map((row, index) => ({
+                  change:
+                    index === 0
+                      ? null
+                      : Number(row.interestActivity) -
+                        Number(monthlyVisibleRows[index - 1]?.interestActivity ?? 0),
                   label: periodLabel(row.period),
                   period: row.period,
-                  value: row.interestActivity,
+                  value: Math.abs(Number(row.interestActivity)).toFixed(2),
                 }))}
               />
             )

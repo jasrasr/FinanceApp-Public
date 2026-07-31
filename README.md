@@ -38,8 +38,8 @@ for maintaining debts and supporting future debt-paydown analysis.
   trends, maturity and required-payment schedules, sensitivity analysis,
   actual-versus-plan variance, and reconciliation/data-quality exceptions.
 - Debt-history and interest charts provide bounded wheel zoom and drag pan,
-  readable date ticks, accessible series controls, and reconciled annual
-  debt-source interest totals.
+  readable date ticks, accessible series controls, focusable hover details, and
+  reconciled annual debt-source interest totals.
 - Data management screen for validated SQLite backups, restore from validated
   local backups with pre-restore safety backup, and CSV data exports.
 - Windows x64 NSIS installer packaging with Electron-compatible better-sqlite3

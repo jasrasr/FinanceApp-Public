@@ -565,7 +565,9 @@ boundary. Visible series and annual stacked segments are calculated from the
 same current-effect report values, while chart zoom, pan, legend visibility,
 and date-tick density only change presentation. Annual interest labels are the
 sum of the visible debt-source segments; hiding a source recalculates the
-visible total and scale.
+visible total and scale. Hover and focus details expose the exact underlying
+period, debt name, amount, and reconciliation context without changing ledger
+values.
 
 ## Audit Metadata
 
