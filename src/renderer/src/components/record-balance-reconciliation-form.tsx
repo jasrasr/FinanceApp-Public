@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type {
   BalanceReconciliationDto,
   CreateBalanceReconciliationRequest,
@@ -20,19 +19,6 @@ const today = (): string => new Date().toISOString().slice(0, 10);
 
 const value = (data: FormData, name: string): string =>
   String(data.get(name) ?? '').trim();
-const nullableValue = (data: FormData, name: string): string | null => {
-  const result = value(data, name);
-  return result === '' ? null : result;
-};
-
-const allocationFields = [
-  ['principal', 'Principal'],
-  ['interest', 'Interest'],
-  ['escrow', 'Escrow'],
-  ['fee', 'Fees'],
-  ['penalty', 'Penalties'],
-] as const;
-
 export const RecordBalanceReconciliationForm = ({
   busy,
   debt,
@@ -41,8 +27,6 @@ export const RecordBalanceReconciliationForm = ({
   onCancel,
   onSubmit,
 }: RecordBalanceReconciliationFormProps): React.JSX.Element => {
-  const [includesAdjustment, setIncludesAdjustment] = useState(false);
-
   const submit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -53,39 +37,6 @@ export const RecordBalanceReconciliationForm = ({
         statementDate: value(data, 'reconciliation.statementDate'),
         statementEndingBalance: value(data, 'reconciliation.statementEndingBalance'),
         supersedesReconciliationId: supersedesReconciliation?.id ?? null,
-        approvedAdjustment: includesAdjustment
-          ? {
-              totalAmount: value(data, 'reconciliation.approvedAdjustment.totalAmount'),
-              description: nullableValue(
-                data,
-                'reconciliation.approvedAdjustment.description',
-              ),
-              allocations: {
-                principal: nullableValue(
-                  data,
-                  'reconciliation.approvedAdjustment.allocations.principal',
-                ),
-                interest: nullableValue(
-                  data,
-                  'reconciliation.approvedAdjustment.allocations.interest',
-                ),
-                escrow: nullableValue(
-                  data,
-                  'reconciliation.approvedAdjustment.allocations.escrow',
-                ),
-                fee: nullableValue(
-                  data,
-                  'reconciliation.approvedAdjustment.allocations.fee',
-                ),
-                penalty: nullableValue(
-                  data,
-                  'reconciliation.approvedAdjustment.allocations.penalty',
-                ),
-                extraPrincipal: null,
-                other: null,
-              },
-            }
-          : null,
         sourceReference: null,
       },
     });
@@ -97,12 +48,6 @@ export const RecordBalanceReconciliationForm = ({
       noValidate
       onSubmit={submit}
     >
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
-        {supersedesReconciliation
-          ? `Correcting the current reconciliation for ${supersedesReconciliation.statementDate}. The original record will be preserved and marked superseded.`
-          : 'Enter the verified lender balance once. Debt Tracker records it as supporting confirmed balance evidence and calculates the ledger difference through the same date without overwriting posted activity.'}
-      </div>
-
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Field
           error={fieldErrors?.['reconciliation.statementDate']}
@@ -120,7 +65,6 @@ export const RecordBalanceReconciliationForm = ({
         </Field>
         <Field
           error={fieldErrors?.['reconciliation.statementEndingBalance']}
-          hint="Enter the verified lender balance as a positive obligation."
           label="Verified lender balance"
           name="reconciliation.statementEndingBalance"
         >
@@ -132,84 +76,7 @@ export const RecordBalanceReconciliationForm = ({
             required
           />
         </Field>
-        <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 lg:col-span-2">
-          <input
-            checked={includesAdjustment}
-            className="mt-1"
-            onChange={(event) => setIncludesAdjustment(event.currentTarget.checked)}
-            type="checkbox"
-          />
-          <span>
-            Include an approved adjustment if the verified balance differs from the
-            ledger and the adjustment has already been reviewed.
-          </span>
-        </label>
       </div>
-
-      {includesAdjustment ? (
-        <section
-          className="rounded-lg border border-amber-200 bg-amber-50 p-5"
-          aria-labelledby="reconciliation-adjustment-heading"
-        >
-          <h3
-            className="text-base font-semibold text-amber-950"
-            id="reconciliation-adjustment-heading"
-          >
-            Approved adjustment transaction
-          </h3>
-          <p className="mt-1 text-sm text-amber-900">
-            The adjustment is posted to the ledger and linked to this reconciliation.
-            Its signed total must equal the calculated difference.
-          </p>
-          <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <Field
-              error={fieldErrors?.['reconciliation.approvedAdjustment.totalAmount']}
-              label="Adjustment total"
-              name="reconciliation.approvedAdjustment.totalAmount"
-            >
-              <input
-                className={inputClassName}
-                id="reconciliation.approvedAdjustment.totalAmount"
-                inputMode="decimal"
-                name="reconciliation.approvedAdjustment.totalAmount"
-                required
-              />
-            </Field>
-            <Field
-              error={fieldErrors?.['reconciliation.approvedAdjustment.description']}
-              label="Adjustment description"
-              name="reconciliation.approvedAdjustment.description"
-              optional
-            >
-              <input
-                className={inputClassName}
-                id="reconciliation.approvedAdjustment.description"
-                name="reconciliation.approvedAdjustment.description"
-              />
-            </Field>
-            {allocationFields.map(([fieldName, label]) => (
-              <Field
-                error={
-                  fieldErrors?.[
-                    `reconciliation.approvedAdjustment.allocations.${fieldName}`
-                  ]
-                }
-                label={label}
-                name={`reconciliation.approvedAdjustment.allocations.${fieldName}`}
-                optional
-                key={fieldName}
-              >
-                <input
-                  className={inputClassName}
-                  id={`reconciliation.approvedAdjustment.allocations.${fieldName}`}
-                  inputMode="decimal"
-                  name={`reconciliation.approvedAdjustment.allocations.${fieldName}`}
-                />
-              </Field>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       <FormActions busy={busy} onCancel={onCancel} submitLabel="Reconcile balance" />
     </form>

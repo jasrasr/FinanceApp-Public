@@ -70,28 +70,11 @@ const BasisNote = ({
 }: {
   readonly basis: DebtReportsDto['monthlyRollforward']['basis'];
 }): React.JSX.Element => (
-  <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
-    <p>
-      <span className="font-semibold">Date range:</span> {basis.dateRange}.{' '}
-      <span className="font-semibold">Effective date:</span> {basis.effectiveDate}.
-    </p>
-    <p>
-      <span className="font-semibold">Balance basis:</span> {basis.balanceBasis}
-    </p>
-    {basis.assumptions.length > 0 ? (
-      <ul className="mt-1 list-disc pl-5">
-        {basis.assumptions.map((assumption) => (
-          <li key={assumption}>{assumption}</li>
-        ))}
-      </ul>
-    ) : null}
-    {basis.warnings.length > 0 ? (
-      <ul className="mt-1 list-disc pl-5 text-amber-800">
-        {basis.warnings.map((warning) => (
-          <li key={warning}>{warning}</li>
-        ))}
-      </ul>
-    ) : null}
+  <div
+    aria-label={`Report calculation metadata. Effective date ${basis.effectiveDate}. Balance basis ${basis.balanceBasis}. ${basis.assumptions.join(' ')} ${basis.warnings.join(' ')}`}
+    className="mt-2 text-xs text-slate-600"
+  >
+    <span className="font-semibold">Date range:</span> {basis.dateRange}.
   </div>
 );
 
@@ -367,11 +350,6 @@ export const AdvancedReports = ({
         >
           Debt reporting
         </h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-          Reports are read-only. Each section states its date range, effective date,
-          balance basis, and assumptions. Calculated ledger balances, confirmed
-          snapshots, and saved scenario results remain explicitly labeled.
-        </p>
       </div>
 
       <form
@@ -505,27 +483,16 @@ export const AdvancedReports = ({
 
 const ReportShell = ({
   basis,
-  basisMode = 'expanded',
   children,
   title,
 }: {
   readonly basis: DebtReportsDto['monthlyRollforward']['basis'];
-  readonly basisMode?: 'expanded' | 'compact';
   readonly children: React.ReactNode;
   readonly title: string;
 }): React.JSX.Element => (
   <details className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <summary className="cursor-pointer text-lg font-semibold">{title}</summary>
-    {basisMode === 'expanded' ? (
-      <BasisNote basis={basis} />
-    ) : (
-      <details className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-        <summary className="cursor-pointer font-semibold">
-          Basis and assumptions
-        </summary>
-        <BasisNote basis={basis} />
-      </details>
-    )}
+    <BasisNote basis={basis} />
     <div className="mt-4">{children}</div>
   </details>
 );
@@ -1181,6 +1148,152 @@ const ReportBalanceHistory = ({
   </ReportShell>
 );
 
+const InterestAnnualStackedChart = ({
+  rows,
+}: {
+  readonly rows: readonly DebtReportsDto['activityTrends']['annualInterestByDebt'][number][];
+}): React.JSX.Element | null => {
+  const [selectedDebtIds, setSelectedDebtIds] = useState<string[] | null>(null);
+  const debts = [...new Map(rows.map((row) => [row.debtId, row.debtName])).entries()];
+  const years = [...new Set(rows.map((row) => row.year))].sort();
+  const visibleDebtIds = selectedDebtIds ?? debts.map(([id]) => id);
+
+  if (years.length === 0) return null;
+  const values = new Map(
+    rows.map((row) => [`${row.year}-${row.debtId}`, Number(row.interestExpense)]),
+  );
+  const totals = years.map((year) =>
+    debts.reduce(
+      (total, [debtId]) =>
+        total +
+        (visibleDebtIds.includes(debtId) ? (values.get(`${year}-${debtId}`) ?? 0) : 0),
+      0,
+    ),
+  );
+  const maximum = Math.max(...totals, 1);
+  const width = Math.max(640, years.length * 120 + 120);
+  const height = 280;
+  const chartBottom = 220;
+  const chartTop = 24;
+  const barWidth = Math.min(
+    72,
+    Math.max(28, (width - 120) / Math.max(years.length, 1) / 2),
+  );
+  const colorFor = (index: number): string =>
+    ['#0369a1', '#b45309', '#15803d', '#be123c', '#7c3aed'][index % 5] ?? '#0369a1';
+
+  return (
+    <div
+      className="mt-3 overflow-x-auto"
+      role="img"
+      aria-label="Stacked bar chart of annual interest expense by debt source. Tooltip details are available on each segment."
+    >
+      <div
+        aria-label="Annual interest debt sources"
+        className="mb-3 flex flex-wrap gap-2"
+      >
+        {debts.map(([debtId, debtName], index) => {
+          const visible = visibleDebtIds.includes(debtId);
+          return (
+            <button
+              aria-pressed={visible}
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${visible ? 'border-slate-400 bg-white' : 'border-slate-200 bg-slate-50 text-slate-500 opacity-50'}`}
+              key={debtId}
+              onClick={() =>
+                setSelectedDebtIds(
+                  visible
+                    ? visibleDebtIds.filter((id) => id !== debtId)
+                    : [...visibleDebtIds, debtId],
+                )
+              }
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                className="mr-2 inline-block h-3 w-3"
+                style={{ backgroundColor: colorFor(index) }}
+              />
+              {debtName}
+            </button>
+          );
+        })}
+      </div>
+      <svg
+        aria-hidden="true"
+        className="h-auto min-w-full"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+      >
+        <line
+          stroke="#cbd5e1"
+          x1="56"
+          x2={width - 24}
+          y1={chartBottom}
+          y2={chartBottom}
+        />
+        <text fill="#475569" fontSize="11" x="4" y="16">
+          Dollars
+        </text>
+        <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
+          {formatDollarString(maximum.toFixed(2))}
+        </text>
+        {years.map((year, yearIndex) => {
+          let currentTop = chartBottom;
+          return (
+            <g key={year}>
+              {debts.map(([debtId, debtName], debtIndex) => {
+                if (!visibleDebtIds.includes(debtId)) return null;
+                const value = values.get(`${year}-${debtId}`) ?? 0;
+                const segmentHeight = (value / maximum) * (chartBottom - chartTop);
+                currentTop -= segmentHeight;
+                const x = 72 + yearIndex * ((width - 120) / years.length);
+                return (
+                  <rect
+                    key={debtId}
+                    fill={colorFor(debtIndex)}
+                    height={segmentHeight}
+                    stroke="white"
+                    width={barWidth}
+                    x={x - barWidth / 2}
+                    y={currentTop}
+                  >
+                    <title>{`${year}, ${debtName}: ${formatDollarString(value.toFixed(2))}; annual total ${formatDollarString(totals[yearIndex]?.toFixed(2) ?? '0.00')}.`}</title>
+                  </rect>
+                );
+              })}
+              <text
+                fill="#475569"
+                fontSize="11"
+                textAnchor="middle"
+                x={72 + yearIndex * ((width - 120) / years.length)}
+                y={chartBottom + 20}
+              >
+                {year}
+              </text>
+              <text
+                fill="#0f172a"
+                fontSize="11"
+                fontWeight="600"
+                textAnchor="middle"
+                x={72 + yearIndex * ((width - 120) / years.length)}
+                y={Math.max(
+                  chartTop + 12,
+                  chartBottom -
+                    ((totals[yearIndex] ?? 0) / maximum) * (chartBottom - chartTop) -
+                    6,
+                )}
+              >
+                {formatDollarString((totals[yearIndex] ?? 0).toFixed(2))}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+
 const ReportInterestAnalysis = ({
   reports,
 }: {
@@ -1188,14 +1301,32 @@ const ReportInterestAnalysis = ({
 }): React.JSX.Element => {
   const [interestView, setInterestView] = useState<'trend' | 'comparison'>('trend');
   const annualTotals = new Map<string, number>();
-  for (const row of reports.activityTrends.rows) {
-    const year = row.period.slice(0, 4);
+  for (const row of reports.activityTrends.annualInterestByDebt) {
     annualTotals.set(
-      year,
-      (annualTotals.get(year) ?? 0) + Number(row.interestActivity),
+      row.year,
+      (annualTotals.get(row.year) ?? 0) + Number(row.interestExpense),
     );
   }
   const monthlyRows = recentInterestRows(reports.activityTrends.rows);
+  const [monthlyWindow, setMonthlyWindow] = useState({
+    start: Math.max(0, monthlyRows.length - 12),
+    end: Math.max(0, monthlyRows.length - 1),
+  });
+  const monthlyDragRef = useRef<{ originX: number; start: number } | null>(null);
+  const [monthlyDragging, setMonthlyDragging] = useState(false);
+  const panMonthly = (delta: number): void =>
+    setMonthlyWindow((current) => {
+      const width = current.end - current.start + 1;
+      const start = Math.max(
+        0,
+        Math.min(current.start + delta, monthlyRows.length - width),
+      );
+      return { start, end: Math.max(start, start + width - 1) };
+    });
+  const monthlyVisibleRows = monthlyRows.slice(
+    monthlyWindow.start,
+    monthlyWindow.end + 1,
+  );
   const comparisonRows = interestRowsWithActivity(reports.activityTrends.rows);
   const annualRows = [...annualTotals.entries()]
     .filter(([, total]) => total !== 0)
@@ -1208,49 +1339,145 @@ const ReportInterestAnalysis = ({
           : (change / prior) * 100;
       return { year, total, change, percentChange };
     });
-  const omittedZeroYears = [...annualTotals.entries()]
-    .filter(([, total]) => total === 0)
-    .map(([year]) => year);
 
   return (
-    <ReportShell
-      basis={reports.activityTrends.basis}
-      basisMode="compact"
-      title="Interest expense analysis"
-    >
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-        <p className="text-sm text-slate-600">
-          Interest expense is shown as positive activity and excludes zero-only periods
-          from charts when they add no analytical value.
-        </p>
-        <fieldset className="flex gap-3 rounded-lg border border-slate-200 p-3 text-sm">
-          <legend className="px-1 text-xs font-semibold text-slate-600">
-            Monthly view
-          </legend>
-          <label className="inline-flex items-center gap-2">
-            <input
-              checked={interestView === 'trend'}
-              name="interest-view"
-              onChange={() => setInterestView('trend')}
-              type="radio"
-              value="trend"
-            />
-            Chronological trend
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <input
-              checked={interestView === 'comparison'}
-              name="interest-view"
-              onChange={() => setInterestView('comparison')}
-              type="radio"
-              value="comparison"
-            />
-            Compare months across years
-          </label>
-        </fieldset>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 p-4">
+    <ReportShell basis={reports.activityTrends.basis} title="Interest expense analysis">
+      <div className="space-y-5">
+        <div
+          className={`rounded-lg border border-slate-200 p-4 ${monthlyDragging ? 'select-none cursor-grabbing' : 'cursor-grab'}`}
+          onPointerDown={(event) => {
+            monthlyDragRef.current = {
+              originX: event.clientX,
+              start: monthlyWindow.start,
+            };
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const drag = monthlyDragRef.current;
+            if (!drag) return;
+            const delta = drag.originX - event.clientX;
+            if (Math.abs(delta) < 4) return;
+            document.body.style.userSelect = 'none';
+            setMonthlyDragging(true);
+            panMonthly(Math.round(delta / 80));
+            monthlyDragRef.current = {
+              originX: event.clientX,
+              start: monthlyWindow.start,
+            };
+            event.preventDefault();
+          }}
+          onPointerUp={(event) => {
+            if (event.currentTarget.hasPointerCapture?.(event.pointerId))
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            monthlyDragRef.current = null;
+            setMonthlyDragging(false);
+            document.body.style.userSelect = '';
+          }}
+          onPointerCancel={() => {
+            monthlyDragRef.current = null;
+            setMonthlyDragging(false);
+            document.body.style.userSelect = '';
+          }}
+          onWheel={(event) => {
+            event.preventDefault();
+            const delta = event.deltaY < 0 ? -1 : 1;
+            setMonthlyWindow((current) => {
+              const width = current.end - current.start + 1;
+              const nextWidth = Math.max(
+                2,
+                Math.min(monthlyRows.length, width + delta * 2),
+              );
+              const start = Math.max(
+                0,
+                Math.min(current.start, monthlyRows.length - nextWidth),
+              );
+              return { start, end: start + nextWidth - 1 };
+            });
+          }}
+        >
+          <fieldset className="flex flex-wrap gap-3 text-sm">
+            <legend className="px-1 text-xs font-semibold text-slate-600">
+              Monthly view
+            </legend>
+            <button
+              aria-checked={interestView === 'trend'}
+              aria-label="Chronological trend"
+              className="inline-flex items-center gap-2"
+              onMouseDown={() => setInterestView('trend')}
+              onPointerUp={() => setInterestView('trend')}
+              onClick={() => setInterestView('trend')}
+              role="radio"
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                className="h-4 w-4 rounded-full border border-slate-400"
+              />
+              Chronological trend
+            </button>
+            <button
+              aria-checked={interestView === 'comparison'}
+              aria-label="Compare months across years"
+              className="inline-flex items-center gap-2"
+              onMouseDown={() => setInterestView('comparison')}
+              onPointerUp={() => setInterestView('comparison')}
+              onClick={() => setInterestView('comparison')}
+              role="radio"
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                className="h-4 w-4 rounded-full border border-slate-400"
+              />
+              Compare months across years
+            </button>
+          </fieldset>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              disabled={monthlyWindow.start === 0}
+              onClick={() => panMonthly(-1)}
+              type="button"
+            >
+              Previous month
+            </button>
+            <button
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              disabled={monthlyWindow.end >= monthlyRows.length - 1}
+              onClick={() => panMonthly(1)}
+              type="button"
+            >
+              Next month
+            </button>
+            <button
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              onClick={() =>
+                setMonthlyWindow({ start: 0, end: Math.max(0, monthlyRows.length - 1) })
+              }
+              type="button"
+            >
+              Reset monthly zoom
+            </button>
+            <button
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              onClick={() =>
+                setMonthlyWindow((current) => ({
+                  start: Math.max(
+                    0,
+                    monthlyRows.length - (current.end - current.start + 1),
+                  ),
+                  end: Math.max(0, monthlyRows.length - 1),
+                }))
+              }
+              type="button"
+            >
+              Return to latest months
+            </button>
+            <span className="text-xs text-slate-500">
+              Visible range: {monthlyVisibleRows[0]?.period ?? 'none'} through{' '}
+              {monthlyVisibleRows.at(-1)?.period ?? 'none'}
+            </span>
+          </div>
           <h4 className="text-sm font-semibold text-slate-900">
             {interestView === 'trend'
               ? 'Monthly interest expense trend'
@@ -1265,7 +1492,7 @@ const ReportInterestAnalysis = ({
               <InterestMiniChart
                 chartType="line"
                 label="Line chart of monthly interest expense"
-                rows={monthlyRows.map((row) => ({
+                rows={monthlyVisibleRows.map((row) => ({
                   label: periodLabel(row.period),
                   value: row.interestActivity,
                 }))}
@@ -1276,7 +1503,7 @@ const ReportInterestAnalysis = ({
               No interest activity exists for month-by-month comparison.
             </p>
           ) : (
-            <InterestComparisonChart rows={comparisonRows} />
+            <InterestComparisonChart rows={monthlyVisibleRows} />
           )}
         </div>
         <div className="rounded-lg border border-slate-200 p-4">
@@ -1288,80 +1515,88 @@ const ReportInterestAnalysis = ({
               No annual interest activity exists in the selected report range.
             </p>
           ) : (
-            <InterestMiniChart
-              chartType="bar"
-              label="Bar chart of annual interest expense"
-              rows={annualRows.map((row) => ({
-                label: row.year,
-                value: row.total.toFixed(2),
-              }))}
+            <InterestAnnualStackedChart
+              rows={reports.activityTrends.annualInterestByDebt}
             />
           )}
-          {omittedZeroYears.length > 0 ? (
-            <p className="mt-2 text-xs text-slate-500">
-              Omitted zero-interest years: {omittedZeroYears.join(', ')}.
-            </p>
-          ) : null}
         </div>
       </div>
       {reports.activityTrends.rows.length === 0 ? <EmptyState /> : null}
       {reports.activityTrends.rows.length > 0 ? (
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-left text-xs text-slate-500 uppercase">
-                <tr>
-                  <th className="px-3 py-2">Month</th>
-                  <th className="px-3 py-2 text-right">Interest expense</th>
-                  <th className="px-3 py-2 text-right">Principal reduction</th>
-                  <th className="px-3 py-2 text-right">Borrowings</th>
-                  <th className="px-3 py-2 text-right">Cash payments</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reports.activityTrends.rows.map((row) => (
-                  <tr className="border-t border-slate-100" key={row.period}>
-                    <td className="px-3 py-2">{periodLabel(row.period)}</td>
-                    <MoneyCell value={row.interestActivity} />
-                    <MoneyCell value={row.principalReduction} />
-                    <MoneyCell value={row.borrowings} />
-                    <MoneyCell value={row.payments} />
+        <details className="mt-4 rounded-lg border border-slate-200 p-4">
+          <summary className="cursor-pointer text-sm font-semibold">
+            View chart data
+          </summary>
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="text-left text-xs text-slate-500 uppercase">
+                  <tr>
+                    <th className="px-3 py-2">Month</th>
+                    <th className="px-3 py-2 text-right">Interest expense</th>
+                    <th className="px-3 py-2 text-right">Principal reduction</th>
+                    <th className="px-3 py-2 text-right">Borrowings</th>
+                    <th className="px-3 py-2 text-right">Cash payments</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-left text-xs text-slate-500 uppercase">
-                <tr>
-                  <th className="px-3 py-2">Year</th>
-                  <th className="px-3 py-2 text-right">Interest expense</th>
-                  <th className="px-3 py-2 text-right">Change</th>
-                  <th className="px-3 py-2 text-right">% change</th>
-                </tr>
-              </thead>
-              <tbody>
-                {annualRows.map((row) => (
-                  <tr className="border-t border-slate-100" key={row.year}>
-                    <td className="px-3 py-2">{row.year}</td>
-                    <MoneyCell value={row.total.toFixed(2)} />
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">
-                      {row.change === null
-                        ? '—'
-                        : formatDollarString(row.change.toFixed(2))}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">
-                      {row.percentChange === null
-                        ? '—'
-                        : `${row.percentChange.toFixed(1)}%`}
-                    </td>
+                </thead>
+                <tbody>
+                  {reports.activityTrends.rows.map((row) => (
+                    <tr className="border-t border-slate-100" key={row.period}>
+                      <td className="px-3 py-2">{periodLabel(row.period)}</td>
+                      <MoneyCell value={row.interestActivity} />
+                      <MoneyCell value={row.principalReduction} />
+                      <MoneyCell value={row.borrowings} />
+                      <MoneyCell value={row.payments} />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="text-left text-xs text-slate-500 uppercase">
+                  <tr>
+                    <th className="px-3 py-2">Year</th>
+                    <th className="px-3 py-2">Debt</th>
+                    <th className="px-3 py-2 text-right">Interest expense</th>
+                    <th className="px-3 py-2 text-right">Annual total</th>
+                    <th className="px-3 py-2 text-right">Change from prior year</th>
+                    <th className="px-3 py-2 text-right">% change from prior year</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {reports.activityTrends.annualInterestByDebt.map((row) => {
+                    const annualIndex = annualRows.findIndex(
+                      (annual) => annual.year === row.year,
+                    );
+                    const annual = annualRows[annualIndex];
+                    return (
+                      <tr
+                        className="border-t border-slate-100"
+                        key={`${row.year}-${row.debtId}`}
+                      >
+                        <td className="px-3 py-2">{row.year}</td>
+                        <td className="px-3 py-2">{row.debtName}</td>
+                        <MoneyCell value={row.interestExpense} />
+                        <MoneyCell value={(annual?.total ?? 0).toFixed(2)} />
+                        <td className="px-3 py-2 text-right font-mono tabular-nums">
+                          {annual?.change === null || !annual
+                            ? '—'
+                            : formatDollarString(annual.change.toFixed(2))}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono tabular-nums">
+                          {annual?.percentChange === null || !annual
+                            ? '—'
+                            : `${annual.percentChange.toFixed(1)}%`}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </details>
       ) : null}
     </ReportShell>
   );

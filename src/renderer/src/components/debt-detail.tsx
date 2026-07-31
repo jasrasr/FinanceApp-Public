@@ -13,6 +13,7 @@ import { labelFromValue } from './form-utils';
 import {
   centsToDollarString,
   currentEscrowActivityRows,
+  currentReconciliations,
   isCurrentActivityTransaction,
 } from './current-activity';
 
@@ -96,6 +97,7 @@ export const DebtDetail = ({
           <h2
             className="text-3xl font-semibold tracking-tight"
             id="debt-detail-heading"
+            tabIndex={-1}
           >
             {combinedDebtLabel(debt)}
           </h2>
@@ -209,17 +211,13 @@ export const DebtDetail = ({
           <h3 className="text-lg font-semibold" id="reconciliations-heading">
             Balance reconciliations
           </h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Statement balances are compared to the application-calculated ledger balance
-            through the same date. Differences are calculated by the main process.
-          </p>
         </div>
       </div>
 
       {debt.balanceReconciliations.length === 0 ? (
         <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-8 py-12 text-center">
           <h4 className="text-base font-semibold text-slate-900">
-            No reconciliations yet
+            No current reconciliations
           </h4>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
             Use Reconcile balance when statement evidence is available. The workflow
@@ -246,13 +244,10 @@ export const DebtDetail = ({
                 <th className="px-4 py-3 font-semibold" scope="col">
                   Status
                 </th>
-                <th className="px-4 py-3 font-semibold" scope="col">
-                  Support
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {debt.balanceReconciliations.map(
+              {currentReconciliations(debt).map(
                 (reconciliation: BalanceReconciliationDto) => (
                   <tr key={reconciliation.id}>
                     <td className="py-4 pr-4 align-top font-medium text-slate-900">
@@ -284,12 +279,6 @@ export const DebtDetail = ({
                       ) : null}
                     </td>
                     <td className="px-4 py-4 align-top text-slate-700">
-                      {reconciliation.sourceReference ?? 'No statement reference'}
-                      <span className="mt-1 block text-xs text-slate-500">
-                        {reconciliation.explanation ??
-                          reconciliation.supportingNotes ??
-                          'No explanation entered'}
-                      </span>
                       {reconciliation.lifecycleStatus === 'current' ? (
                         <span className="mt-2 flex flex-wrap gap-3">
                           <button
@@ -314,6 +303,57 @@ export const DebtDetail = ({
               )}
             </tbody>
           </table>
+          <details className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-800">
+              View reconciliation audit history
+            </summary>
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-xs">
+                <thead className="border-b border-slate-200 text-left text-slate-500 uppercase">
+                  <tr>
+                    <th className="py-2 pr-4">Statement date</th>
+                    <th className="px-4 py-2">Status</th>
+                    <th className="px-4 py-2">Relationship</th>
+                    <th className="px-4 py-2">Recorded</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {[...debt.balanceReconciliations]
+                    .sort((left, right) => {
+                      const dateComparison = right.statementDate.localeCompare(
+                        left.statementDate,
+                      );
+                      return dateComparison !== 0
+                        ? dateComparison
+                        : right.createdAtUtc.localeCompare(left.createdAtUtc);
+                    })
+                    .map((reconciliation) => (
+                      <tr key={`reconciliation-audit-${reconciliation.id}`}>
+                        <td className="py-2 pr-4">{reconciliation.statementDate}</td>
+                        <td
+                          aria-label={`Status ${labelFromValue(reconciliation.reconciliationStatus)}; ${labelFromValue(reconciliation.lifecycleStatus)}`}
+                          className="px-4 py-2"
+                        >
+                          {labelFromValue(reconciliation.lifecycleStatus)}
+                        </td>
+                        <td className="px-4 py-2">
+                          {reconciliation.supersedesReconciliationId
+                            ? 'Corrected replacement'
+                            : reconciliation.supersededByReconciliationId
+                              ? 'Superseded original'
+                              : reconciliation.lifecycleStatus === 'voided'
+                                ? 'Voided reconciliation'
+                                : 'Current reconciliation'}
+                        </td>
+                        <td className="px-4 py-2">
+                          {formatTimestamp(reconciliation.createdAtUtc)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </div>
       )}
     </section>
@@ -327,10 +367,6 @@ export const DebtDetail = ({
           <h3 className="text-lg font-semibold" id="transactions-heading">
             Current activity
           </h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Shows transactions that currently affect balances. Generated reversals and
-            reversed, voided, or superseded originals are kept in audit history.
-          </p>
         </div>
       </div>
 
@@ -374,8 +410,16 @@ export const DebtDetail = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {debt.transactions
+              {[...debt.transactions]
                 .filter(isCurrentActivityTransaction)
+                .sort((left, right) => {
+                  const dateComparison = right.effectiveDate.localeCompare(
+                    left.effectiveDate,
+                  );
+                  return dateComparison !== 0
+                    ? dateComparison
+                    : right.createdAtUtc.localeCompare(left.createdAtUtc);
+                })
                 .map((transaction: DebtTransactionDto) => (
                   <tr key={transaction.id}>
                     <td className="py-4 pr-4 align-top">
@@ -597,10 +641,6 @@ export const DebtDetail = ({
               })}
             </tbody>
           </table>
-          <p className="mt-3 text-xs text-slate-600">
-            Current escrow balance check: starting $0.00 plus visible signed activity
-            equals {formatDollarString(debt.calculatedEscrowBalance)}.
-          </p>
         </div>
       )}
     </section>

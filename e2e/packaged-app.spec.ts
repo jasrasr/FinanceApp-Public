@@ -41,7 +41,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.22.1')).toBeVisible();
+      await expect(window.getByText('Version 0.22.3')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();
@@ -195,7 +195,6 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
   await window.getByLabel('Transaction type').selectOption('escrow_disbursement');
   await window.getByLabel('Transaction date').fill('2021-06-15');
   await window.getByRole('textbox', { name: 'Amount' }).fill('75.00');
-  await window.getByLabel('Description').fill('Generated packaged real estate tax.');
   await window.locator('[name="transaction.allocations.escrow"]').fill('75.00');
   await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
   await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
@@ -272,18 +271,31 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
     .locator('[name="reconciliation.statementEndingBalance"]')
     .fill('99999.00');
   await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
-  await expect(window.getByText('Balance reconciliation was recorded.')).toBeVisible();
-  await expect(window.getByText('Exception')).toBeVisible();
-
-  await window.getByRole('button', { name: 'Correct' }).last().click();
-  await expect(window.getByText(/Correcting the current reconciliation/)).toBeVisible();
+  await expect(
+    window.getByText(
+      /Verified lender balance .* calculated ledger balance .* difference/,
+    ),
+  ).toBeVisible();
   await window
     .locator('[name="reconciliation.statementEndingBalance"]')
     .fill('100000.00');
   await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
   await expect(window.getByText('Balance reconciliation was recorded.')).toBeVisible();
+
+  await window.getByRole('button', { name: 'Correct' }).last().click();
   await expect(
-    window.getByLabel('Balance reconciliations').getByText('Superseded'),
+    window.getByRole('heading', { name: 'Reconcile balance' }),
+  ).toBeVisible();
+  await window
+    .locator('[name="reconciliation.statementEndingBalance"]')
+    .fill('100000.00');
+  await window.getByRole('button', { name: 'Reconcile balance' }).nth(0).click();
+  await expect(window.getByText('Balance reconciliation was recorded.')).toBeVisible();
+  await window.getByText('View reconciliation audit history').click();
+  await expect(
+    window
+      .getByLabel('Balance reconciliations')
+      .getByText('Superseded', { exact: true }),
   ).toBeVisible();
   await expect(window.getByText('Reconciled').first()).toBeVisible();
 

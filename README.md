@@ -307,6 +307,11 @@ Electron user-data directory that it removes after the workflow.
 
 - Reports are read-only and do not edit debts, posted activity, snapshots,
   reconciliations, or scenarios.
+- Current activity and escrow activity show newest current-effective rows first;
+  reversed, voided, and superseded rows remain available through audit history.
+- Balance reconciliation shows only the current reconciliation for each debt and
+  statement date. A mismatched verified balance is rejected until the underlying
+  transactions are corrected or voided.
 - Report balances default to application-calculated ledger balances as of the
   stated effective date.
 - Confirmed snapshots and saved scenario results are shown separately from
@@ -337,8 +342,10 @@ Electron user-data directory that it removes after the workflow.
   displayed by default.
 - Interest analysis separates monthly interest expense trends from annual
   interest comparisons. Monthly charts default to a recent readable period and
-  support month-by-month comparison across years. Interest expense is displayed
-  as a positive amount and reconciles to the underlying report table.
+  support month-by-month comparison across years, bounded zoom, wheel zoom, and
+  horizontal pan. Annual interest uses debt-source stacked bars with toggles.
+  Interest expense is displayed as a positive amount and reconciles to the
+  underlying report table.
 - Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
   engine and inherit its unsupported-term warnings.
 - Actual-versus-plan variance uses saved payoff scenarios. Because saved

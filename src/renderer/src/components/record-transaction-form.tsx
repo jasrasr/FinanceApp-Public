@@ -157,7 +157,9 @@ export const RecordTransactionForm = ({
         postingDate: transactionDate,
         status: 'posted',
         totalAmount: value(data, 'transaction.totalAmount'),
-        description: nullableValue(data, 'transaction.description'),
+        description: initialTransaction
+          ? nullableValue(data, 'transaction.description')
+          : null,
         sourceType: 'manual',
         sourceReference: null,
         allocations: {
@@ -179,13 +181,6 @@ export const RecordTransactionForm = ({
       noValidate
       onSubmit={submit}
     >
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
-        Record posted activity only. Use one transaction date for both posting and
-        accounting effect. Enter positive amounts; Debt Tracker applies the accounting
-        direction from the transaction type. Mortgage escrow deposits are tracked
-        separately from principal.
-      </div>
-
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Field
           error={fieldErrors?.['transaction.transactionType']}
@@ -224,12 +219,11 @@ export const RecordTransactionForm = ({
         </Field>
         <Field label="Transaction status" name="transaction.status" optional>
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-            Posted only in this phase
+            Posted
           </div>
         </Field>
         <Field
           error={fieldErrors?.['transaction.totalAmount']}
-          hint="Enter a positive currency amount. Debt Tracker applies the sign from the transaction type."
           label="Amount"
           name="transaction.totalAmount"
         >
@@ -243,21 +237,23 @@ export const RecordTransactionForm = ({
             value={totalAmount}
           />
         </Field>
-        <div className="lg:col-span-2">
-          <Field
-            error={fieldErrors?.['transaction.description']}
-            label="Description"
-            name="transaction.description"
-            optional
-          >
-            <input
-              className={inputClassName}
-              defaultValue={initialTransaction?.description ?? ''}
-              id="transaction.description"
+        {initialTransaction ? (
+          <div className="lg:col-span-2">
+            <Field
+              error={fieldErrors?.['transaction.description']}
+              label="Description"
               name="transaction.description"
-            />
-          </Field>
-        </div>
+              optional
+            >
+              <input
+                className={inputClassName}
+                defaultValue={initialTransaction.description}
+                id="transaction.description"
+                name="transaction.description"
+              />
+            </Field>
+          </div>
+        ) : null}
       </div>
 
       <section aria-labelledby="transaction-allocations-heading">
@@ -268,17 +264,6 @@ export const RecordTransactionForm = ({
           >
             Allocation amounts
           </h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Fill only the classifications that apply. Enter positive allocation amounts
-            that reconcile to the amount above before Debt Tracker applies the
-            accounting direction.
-          </p>
-          {transactionType === 'payment' ? (
-            <p className="mt-2 text-sm text-slate-600">
-              Principal is auto-calculated as the payment amount remaining after
-              interest, escrow, fees, and penalties.
-            </p>
-          ) : null}
         </div>
         <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
           {allocationFields.map(([fieldName, label]) => (
@@ -290,11 +275,6 @@ export const RecordTransactionForm = ({
               key={fieldName}
             >
               <input
-                aria-describedby={
-                  transactionType === 'payment' && fieldName === 'principal'
-                    ? 'auto-principal-helper'
-                    : undefined
-                }
                 className={
                   transactionType === 'payment' && fieldName === 'principal'
                     ? `${inputClassName} bg-slate-100 text-slate-700`
@@ -330,11 +310,6 @@ export const RecordTransactionForm = ({
                     : allocationInputValue(initialTransaction, fieldName)
                 }
               />
-              {transactionType === 'payment' && fieldName === 'principal' ? (
-                <p className="mt-1 text-xs text-slate-500" id="auto-principal-helper">
-                  Auto-calculated from the payment amount less nonprincipal allocations.
-                </p>
-              ) : null}
             </Field>
           ))}
         </div>

@@ -883,37 +883,34 @@ describe('debt creation', () => {
     expect(eventTypes).toContain('balance_snapshot_recorded');
   });
 
-  it('automatically assigns exception status when the calculated difference is nonzero', () => {
+  it('rejects a nonzero reconciliation difference before saving', () => {
     const created = service.createDebt(validRequest());
     service.createDebtTransaction(validTransactionRequest(created.id));
 
-    const updated = service.createBalanceReconciliation({
-      ...validReconciliationRequest(created.id),
-      reconciliation: {
-        ...validReconciliationRequest(created.id).reconciliation,
-        statementEndingBalance: '124500.13',
-        reconciliationStatus: 'reconciled',
-      },
-    });
-
-    expect(updated.balanceReconciliations[0]).toMatchObject({
-      applicationCalculatedBalance: '124600.13',
-      calculatedDifference: '-100.00',
-      reconciliationStatus: 'exception',
-    });
+    expect(() =>
+      service.createBalanceReconciliation({
+        ...validReconciliationRequest(created.id),
+        reconciliation: {
+          ...validReconciliationRequest(created.id).reconciliation,
+          statementEndingBalance: '124500.13',
+          reconciliationStatus: 'reconciled',
+        },
+      }),
+    ).toThrow(
+      /Verified lender balance 124500\.13; calculated ledger balance 124600\.13; difference -100\.00/,
+    );
+    expect(context.database.select().from(balanceReconciliations).all()).toHaveLength(
+      0,
+    );
   });
 
   it('supersedes an incorrect current reconciliation with a corrected same-date reconciliation', () => {
     const created = service.createDebt(validRequest());
     service.createDebtTransaction(validTransactionRequest(created.id));
 
-    const incorrect = service.createBalanceReconciliation({
-      ...validReconciliationRequest(created.id),
-      reconciliation: {
-        ...validReconciliationRequest(created.id).reconciliation,
-        statementEndingBalance: '124500.13',
-      },
-    }).balanceReconciliations[0]!;
+    const incorrect = service.createBalanceReconciliation(
+      validReconciliationRequest(created.id),
+    ).balanceReconciliations[0]!;
 
     const corrected = service.createBalanceReconciliation({
       debtId: created.id,
@@ -1606,7 +1603,7 @@ describe('debt maintenance', () => {
     });
   });
 
-  it('surfaces upcoming maturities and reconciliation attention items', () => {
+  it('surfaces upcoming maturities without creating a mismatched reconciliation', () => {
     const request = validRequest('Fictional Short Note');
     request.debt.maturityDate = '2026-12-31';
     const created = service.createDebt(request);
@@ -1615,7 +1612,7 @@ describe('debt maintenance', () => {
       debtId: created.id,
       reconciliation: {
         statementDate: '2026-01-31',
-        statementEndingBalance: '124500.13',
+        statementEndingBalance: '124600.13',
         approvedAdjustment: null,
         sourceReference: 'STAT-2026-01',
         supportingNotes: null,
@@ -1632,13 +1629,7 @@ describe('debt maintenance', () => {
         amount: '124600.13',
       }),
     ]);
-    expect(dashboard.attentionItems).toEqual([
-      expect.objectContaining({
-        debtId: created.id,
-        status: 'exception',
-        difference: '-100.00',
-      }),
-    ]);
+    expect(dashboard.attentionItems).toHaveLength(0);
   });
 
   it('builds advanced reports from posted activity with explicit balance labels', () => {
@@ -1649,7 +1640,7 @@ describe('debt maintenance', () => {
       debtId: created.id,
       reconciliation: {
         statementDate: '2026-01-31',
-        statementEndingBalance: '124500.13',
+        statementEndingBalance: '124600.13',
         approvedAdjustment: null,
         sourceReference: 'STAT-2026-01',
         supportingNotes: null,
@@ -1698,7 +1689,7 @@ describe('debt maintenance', () => {
     ).toMatchObject({
       debtId: created.id,
       calculatedBalance: '124600.13',
-      confirmedBalance: '124500.13',
+      confirmedBalance: '124600.13',
     });
     expect(
       reports.balanceHistory.rows
@@ -1720,13 +1711,7 @@ describe('debt maintenance', () => {
       currentInterestRate: '5.49',
       calculatedBalance: '124600.13',
     });
-    expect(reports.reconciliationAndDataQuality.rows).toEqual([
-      expect.objectContaining({
-        category: 'Reconciliation',
-        severity: 'exception',
-        debtId: created.id,
-      }),
-    ]);
+    expect(reports.reconciliationAndDataQuality.rows).toEqual([]);
   });
 
   it('classifies principal rollforward activity without escrow or opening-principal offsets', () => {

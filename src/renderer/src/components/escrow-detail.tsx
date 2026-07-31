@@ -110,10 +110,6 @@ const EscrowActivityForm = ({
     >
       <div>
         <h3 className="text-lg font-semibold text-slate-950">Record escrow activity</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Select the mortgage debt and enter a positive amount. Debt Tracker applies
-          escrow accounting direction from the activity type.
-        </p>
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -159,7 +155,6 @@ const EscrowActivityForm = ({
         </Field>
         <Field
           error={fieldErrors?.['transaction.totalAmount']}
-          hint="Enter a positive currency amount."
           label="Amount"
           name="escrow.amount"
         >
@@ -346,10 +341,6 @@ export const EscrowDetail = ({
                   })}
                 </tbody>
               </table>
-              <p className="mt-3 text-xs text-slate-600">
-                Current escrow balance check: starting $0.00 plus visible signed
-                activity equals {formatDollarString(debt.calculatedEscrowBalance)}.
-              </p>
             </div>
           </section>
         ))}

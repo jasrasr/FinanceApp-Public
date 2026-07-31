@@ -1,4 +1,8 @@
-import type { DebtDetailDto, DebtTransactionDto } from '../../../shared/debt-contracts';
+import type {
+  BalanceReconciliationDto,
+  DebtDetailDto,
+  DebtTransactionDto,
+} from '../../../shared/debt-contracts';
 
 export const isCurrentActivityTransaction = (
   transaction: DebtTransactionDto,
@@ -46,9 +50,9 @@ export const currentEscrowTransactions = (
     .filter(isCurrentActivityTransaction)
     .filter((transaction) => escrowActivityAmountCents(transaction) !== null)
     .sort((left, right) => {
-      const dateComparison = left.effectiveDate.localeCompare(right.effectiveDate);
+      const dateComparison = right.effectiveDate.localeCompare(left.effectiveDate);
       if (dateComparison !== 0) return dateComparison;
-      return left.createdAtUtc.localeCompare(right.createdAtUtc);
+      return right.createdAtUtc.localeCompare(left.createdAtUtc);
     });
 
 export interface EscrowActivityDisplayRow {
@@ -60,9 +64,15 @@ export interface EscrowActivityDisplayRow {
 export const currentEscrowActivityRows = (
   debt: DebtDetailDto,
 ): readonly EscrowActivityDisplayRow[] => {
+  const chronological = [...currentEscrowTransactions(debt)].sort((left, right) => {
+    const dateComparison = left.effectiveDate.localeCompare(right.effectiveDate);
+    return dateComparison !== 0
+      ? dateComparison
+      : left.createdAtUtc.localeCompare(right.createdAtUtc);
+  });
   let runningBalanceCents = 0;
 
-  return currentEscrowTransactions(debt).flatMap((transaction) => {
+  const rows = chronological.flatMap((transaction) => {
     const escrowAmountCents = escrowActivityAmountCents(transaction);
     if (escrowAmountCents === null) return [];
     runningBalanceCents += escrowAmountCents;
@@ -75,4 +85,18 @@ export const currentEscrowActivityRows = (
       },
     ];
   });
+
+  return rows.reverse();
 };
+
+export const currentReconciliations = (
+  debt: DebtDetailDto,
+): readonly BalanceReconciliationDto[] =>
+  debt.balanceReconciliations
+    .filter((reconciliation) => reconciliation.lifecycleStatus === 'current')
+    .sort((left, right) => {
+      const dateComparison = right.statementDate.localeCompare(left.statementDate);
+      return dateComparison !== 0
+        ? dateComparison
+        : right.createdAtUtc.localeCompare(left.createdAtUtc);
+    });

@@ -24,13 +24,11 @@ export const Field = ({
     <div>
       <label className="block text-sm font-medium text-slate-800" htmlFor={name}>
         {label}
-        {optional ? (
-          <span className="ml-1 font-normal text-slate-500">(optional)</span>
-        ) : (
+        {!optional ? (
           <span className="ml-1 text-slate-500" aria-hidden="true">
             *
           </span>
-        )}
+        ) : null}
       </label>
       <div className="mt-1">{children}</div>
       {hint ? (

@@ -660,6 +660,15 @@ const trendRowDtoSchema = z
   })
   .strict();
 
+const annualInterestByDebtRowDtoSchema = z
+  .object({
+    year: z.string(),
+    debtId: uuidSchema,
+    debtName: z.string(),
+    interestExpense: z.string(),
+  })
+  .strict();
+
 const balanceTrendRowDtoSchema = z
   .object({
     period: z.string(),
@@ -744,7 +753,11 @@ export const debtReportsDtoSchema = z
       })
       .strict(),
     activityTrends: z
-      .object({ basis: reportBasisDtoSchema, rows: z.array(trendRowDtoSchema) })
+      .object({
+        basis: reportBasisDtoSchema,
+        rows: z.array(trendRowDtoSchema),
+        annualInterestByDebt: z.array(annualInterestByDebtRowDtoSchema).default([]),
+      })
       .strict(),
     balanceTrends: z
       .object({ basis: reportBasisDtoSchema, rows: z.array(balanceTrendRowDtoSchema) })

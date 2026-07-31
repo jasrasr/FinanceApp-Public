@@ -21,7 +21,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 18,
   appMetadata: {
-    version: '0.22.2',
+    version: '0.22.3',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -314,6 +314,14 @@ const sampleReports: DebtReportsDto = {
         interestActivity: '100.00',
         borrowings: '0.00',
         payments: '500.00',
+      },
+    ],
+    annualInterestByDebt: [
+      {
+        year: '2026',
+        debtId: '00000000-0000-4000-8000-000000000001',
+        debtName: 'Generated Home Mortgage',
+        interestExpense: '1200.00',
       },
     ],
   },
@@ -1245,9 +1253,6 @@ describe('debt maintenance application', () => {
     expect(screen.getByText('-$20.00')).toBeVisible();
     expect(screen.getAllByText('$100.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('$50.00').length).toBeGreaterThanOrEqual(2);
-    expect(
-      screen.getByText(/starting \$0\.00 plus visible signed activity equals \$50\.00/),
-    ).toBeVisible();
 
     fireEvent.click(
       screen.getByRole('button', {
@@ -1397,7 +1402,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.22.2')).toBeVisible();
+    expect(await screen.findByText('Version 0.22.3')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1426,11 +1431,6 @@ describe('debt maintenance application', () => {
     expect(historyReport).not.toHaveAttribute('open');
     fireEvent.click(historySummary);
     expect(historyReport).toHaveAttribute('open');
-    expect(
-      screen.getAllByText(
-        /Application-calculated ledger balances from posted actual activity/i,
-      ).length,
-    ).toBeGreaterThan(0);
     expect(
       screen.getByRole('img', {
         name: /Line chart of debt balance history/i,
@@ -1529,17 +1529,17 @@ describe('debt maintenance application', () => {
     expect(screen.getAllByTestId('balance-history-active-marker')[0]).toHaveClass(
       'opacity-0',
     );
-    expect(screen.getByText('View chart data')).toBeVisible();
+    expect(screen.getAllByText('View chart data')[0]).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }));
     expect(screen.getByTestId('balance-history-zoom')).toHaveTextContent(
       '2026-01-31 through 2026-03-31',
     );
     expect(screen.queryByRole('table', { name: /Debt balance history/i })).toBeNull();
-    fireEvent.click(screen.getByText('View chart data'));
+    fireEvent.click(screen.getAllByText('View chart data')[0]!);
     expect(screen.getAllByText('$371,800.13').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByText('Interest expense analysis'));
     expect(screen.getByText('Monthly interest expense trend')).toBeVisible();
-    expect(screen.getByText('Basis and assumptions')).toBeVisible();
+    expect(screen.getAllByText(/Date range:/).length).toBeGreaterThan(0);
     expect(
       screen.getByRole('img', {
         name: /Line chart of monthly interest expense/i,
@@ -1697,7 +1697,7 @@ describe('debt maintenance application', () => {
     expect(screen.queryByLabelText(/Source type/)).toBeNull();
     expect(screen.getByLabelText(/Amount/)).toBeVisible();
     expect(screen.getByLabelText(/Principal/)).toBeVisible();
-    expect(screen.getByText(/Principal is auto-calculated/)).toBeVisible();
+    expect(screen.queryByText(/Principal is auto-calculated/)).toBeNull();
     expect(screen.queryByLabelText(/Extra principal/)).toBeNull();
     expect(screen.queryByLabelText(/^Other/)).toBeNull();
   });
@@ -1845,7 +1845,7 @@ describe('debt maintenance application', () => {
     expect(screen.queryByLabelText(/Reconciliation status/)).toBeNull();
     expect(screen.queryByLabelText(/Explanation/)).toBeNull();
     expect(screen.queryByLabelText(/Supporting notes/)).toBeNull();
-    expect(screen.getByLabelText(/Include an approved adjustment/)).toBeVisible();
+    expect(screen.queryByLabelText(/Include an approved adjustment/)).toBeNull();
     expect(screen.queryByLabelText(/Statement reference/)).toBeNull();
   });
 

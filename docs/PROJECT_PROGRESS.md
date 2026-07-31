@@ -1255,3 +1255,47 @@ completed.
 - Recommended next phase:
   - Continue acceptance testing with fictional edited, voided, reversed, and
     escrow-heavy data before expanding import or reporting scope.
+
+## Phase 25: Transaction, Reconciliation, Scrolling, and Report Presentation Refinement
+
+- Completion date: 2026-07-31
+- Application version: 0.22.3
+- Features implemented:
+  - Current transaction, escrow, and reconciliation lists now sort newest-first
+    with created-timestamp tie-breaking and exclude non-current lifecycle rows.
+  - Reconciliation entry now accepts only date and verified balance; mismatches
+    are rejected with verified, calculated, and difference values.
+  - Removed unnecessary form and report explanation copy, removed normal-entry
+    transaction descriptions, and marked required fields with `*`.
+  - Successful transaction entry returns focus to the debt heading; transaction
+    editing focuses the first edit field at the top of the debt screen.
+  - Added debt-source annual stacked interest bars, source toggles, collapsed
+    report data, and bounded monthly zoom/pan controls.
+- Material architecture and accounting decisions:
+  - Existing historical approved-adjustment DTOs and records remain readable,
+    but the normal workflow no longer creates them.
+  - Annual debt-source interest segments are calculated in the main process from
+    posted current activity and sent through the typed report DTO.
+- Database schema or migration changes:
+  - No schema migration. A report DTO field was extended for annual debt-source
+    interest segments.
+- New or changed IPC operations:
+  - No IPC operation changes; existing report and reconciliation bridge contracts
+    remain narrow and typed.
+- New UI screens or workflows:
+  - Refined debt detail transaction/reconciliation forms and report presentation.
+- Validation and smoke-test results:
+  - Focused renderer tests: 26 passed; database/service integration tests: 62
+    passed.
+  - Full `npm run check` passed: formatting, lint, type checking, 129 unit tests,
+    database integrity, and Electron E2E (1 active test passed; packaged specs
+    are skipped in the source-app suite).
+  - `npm run package:smoke` passed installed-app and upgrade-preservation tests.
+  - Known command warnings: npm pending native install-script review, Node
+    `fs.R_OK` deprecation, and temporary installed-app directory cleanup warning.
+- Known limitations and technical debt:
+  - Historical adjustment-linked reconciliations remain visible only through
+    audit data and are not recreated by the normal form.
+- Recommended next phase:
+  - Continue fictional-data acceptance testing for report source toggles and
+    correction-chain workflows.

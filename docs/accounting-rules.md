@@ -211,10 +211,12 @@ new manual debts.
 ## Confirmed Balances and Reconciliation
 
 A balance snapshot records external evidence and never alters ledger activity.
-The user-facing balance workflow is Reconcile Balance: it records the verified
-lender balance as a supporting confirmed snapshot, calculates the ledger balance
-through the same reconciliation date, and creates a reconciliation record. It
-does not silently overwrite ledger activity.
+The user-facing balance workflow is Reconcile Balance: it accepts only the
+reconciliation date and verified lender balance, calculates the ledger balance
+through that date, and saves a `reconciled` record only when the values match. A
+mismatch is rejected with both balances and the calculated difference; the user
+must correct or void the underlying transactions before trying again. It does
+not silently overwrite ledger activity or offer an adjustment transaction.
 
 Reconciliation difference is:
 
@@ -230,8 +232,8 @@ Reconciliation statuses mean:
 - `unreconciled`: recorded but not yet reviewed to completion.
 - `in_progress`: active review is underway.
 - `reconciled`: calculated difference is zero.
-- `reconciled_with_adjustment`: a nonzero difference is resolved by an explicit
-  approved adjustment transaction.
+- `reconciled_with_adjustment`: retained only for historical compatibility with
+  existing approved adjustment records.
 - `exception`: a nonzero difference or other issue requires follow-up.
 
 An approved adjustment must be a posted
@@ -245,9 +247,7 @@ and its source reference is the reconciliation identifier.
 The normal user-facing reconciliation workflow assigns status automatically:
 
 - A zero difference is `reconciled`.
-- A nonzero difference is `exception`.
-- A nonzero difference resolved by an explicit approved adjustment is
-  `reconciled_with_adjustment`.
+- A nonzero difference is rejected and is not saved.
 
 Users do not manually select reconciliation status in the normal workflow.
 

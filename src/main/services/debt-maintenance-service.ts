@@ -1874,6 +1874,26 @@ const createDebtReports = (
     borrowings: row.borrowings,
     payments: row.payments,
   }));
+  const annualInterestByDebt = records.flatMap((record) =>
+    periodKeys(startDate, endDate, 'annual').flatMap((period) => {
+      const start = clampDate(periodStart(period, 'annual'), startDate, endDate);
+      const end = clampDate(periodEnd(period, 'annual'), startDate, endDate);
+      const interestCents = postedActualTransactionsThrough(record, start, end).reduce(
+        (total, entry) => total + allocationTotal(entry.allocations, ['interest']),
+        0,
+      );
+      return interestCents === 0
+        ? []
+        : [
+            {
+              year: period,
+              debtId: record.debt.id,
+              debtName: record.debt.name,
+              interestExpense: centsToDollars(Math.abs(interestCents)),
+            },
+          ];
+    }),
+  );
   const scheduleRows = records.map((record) => {
     const term = currentTermForDate(record.terms, effectiveDate);
     return {
@@ -2027,6 +2047,7 @@ const createDebtReports = (
         baseAssumptions,
       ),
       rows: trendRows,
+      annualInterestByDebt,
     },
     balanceTrends: {
       basis: reportBasis('Debt balance trend', startDate, endDate, effectiveDate, [
@@ -4364,6 +4385,12 @@ export const createDebtMaintenanceService = ({
         const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
         const reconciliationId = createId();
         const approvedAdjustment = parsed.reconciliation.approvedAdjustment ?? null;
+        if (calculatedDifferenceCents !== 0 && approvedAdjustment === null) {
+          throw new ApplicationServiceError(
+            'validation',
+            `Verified lender balance ${centsToDollars(statementEndingBalanceCents)}; calculated ledger balance ${centsToDollars(applicationCalculatedBalanceCents)}; difference ${centsToDollars(calculatedDifferenceCents)}. Review and edit or void the underlying transactions, then try again.`,
+          );
+        }
         const supersedesReconciliationId =
           parsed.reconciliation.supersedesReconciliationId ?? null;
         const supersededReconciliation = supersedesReconciliationId

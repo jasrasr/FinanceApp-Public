@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppBridge } from '../../shared/app-bridge';
 import type {
   CreateBalanceReconciliationRequest,
@@ -157,6 +157,26 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     useState<DebtTransactionDto | null>(null);
   const [reconciliationTarget, setReconciliationTarget] =
     useState<BalanceReconciliationDto | null>(null);
+  const detailFocusRequestRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (view !== 'detail' || !selectedDebt) return;
+    const requestKey = `${selectedDebt.id}:${detailPanel}:${transactionEditTarget?.id ?? ''}`;
+    if (detailFocusRequestRef.current === requestKey) return;
+    detailFocusRequestRef.current = requestKey;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    const target =
+      detailPanel === 'transaction-edit'
+        ? document.getElementById('transaction.transactionDate')
+        : detailPanel === 'overview'
+          ? document.getElementById('debt-detail-heading')
+          : null;
+    if (target instanceof HTMLElement) {
+      target.scrollIntoView?.({ block: 'start' });
+      target.focus({ preventScroll: true });
+    }
+  }, [detailPanel, selectedDebt, transactionEditTarget, view]);
 
   const loadDebts = async (includeArchivedValue = includeArchived): Promise<void> => {
     setLoading(true);
