@@ -558,6 +558,15 @@ Posted activity is not silently deleted or overwritten.
   repair workflow should create an explicit linked corrective transaction after
   user review.
 
+## Report Presentation Controls
+
+Debt-history and interest charts use the selected report date range as a hard
+boundary. Visible series and annual stacked segments are calculated from the
+same current-effect report values, while chart zoom, pan, legend visibility,
+and date-tick density only change presentation. Annual interest labels are the
+sum of the visible debt-source segments; hiding a source recalculates the
+visible total and scale.
+
 ## Audit Metadata
 
 Audit summaries identify the event and related records without repeating

@@ -1299,3 +1299,40 @@ completed.
 - Recommended next phase:
   - Continue fictional-data acceptance testing for report source toggles and
     correction-chain workflows.
+
+## Phase 26: Debt History and Interest Chart Usability Corrections
+
+- Completion date: 2026-07-31
+- Application version: 0.22.4
+- Features implemented:
+  - Added accessible Select none/Select all debt-history legend control.
+  - Aligned monthly interest wheel zoom with bounded debt-history chart
+    interaction and preserved drag pan and period controls.
+  - Added range-aware monthly ticks, filled radio states, annual totals above
+    stacked bars, and stable multi-treatment year comparison bars.
+- Material architecture and accounting decisions:
+  - Chart interaction remains renderer-only presentation state and uses the
+    selected report range as its boundary.
+  - Annual visible totals remain the sum of visible current-effect debt-source
+    segments.
+- Database schema or migration changes:
+  - None.
+- New or changed IPC operations:
+  - None.
+- New UI screens or workflows:
+  - Existing debt-history and interest analysis charts were refined in place.
+- Validation and smoke-test results:
+  - `npm run format` and `npm run check` passed. The gate completed with 10
+    test files and 130 tests passing, database integrity passing, production
+    build passing, and the active Electron E2E workflow passing; packaged source
+    specs were skipped in that suite.
+  - The source Electron E2E regression also verifies both Select none and Select
+    all legend states.
+  - `npm run package:smoke` passed installer launch, packaged workflow, and
+    upgrade-preservation tests. The runner reported its existing temporary
+    installed-app cleanup warning and Node `fs.R_OK` deprecation warning.
+- Known limitations and technical debt:
+  - Chart rendering remains lightweight SVG with session-only view state.
+- Recommended next phase:
+  - Continue fictional-data acceptance testing for report accessibility and
+    chart interaction boundaries.

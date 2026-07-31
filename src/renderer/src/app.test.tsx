@@ -13,6 +13,10 @@ import type {
   PayoffScenarioDto,
 } from '../../shared/debt-contracts';
 import { App } from './app';
+import {
+  interestYearTreatment,
+  monthlyInterestTickIndexes,
+} from './components/chart-helpers';
 import { formatLastChanged } from './components/display-format';
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
@@ -21,7 +25,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 18,
   appMetadata: {
-    version: '0.22.3',
+    version: '0.22.4',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -312,6 +316,20 @@ const sampleReports: DebtReportsDto = {
         period: '2026-01',
         principalReduction: '400.00',
         interestActivity: '100.00',
+        borrowings: '0.00',
+        payments: '500.00',
+      },
+      {
+        period: '2026-02',
+        principalReduction: '390.00',
+        interestActivity: '110.00',
+        borrowings: '0.00',
+        payments: '500.00',
+      },
+      {
+        period: '2026-03',
+        principalReduction: '410.00',
+        interestActivity: '90.00',
         borrowings: '0.00',
         payments: '500.00',
       },
@@ -1402,7 +1420,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.22.3')).toBeVisible();
+    expect(await screen.findByText('Version 0.22.4')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1439,6 +1457,16 @@ describe('debt maintenance application', () => {
     expect(screen.getByText('Ending principal balance by obligation')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Total debt balance' })).toBeVisible();
     const legendControls = screen.getByLabelText('Debt balance history chart controls');
+    const selectNone = within(legendControls).getByRole('button', {
+      name: 'Select none',
+    });
+    fireEvent.click(selectNone);
+    expect(
+      within(legendControls).getByRole('button', { name: 'Select all' }),
+    ).toBeVisible();
+    expect(screen.queryAllByTestId('balance-history-line')).toHaveLength(0);
+    fireEvent.click(within(legendControls).getByRole('button', { name: 'Select all' }));
+    expect(screen.queryAllByTestId('balance-history-line').length).toBeGreaterThan(0);
     const mortgageLegend = within(legendControls).getByRole('button', {
       name: 'Generated Home Mortgage — Northwind Bank',
     });
@@ -1545,11 +1573,38 @@ describe('debt maintenance application', () => {
         name: /Line chart of monthly interest expense/i,
       }),
     ).toBeVisible();
+    expect(screen.getByTestId('monthly-interest-chart')).toBeVisible();
+    const monthlyChart = screen.getByTestId('monthly-interest-chart');
+    const monthlyStatus = within(monthlyChart).getByText(/Visible range:/).textContent;
+    const monthlyWheel = new WheelEvent('wheel', { cancelable: true, deltaY: -100 });
+    monthlyChart.dispatchEvent(monthlyWheel);
+    expect(monthlyWheel.defaultPrevented).toBe(true);
+    await waitFor(() =>
+      expect(within(monthlyChart).getByText(/Visible range:/).textContent).not.toBe(
+        monthlyStatus,
+      ),
+    );
+    const trendRadio = screen.getByRole('radio', { name: 'Chronological trend' });
+    expect(trendRadio.querySelector('span > span')).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'Compare months across years' }));
+    expect(
+      screen
+        .getByRole('radio', { name: 'Chronological trend' })
+        .querySelector('span > span'),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole('radio', { name: 'Compare months across years' })
+        .querySelector('span > span'),
+    ).toBeTruthy();
     expect(
       screen.getByRole('img', {
         name: /Bar chart of annual interest expense/i,
       }),
     ).toBeVisible();
+    expect(screen.getByTestId('annual-interest-total-2026')).toHaveTextContent(
+      '$1,200.00',
+    );
     fireEvent.click(screen.getByRole('radio', { name: 'Compare months across years' }));
     expect(screen.getByText('Month-by-month comparison across years')).toBeVisible();
     expect(
@@ -1574,6 +1629,15 @@ describe('debt maintenance application', () => {
       debtType: null,
       status: null,
     });
+  });
+
+  it('keeps monthly interest ticks readable across range sizes and year treatments distinct', () => {
+    expect(monthlyInterestTickIndexes(48, 720).length).toBeLessThan(48);
+    expect(monthlyInterestTickIndexes(18, 720).length).toBeLessThan(18);
+    expect(monthlyInterestTickIndexes(6, 720).length).toBe(6);
+    expect(interestYearTreatment(0).fill).not.toBe(interestYearTreatment(1).fill);
+    expect(interestYearTreatment(1).dash).not.toBe(interestYearTreatment(2).dash);
+    expect(interestYearTreatment(0).stroke).not.toBe(interestYearTreatment(2).stroke);
   });
 
   it('renders data-management status and runs backup and export actions', async () => {

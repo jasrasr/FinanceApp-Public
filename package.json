@@ -1,6 +1,6 @@
 {
   "name": "debt-tracker",
-  "version": "0.22.3",
+  "version": "0.22.4",
   "private": true,
   "description": "A local desktop application for tracking debt paydown.",
   "author": "Debt Tracker",

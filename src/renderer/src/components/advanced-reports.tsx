@@ -4,6 +4,11 @@ import type {
   GetDebtReportsRequest,
 } from '../../../shared/debt-contracts';
 import { REPORTING_HISTORY_START_DATE } from '../../../shared/reporting-constants';
+import {
+  interestYearTreatment,
+  monthlyInterestTickIndexes,
+  monthlyInterestTickLabel,
+} from './chart-helpers';
 import { formatDollarString } from './display-format';
 
 export interface AdvancedReportsProps {
@@ -106,7 +111,11 @@ const InterestMiniChart = ({
 }: {
   readonly chartType: 'bar' | 'line';
   readonly label: string;
-  readonly rows: readonly { readonly label: string; readonly value: string }[];
+  readonly rows: readonly {
+    readonly label: string;
+    readonly period?: string;
+    readonly value: string;
+  }[];
 }): React.JSX.Element | null => {
   if (rows.length === 0) return null;
   const width = 520;
@@ -122,6 +131,7 @@ const InterestMiniChart = ({
     .map((row, index) => `${xFor(index)},${yFor(row.value)}`)
     .join(' ');
   const barWidth = Math.max(10, Math.min(26, (width - 120) / rows.length / 2));
+  const tickIndexes = monthlyInterestTickIndexes(rows.length, width);
 
   return (
     <div className="mt-3" role="img" aria-label={`${label}. Tabular detail follows.`}>
@@ -174,19 +184,21 @@ const InterestMiniChart = ({
                   x={x - barWidth / 2}
                   y={y}
                 />
-              ) : (
-                <circle
-                  cx={x}
-                  cy={y}
-                  fill="#fff7ed"
-                  r="3"
-                  stroke="#b45309"
-                  strokeWidth="2"
-                />
-              )}
-              <text fill="#475569" fontSize="10" textAnchor="middle" x={x} y="152">
-                {row.label}
-              </text>
+              ) : null}
+              {tickIndexes.includes(index) ? (
+                <text
+                  data-testid="monthly-interest-x-tick"
+                  fill="#475569"
+                  fontSize="10"
+                  textAnchor="middle"
+                  x={x}
+                  y="152"
+                >
+                  {row.period
+                    ? monthlyInterestTickLabel(row.period, rows.length)
+                    : row.label}
+                </text>
+              ) : null}
             </g>
           );
         })}
@@ -235,6 +247,7 @@ const InterestComparisonChart = ({
   const maximum = Math.max(...[...valuesByYearMonth.values()], 1);
   const monthSlot = (width - 96) / 12;
   const barWidth = Math.max(4, Math.min(12, monthSlot / Math.max(years.length, 1) - 2));
+  const tickIndexes = monthlyInterestTickIndexes(12, width);
   const yFor = (value: number): number =>
     chartBottom - (value / maximum) * (chartBottom - chartTop);
 
@@ -245,15 +258,26 @@ const InterestComparisonChart = ({
       aria-label="Grouped bar chart comparing monthly interest expense across years. Tabular detail follows."
     >
       <div className="mb-2 flex flex-wrap gap-3 text-xs text-slate-700">
-        {years.map((year, index) => (
-          <span className="inline-flex items-center gap-1" key={year}>
+        {years.map((year, index) => {
+          const treatment = interestYearTreatment(index);
+          return (
             <span
-              className="inline-block h-3 w-3 border border-slate-700"
-              style={{ backgroundColor: index % 2 === 0 ? '#fef3c7' : '#fed7aa' }}
-            />
-            {year}
-          </span>
-        ))}
+              className="inline-flex items-center gap-1"
+              data-testid={`interest-year-treatment-${year}`}
+              key={year}
+            >
+              <span
+                className="inline-block h-3 w-3 border border-slate-700"
+                style={{
+                  backgroundColor: treatment.fill,
+                  borderColor: treatment.stroke,
+                  borderStyle: treatment.dash ? 'dashed' : 'solid',
+                }}
+              />
+              {year}
+            </span>
+          );
+        })}
       </div>
       <svg
         aria-hidden="true"
@@ -291,10 +315,10 @@ const InterestComparisonChart = ({
                   <g key={year}>
                     <title>{`${monthName(monthIndex)} ${year}: ${formatDollarString(value.toFixed(2))} interest expense.`}</title>
                     <rect
-                      fill={yearIndex % 2 === 0 ? '#fef3c7' : '#fed7aa'}
+                      fill={interestYearTreatment(yearIndex).fill}
                       height={chartBottom - y}
-                      stroke="#b45309"
-                      strokeDasharray={yearIndex % 2 === 0 ? undefined : '3 2'}
+                      stroke={interestYearTreatment(yearIndex).stroke}
+                      strokeDasharray={interestYearTreatment(yearIndex).dash}
                       width={barWidth}
                       x={x}
                       y={y}
@@ -302,9 +326,18 @@ const InterestComparisonChart = ({
                   </g>
                 );
               })}
-              <text fill="#475569" fontSize="10" textAnchor="middle" x={baseX} y="204">
-                {monthName(monthIndex)}
-              </text>
+              {tickIndexes.includes(monthIndex) ? (
+                <text
+                  data-testid="monthly-interest-x-tick"
+                  fill="#475569"
+                  fontSize="10"
+                  textAnchor="middle"
+                  x={baseX}
+                  y="204"
+                >
+                  {monthName(monthIndex)}
+                </text>
+              ) : null}
             </g>
           );
         })}
@@ -870,6 +903,13 @@ const BalanceHistoryChart = ({
           aria-label="Debt balance history chart controls"
           className="mt-3 flex flex-wrap gap-2"
         >
+          <button
+            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+            onClick={() => setVisibleKeys(visibleKeys.length > 0 ? [] : allKeys)}
+            type="button"
+          >
+            {visibleKeys.length > 0 ? 'Select none' : 'Select all'}
+          </button>
           {series.map((item, index) => {
             const visible = visibleKeys.includes(item.key);
             return (
@@ -1172,9 +1212,9 @@ const InterestAnnualStackedChart = ({
   );
   const maximum = Math.max(...totals, 1);
   const width = Math.max(640, years.length * 120 + 120);
-  const height = 280;
+  const height = 300;
   const chartBottom = 220;
-  const chartTop = 24;
+  const chartTop = 54;
   const barWidth = Math.min(
     72,
     Math.max(28, (width - 120) / Math.max(years.length, 1) / 2),
@@ -1272,16 +1312,17 @@ const InterestAnnualStackedChart = ({
                 {year}
               </text>
               <text
+                data-testid={`annual-interest-total-${year}`}
                 fill="#0f172a"
                 fontSize="11"
                 fontWeight="600"
                 textAnchor="middle"
                 x={72 + yearIndex * ((width - 120) / years.length)}
                 y={Math.max(
-                  chartTop + 12,
+                  18,
                   chartBottom -
                     ((totals[yearIndex] ?? 0) / maximum) * (chartBottom - chartTop) -
-                    6,
+                    8,
                 )}
               >
                 {formatDollarString((totals[yearIndex] ?? 0).toFixed(2))}
@@ -1312,6 +1353,7 @@ const ReportInterestAnalysis = ({
     start: Math.max(0, monthlyRows.length - 12),
     end: Math.max(0, monthlyRows.length - 1),
   });
+  const monthlyChartRef = useRef<HTMLDivElement | null>(null);
   const monthlyDragRef = useRef<{ originX: number; start: number } | null>(null);
   const [monthlyDragging, setMonthlyDragging] = useState(false);
   const panMonthly = (delta: number): void =>
@@ -1327,6 +1369,25 @@ const ReportInterestAnalysis = ({
     monthlyWindow.start,
     monthlyWindow.end + 1,
   );
+  useEffect(() => {
+    const chart = monthlyChartRef.current;
+    if (!chart) return undefined;
+    const zoomChart = (event: WheelEvent): void => {
+      event.preventDefault();
+      const delta = event.deltaY < 0 ? -1 : 1;
+      setMonthlyWindow((current) => {
+        const width = current.end - current.start + 1;
+        const nextWidth = Math.max(2, Math.min(monthlyRows.length, width + delta * 2));
+        const start = Math.max(
+          0,
+          Math.min(current.start, monthlyRows.length - nextWidth),
+        );
+        return { start, end: start + nextWidth - 1 };
+      });
+    };
+    chart.addEventListener('wheel', zoomChart, { passive: false });
+    return () => chart.removeEventListener('wheel', zoomChart);
+  }, [monthlyRows.length]);
   const comparisonRows = interestRowsWithActivity(reports.activityTrends.rows);
   const annualRows = [...annualTotals.entries()]
     .filter(([, total]) => total !== 0)
@@ -1345,6 +1406,8 @@ const ReportInterestAnalysis = ({
       <div className="space-y-5">
         <div
           className={`rounded-lg border border-slate-200 p-4 ${monthlyDragging ? 'select-none cursor-grabbing' : 'cursor-grab'}`}
+          data-testid="monthly-interest-chart"
+          ref={monthlyChartRef}
           onPointerDown={(event) => {
             monthlyDragRef.current = {
               originX: event.clientX,
@@ -1378,22 +1441,6 @@ const ReportInterestAnalysis = ({
             setMonthlyDragging(false);
             document.body.style.userSelect = '';
           }}
-          onWheel={(event) => {
-            event.preventDefault();
-            const delta = event.deltaY < 0 ? -1 : 1;
-            setMonthlyWindow((current) => {
-              const width = current.end - current.start + 1;
-              const nextWidth = Math.max(
-                2,
-                Math.min(monthlyRows.length, width + delta * 2),
-              );
-              const start = Math.max(
-                0,
-                Math.min(current.start, monthlyRows.length - nextWidth),
-              );
-              return { start, end: start + nextWidth - 1 };
-            });
-          }}
         >
           <fieldset className="flex flex-wrap gap-3 text-sm">
             <legend className="px-1 text-xs font-semibold text-slate-600">
@@ -1402,7 +1449,7 @@ const ReportInterestAnalysis = ({
             <button
               aria-checked={interestView === 'trend'}
               aria-label="Chronological trend"
-              className="inline-flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded px-1 py-1 focus:ring-2 focus:ring-blue-200 focus:outline-none"
               onMouseDown={() => setInterestView('trend')}
               onPointerUp={() => setInterestView('trend')}
               onClick={() => setInterestView('trend')}
@@ -1411,14 +1458,18 @@ const ReportInterestAnalysis = ({
             >
               <span
                 aria-hidden="true"
-                className="h-4 w-4 rounded-full border border-slate-400"
-              />
+                className="relative h-4 w-4 rounded-full border-2 border-slate-500"
+              >
+                {interestView === 'trend' ? (
+                  <span className="absolute inset-1 rounded-full bg-slate-700" />
+                ) : null}
+              </span>
               Chronological trend
             </button>
             <button
               aria-checked={interestView === 'comparison'}
               aria-label="Compare months across years"
-              className="inline-flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded px-1 py-1 focus:ring-2 focus:ring-blue-200 focus:outline-none"
               onMouseDown={() => setInterestView('comparison')}
               onPointerUp={() => setInterestView('comparison')}
               onClick={() => setInterestView('comparison')}
@@ -1427,8 +1478,12 @@ const ReportInterestAnalysis = ({
             >
               <span
                 aria-hidden="true"
-                className="h-4 w-4 rounded-full border border-slate-400"
-              />
+                className="relative h-4 w-4 rounded-full border-2 border-slate-500"
+              >
+                {interestView === 'comparison' ? (
+                  <span className="absolute inset-1 rounded-full bg-slate-700" />
+                ) : null}
+              </span>
               Compare months across years
             </button>
           </fieldset>
@@ -1494,6 +1549,7 @@ const ReportInterestAnalysis = ({
                 label="Line chart of monthly interest expense"
                 rows={monthlyVisibleRows.map((row) => ({
                   label: periodLabel(row.period),
+                  period: row.period,
                   value: row.interestActivity,
                 }))}
               />
