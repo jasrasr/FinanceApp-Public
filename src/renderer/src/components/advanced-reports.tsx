@@ -5,6 +5,7 @@ import type {
 } from '../../../shared/debt-contracts';
 import { REPORTING_HISTORY_START_DATE } from '../../../shared/reporting-constants';
 import {
+  buildChartScale,
   interestYearTreatment,
   monthlyInterestTickIndexes,
   monthlyInterestTickLabel,
@@ -122,11 +123,18 @@ const InterestMiniChart = ({
   const height = 180;
   const chartTop = 20;
   const chartBottom = 132;
-  const maximum = Math.max(...rows.map((row) => Number(row.value)), 1);
+  const chartHeight = chartBottom - chartTop;
+  const scale = buildChartScale({
+    values: rows.map((row) => Number(row.value)),
+    chartHeight,
+    includeZero: true,
+    formatLabel: (value) => formatDollarString(value.toFixed(2)),
+  });
   const xFor = (index: number): number =>
     rows.length === 1 ? 64 : 64 + (index * (width - 108)) / (rows.length - 1);
   const yFor = (value: string): number =>
-    chartBottom - (Number(value) / maximum) * (chartBottom - chartTop);
+    chartBottom -
+    ((Number(value) - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
   const points = rows
     .map((row, index) => `${xFor(index)},${yFor(row.value)}`)
     .join(' ');
@@ -163,9 +171,26 @@ const InterestMiniChart = ({
         <text fill="#475569" fontSize="11" x="4" y="16">
           Dollars
         </text>
-        <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
-          {formatDollarString(maximum.toFixed(2))}
-        </text>
+        {scale.tickValues.map((tick, index) => {
+          const y =
+            chartBottom -
+            ((tick - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
+          return (
+            <g key={tick}>
+              <line stroke="#e2e8f0" x1="64" x2={width - 20} y1={y} y2={y} />
+              <text
+                data-testid="monthly-interest-y-tick"
+                fill="#475569"
+                fontSize="10"
+                textAnchor="end"
+                x="58"
+                y={y + 4}
+              >
+                {scale.formattedLabels[index]}
+              </text>
+            </g>
+          );
+        })}
         {chartType === 'line' ? (
           <polyline fill="none" points={points} stroke="#b45309" strokeWidth="3" />
         ) : null}
@@ -244,12 +269,19 @@ const InterestComparisonChart = ({
       Number(row.interestActivity),
     ]),
   );
-  const maximum = Math.max(...[...valuesByYearMonth.values()], 1);
   const monthSlot = (width - 96) / 12;
   const barWidth = Math.max(4, Math.min(12, monthSlot / Math.max(years.length, 1) - 2));
   const tickIndexes = monthlyInterestTickIndexes(12, width);
+  const chartHeight = chartBottom - chartTop;
+  const scale = buildChartScale({
+    values: [...valuesByYearMonth.values()],
+    chartHeight,
+    includeZero: true,
+    formatLabel: (value) => formatDollarString(value.toFixed(2)),
+  });
   const yFor = (value: number): number =>
-    chartBottom - (value / maximum) * (chartBottom - chartTop);
+    chartBottom -
+    ((value - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
 
   return (
     <div
@@ -294,9 +326,26 @@ const InterestComparisonChart = ({
         <text fill="#475569" fontSize="11" x="4" y="16">
           Dollars
         </text>
-        <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
-          {formatDollarString(maximum.toFixed(2))}
-        </text>
+        {scale.tickValues.map((tick, index) => {
+          const y =
+            chartBottom -
+            ((tick - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
+          return (
+            <g key={tick}>
+              <line stroke="#e2e8f0" x1="64" x2={width - 16} y1={y} y2={y} />
+              <text
+                data-testid="interest-comparison-y-tick"
+                fill="#475569"
+                fontSize="10"
+                textAnchor="end"
+                x="58"
+                y={y + 4}
+              >
+                {scale.formattedLabels[index]}
+              </text>
+            </g>
+          );
+        })}
         {Array.from({ length: 12 }).map((_, monthIndex) => {
           const month = `${monthIndex + 1}`.padStart(2, '0');
           const baseX = 64 + monthIndex * monthSlot + monthSlot / 2;
@@ -765,16 +814,8 @@ const BalanceHistoryChart = ({
   const visibleSeries = series.filter((item) => visibleKeys.includes(item.key));
   const visiblePeriods = periods.slice(zoom.start, zoom.end + 1);
   const visibleValues = visibleSeries.flatMap((item) =>
-    item.values
-      .slice(zoom.start, zoom.end + 1)
-      .map((value) => Math.max(0, value.balance)),
+    item.values.slice(zoom.start, zoom.end + 1).map((value) => value.balance),
   );
-  const rawMinimum = Math.min(...visibleValues, 0);
-  const rawMaximum = Math.max(...visibleValues, 1);
-  const rawSpan = Math.max(1, rawMaximum - rawMinimum);
-  const forceZero = rawMinimum <= 0 || rawMinimum / Math.max(rawMaximum, 1) < 0.25;
-  const minimum = forceZero ? 0 : Math.max(0, rawMinimum - rawSpan * 0.1);
-  const maximum = rawMaximum + rawSpan * 0.1;
   const width = 820;
   const height = 320;
   const chartLeft = 86;
@@ -782,12 +823,20 @@ const BalanceHistoryChart = ({
   const chartTop = 28;
   const chartBottom = height - 74;
   const chartHeight = chartBottom - chartTop;
+  const scale = buildChartScale({
+    values: visibleValues,
+    chartHeight,
+    includeZero: visibleValues.some((value) => value === 0),
+    allowExcludeZero: true,
+    formatLabel: (value) => formatDollarString(value.toFixed(2)),
+  });
   const xFor = (index: number): number =>
     visiblePeriods.length === 1
       ? chartLeft
       : chartLeft + (index * (chartRight - chartLeft)) / (visiblePeriods.length - 1);
   const yFor = (value: number): number =>
-    chartBottom - ((Math.max(0, value) - minimum) / (maximum - minimum)) * chartHeight;
+    chartBottom -
+    ((value - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
   const tickIndexes = visibleTickIndexes(visiblePeriods.length);
   const isZoomed = zoom.end - zoom.start + 1 < periods.length;
 
@@ -959,10 +1008,13 @@ const BalanceHistoryChart = ({
           })}
         </div>
         <p className="sr-only" data-testid="balance-history-y-axis-maximum">
-          Y-axis maximum: {formatDollarString(maximum.toFixed(2))}
+          Y-axis maximum: {formatDollarString(scale.maximum.toFixed(2))}
         </p>
         <p className="sr-only" data-testid="balance-history-y-axis-minimum">
-          Y-axis minimum: {formatDollarString(minimum.toFixed(2))}
+          Y-axis minimum: {formatDollarString(scale.minimum.toFixed(2))}
+        </p>
+        <p className="sr-only" data-testid="balance-history-y-axis-major-unit">
+          Y-axis major unit: {formatDollarString(scale.majorUnit.toFixed(2))}
         </p>
         <p className="mt-2 text-xs text-slate-500" data-testid="balance-history-zoom">
           Visible range:{' '}
@@ -1073,12 +1125,33 @@ const BalanceHistoryChart = ({
               <text fill="#475569" fontSize="11" x={chartRight - 56} y={height - 10}>
                 Period end
               </text>
-              <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
-                {formatDollarString(maximum.toFixed(2))}
-              </text>
-              <text fill="#475569" fontSize="11" x="18" y={chartBottom + 4}>
-                {formatDollarString(minimum.toFixed(2))}
-              </text>
+              {scale.tickValues.map((tick, index) => {
+                const y =
+                  chartBottom -
+                  ((tick - scale.minimum) / (scale.maximum - scale.minimum)) *
+                    chartHeight;
+                return (
+                  <g key={tick}>
+                    <line
+                      stroke="#e2e8f0"
+                      x1={chartLeft}
+                      x2={chartRight}
+                      y1={y}
+                      y2={y}
+                    />
+                    <text
+                      data-testid="balance-history-y-tick"
+                      fill="#475569"
+                      fontSize="10"
+                      textAnchor="end"
+                      x={chartLeft - 8}
+                      y={y + 4}
+                    >
+                      {scale.formattedLabels[index]}
+                    </text>
+                  </g>
+                );
+              })}
               {tickIndexes.map((index) => {
                 const period = visiblePeriods[index] ?? '';
                 return (
@@ -1227,11 +1300,17 @@ const InterestAnnualStackedChart = ({
       0,
     ),
   );
-  const maximum = Math.max(...totals, 1);
   const width = Math.max(640, years.length * 120 + 120);
   const height = 300;
   const chartBottom = 220;
   const chartTop = 54;
+  const chartHeight = chartBottom - chartTop;
+  const scale = buildChartScale({
+    values: totals,
+    chartHeight,
+    includeZero: true,
+    formatLabel: (value) => formatDollarString(value.toFixed(2)),
+  });
   const barWidth = Math.min(
     72,
     Math.max(28, (width - 120) / Math.max(years.length, 1) / 2),
@@ -1292,9 +1371,26 @@ const InterestAnnualStackedChart = ({
         <text fill="#475569" fontSize="11" x="4" y="16">
           Dollars
         </text>
-        <text fill="#475569" fontSize="11" x="4" y={chartTop + 4}>
-          {formatDollarString(maximum.toFixed(2))}
-        </text>
+        {scale.tickValues.map((tick, index) => {
+          const y =
+            chartBottom -
+            ((tick - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
+          return (
+            <g key={tick}>
+              <line stroke="#e2e8f0" x1="56" x2={width - 24} y1={y} y2={y} />
+              <text
+                data-testid="annual-interest-y-tick"
+                fill="#475569"
+                fontSize="10"
+                textAnchor="end"
+                x="50"
+                y={y + 4}
+              >
+                {scale.formattedLabels[index]}
+              </text>
+            </g>
+          );
+        })}
         {years.map((year, yearIndex) => {
           let currentTop = chartBottom;
           return (
@@ -1302,7 +1398,8 @@ const InterestAnnualStackedChart = ({
               {debts.map(([debtId, debtName], debtIndex) => {
                 if (!visibleDebtIds.includes(debtId)) return null;
                 const value = values.get(`${year}-${debtId}`) ?? 0;
-                const segmentHeight = (value / maximum) * (chartBottom - chartTop);
+                const segmentHeight =
+                  ((value - 0) / (scale.maximum - scale.minimum)) * chartHeight;
                 currentTop -= segmentHeight;
                 const x = 72 + yearIndex * ((width - 120) / years.length);
                 const annualTotal = totals[yearIndex] ?? 0;
@@ -1341,7 +1438,9 @@ const InterestAnnualStackedChart = ({
                 y={Math.max(
                   18,
                   chartBottom -
-                    ((totals[yearIndex] ?? 0) / maximum) * (chartBottom - chartTop) -
+                    (((totals[yearIndex] ?? 0) - scale.minimum) /
+                      (scale.maximum - scale.minimum)) *
+                      chartHeight -
                     8,
                 )}
               >

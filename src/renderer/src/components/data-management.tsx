@@ -6,6 +6,7 @@ export interface DataManagementProps {
   readonly restoring: boolean;
   readonly status: DataManagementStatusDto | null;
   readonly onBackup: () => void;
+  readonly onDelete: (backupId: string) => void;
   readonly onExport: () => void;
   readonly onRefresh: () => void;
   readonly onRestore: (backupId: string) => void;
@@ -16,6 +17,7 @@ const statusLabel = (value: string): string => value.replaceAll('_', ' ');
 export const DataManagement = ({
   loading,
   onBackup,
+  onDelete,
   onExport,
   onRefresh,
   onRestore,
@@ -128,25 +130,28 @@ export const DataManagement = ({
               <table className="min-w-full text-sm">
                 <thead className="text-left text-xs text-slate-500 uppercase">
                   <tr>
-                    <th className="px-3 py-2">Backup file</th>
-                    <th className="px-3 py-2">Kind</th>
                     <th className="px-3 py-2">Created</th>
+                    <th className="px-3 py-2">Type</th>
                     <th className="px-3 py-2 text-right">Size</th>
                     <th className="px-3 py-2">Integrity</th>
                     <th className="px-3 py-2">Restore</th>
+                    <th className="px-3 py-2">Delete</th>
                   </tr>
                 </thead>
                 <tbody>
                   {status.availableBackups.map((backup) => (
                     <tr className="border-t border-slate-100" key={backup.id}>
-                      <td className="max-w-[22rem] break-all px-3 py-2 font-mono text-xs">
-                        {backup.fileName}
+                      <td className="px-3 py-2">
+                        <p>{formatTimestamp(backup.createdAtUtc)}</p>
+                        <details className="mt-1 text-xs text-slate-500">
+                          <summary className="cursor-pointer">Filename</summary>
+                          <p className="max-w-[22rem] break-all font-mono">
+                            {backup.fileName}
+                          </p>
+                        </details>
                       </td>
                       <td className="px-3 py-2 capitalize">
                         {statusLabel(backup.kind)}
-                      </td>
-                      <td className="px-3 py-2">
-                        {formatTimestamp(backup.createdAtUtc)}
                       </td>
                       <td className="px-3 py-2 text-right font-mono tabular-nums">
                         {backup.sizeBytes.toLocaleString()} bytes
@@ -162,6 +167,16 @@ export const DataManagement = ({
                           type="button"
                         >
                           Restore
+                        </button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          className="font-semibold text-red-700 underline disabled:text-slate-400"
+                          disabled={restoring}
+                          onClick={() => onDelete(backup.id)}
+                          type="button"
+                        >
+                          Delete
                         </button>
                       </td>
                     </tr>

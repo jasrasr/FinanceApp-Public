@@ -23,6 +23,14 @@ count and chart width. Annual interest totals are rendered above stacked bars,
 and year comparison bars use stable color and stroke treatments so three or
 more years remain distinguishable without color alone.
 
+Y-axis scales are calculated through a shared pure helper using only visible
+series and visible periods. The helper chooses major units from a 1, 2, 2.5, 5,
+10 sequence multiplied by powers of ten, targets four to seven labeled ticks,
+adds bounded headroom, and returns formatted labels with evenly spaced tick
+values. Interest and bar charts include zero as the baseline; debt-balance
+history may exclude zero for high-balance ranges unless zero is visible, the
+range crosses zero, or excluding zero would materially distort the chart.
+
 ## Consequences
 
 Chart state remains presentation-only and session-local. No schema or IPC

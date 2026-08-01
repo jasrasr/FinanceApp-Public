@@ -14,6 +14,7 @@ import {
   dashboardDtoSchema,
   dataExportDtoSchema,
   dataManagementStatusDtoSchema,
+  deleteBackupRequestSchema,
   debtReportsDtoSchema,
   debtDetailDtoSchema,
   debtSummaryListSchema,
@@ -212,6 +213,14 @@ export const registerDebtIpcHandlers = (
     dataManagementStatusDtoSchema,
     isTrustedSender,
     (request) => dataManagementService.restoreBackup(request),
+  );
+  registerAsyncHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.deleteBackup,
+    deleteBackupRequestSchema,
+    dataManagementStatusDtoSchema,
+    isTrustedSender,
+    (request) => dataManagementService.deleteBackup(request),
   );
   registerHandler(
     ipcMain,

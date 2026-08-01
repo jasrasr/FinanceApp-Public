@@ -41,7 +41,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.22.6')).toBeVisible();
+      await expect(window.getByText('Version 0.23.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();
@@ -67,6 +67,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByText('Database backup was created and validated.'),
       ).toBeVisible();
+      await window.getByText('Filename').first().click();
       await expect(window.getByText(/manual-/).first()).toBeVisible();
 
       await window.getByRole('button', { name: 'Debts' }).click();

@@ -12,6 +12,7 @@ export const DEBT_IPC_CHANNELS = {
   dataManagementStatus: 'debt:data-management:status',
   createManualBackup: 'debt:data-management:create-manual-backup',
   restoreBackup: 'debt:data-management:restore-backup',
+  deleteBackup: 'debt:data-management:delete-backup',
   exportData: 'debt:data-management:export-data',
   reports: 'debt:reports',
   selectWorkbookForImport: 'debt:import:select-workbook',

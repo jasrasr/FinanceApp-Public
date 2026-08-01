@@ -1407,3 +1407,44 @@ completed.
 - Recommended next phase:
   - Continue fictional-data accessibility review of chart focus and hover
     behavior.
+
+## Phase 29: Dynamic Chart Scaling and Backup Retention
+
+- Completion date: 2026-08-01
+- Application version: 0.23.0
+- Features implemented:
+  - Added shared dynamic Y-axis scaling for debt balance history, monthly
+    interest trend, month-by-month interest comparison, and annual interest
+    comparison charts.
+  - Added backup deletion with confirmation and immediate backup-list refresh.
+  - Limited successful automatic startup backups to one per local calendar day.
+  - Added automatic five-calendar-day retention cleanup for automatic backups.
+- Material architecture and accounting decisions:
+  - Chart scales are pure presentation calculations from visible report values;
+    no report DTO, ledger, or accounting calculation semantics changed.
+  - Backup deletion and retention remain main-process-only filesystem
+    operations with specific IPC and non-sensitive audit events.
+- Database schema or migration changes:
+  - None.
+- New or changed IPC operations:
+  - Added `debt:data-management:delete-backup`.
+  - Increased the typed preload bridge version to 19.
+- New UI screens or workflows:
+  - Existing report charts now show readable intermediate currency ticks.
+  - Existing Data Management backup list now shows newest backups first with
+    filename secondary and Delete beside Restore.
+- Validation and smoke-test results:
+  - Focused test run passed for renderer app, preload bridge, IPC handlers, and
+    data-management integration tests: 4 files and 100 tests.
+  - `npm run format` passed.
+  - `npm run check` passed. The gate completed with 10 test files and 134 tests
+    passing, database integrity passing, production build passing, and the
+    active Electron E2E workflow passing; packaged source specs were skipped in
+    that suite.
+  - `npm run package:smoke` passed packaged launch and upgrade-preservation
+    tests. The runner reported the existing Node `fs.R_OK` deprecation warning
+    and a temporary installed-app cleanup warning.
+- Known limitations and technical debt:
+  - Chart state remains session-local SVG presentation state.
+- Recommended next phase:
+  - Continue backup/restore acceptance testing with generated packaged-app data.

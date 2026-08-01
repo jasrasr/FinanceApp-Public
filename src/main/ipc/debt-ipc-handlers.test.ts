@@ -60,6 +60,7 @@ const createDataManagementService = (): DataManagementService => ({
   createManualBackup: vi.fn(),
   createAutomaticBackup: vi.fn(),
   restoreBackup: vi.fn(),
+  deleteBackup: vi.fn(),
   exportData: vi.fn(),
 });
 

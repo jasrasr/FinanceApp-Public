@@ -38,10 +38,13 @@ for maintaining debts and supporting future debt-paydown analysis.
   trends, maturity and required-payment schedules, sensitivity analysis,
   actual-versus-plan variance, and reconciliation/data-quality exceptions.
 - Debt-history and interest charts provide bounded wheel zoom and drag pan,
-  readable date ticks, accessible series controls, immediate compact hover
-  details, and reconciled annual debt-source interest totals.
-- Data management screen for validated SQLite backups, restore from validated
-  local backups with pre-restore safety backup, and CSV data exports.
+  readable date and dynamic currency ticks, accessible series controls,
+  immediate compact hover details, and reconciled annual debt-source interest
+  totals.
+- Data management screen for validated SQLite backups, manual backup deletion
+  with confirmation, restore from validated local backups with pre-restore
+  safety backup, automatic daily startup backups, five-calendar-day automatic
+  retention cleanup, and CSV data exports.
 - Windows x64 NSIS installer packaging with Electron-compatible better-sqlite3
   native module handling and packaged-app smoke tests.
 - Restrained in-app display of the current package version and automatically
@@ -363,11 +366,14 @@ Electron user-data directory that it removes after the workflow.
 - Backups use SQLite's backup API rather than blindly copying an open database.
 - A backup is reported successful only after SQLite integrity and foreign-key
   checks pass.
-- Startup creates a rotating automatic backup; restore creates a pre-restore
-  safety backup before replacing the live database.
+- Startup creates at most one successful automatic backup per local calendar day
+  and retains automatic backups for five calendar days; manual and pre-restore
+  backups are not automatically deleted.
 - Restore is available only for listed local backup files, requires confirmation,
   validates the selected backup before restore, and reopens the database after
   replacement.
+- Listed backups can be deleted with confirmation unless deletion would remove
+  the only valid backup.
 - Failed restore attempts are designed to leave the existing database usable.
 - CSV exports are written to a user-selected directory outside the repository.
 - Export files label actual, confirmed, calculated, and scenario values

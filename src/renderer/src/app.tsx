@@ -41,7 +41,7 @@ import { DebtList } from './components/debt-list';
 import { combinedDebtLabel } from './components/debt-label';
 import { EditDebtForm } from './components/edit-debt-form';
 import { EscrowDetail } from './components/escrow-detail';
-import { formatLastChanged } from './components/display-format';
+import { formatLastChanged, formatTimestamp } from './components/display-format';
 import { PayoffScenarios } from './components/payoff-scenarios';
 import { RecordTransactionForm } from './components/record-transaction-form';
 import { WorkbookImport } from './components/workbook-import';
@@ -682,6 +682,31 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
+  const deleteBackup = async (backupId: string): Promise<void> => {
+    const backup = dataManagementStatus?.availableBackups.find(
+      (candidate) => candidate.id === backupId,
+    );
+    const confirmed = window.confirm(
+      `Delete this ${backup ? backup.kind.replaceAll('_', ' ') : 'selected'} backup created ${backup ? formatTimestamp(backup.createdAtUtc) : 'at the recorded time'}?`,
+    );
+    if (!confirmed) return;
+
+    setSaving(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.deleteBackup({ backupId, confirmed: true }),
+    );
+
+    if (result.ok) {
+      setDataManagementStatus(result.value);
+      setSuccessMessage('Backup was deleted.');
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
   const selectDebt = async (id: string): Promise<void> => {
     setLoading(true);
     setError(null);
@@ -1289,6 +1314,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             <DataManagement
               loading={loading}
               onBackup={() => void createManualBackup()}
+              onDelete={(backupId) => void deleteBackup(backupId)}
               onExport={() => void exportData()}
               onRefresh={() => void loadDataManagementStatus()}
               onRestore={(backupId) => void restoreBackup(backupId)}

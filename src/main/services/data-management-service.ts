@@ -23,6 +23,7 @@ import type {
   DashboardDto,
   DataExportDto,
   DataManagementStatusDto,
+  DeleteBackupRequest,
   DebtReportsDto,
   ExportDataRequest,
   GetDataManagementStatusRequest,
@@ -64,6 +65,7 @@ export interface DataManagementService {
   ): Promise<DataManagementStatusDto>;
   createAutomaticBackup(reason: 'startup' | 'pre_restore'): Promise<BackupSummary>;
   restoreBackup(request: RestoreBackupRequest): Promise<DataManagementStatusDto>;
+  deleteBackup(request: DeleteBackupRequest): Promise<DataManagementStatusDto>;
   exportData(request: ExportDataRequest): DataExportDto;
 }
 
@@ -207,11 +209,17 @@ const backupSummary = (
 ): BackupSummary => {
   const fileName = basename(filePath);
   const stats = statSync(filePath);
+  const fileTimestamp = /^.*-(\d{4}-\d{2}-\d{2}T\d{6}-\d{3}Z)\.sqlite3$/.exec(
+    fileName,
+  )?.[1];
+  const createdAtUtc = fileTimestamp
+    ? fileTimestamp.replace(/T(\d{2})(\d{2})(\d{2})-(\d{3})Z$/, 'T$1:$2:$3.$4Z')
+    : stats.birthtime.toISOString();
   return {
     id: fileName,
     fileName,
     kind: backupKindFromFileName(fileName),
-    createdAtUtc: stats.birthtime.toISOString(),
+    createdAtUtc,
     sizeBytes: stats.size,
     integrityStatus,
   };
@@ -241,16 +249,28 @@ const listBackups = (backupRootDirectory: string): readonly BackupSummary[] => {
     .sort((left, right) => right.createdAtUtc.localeCompare(left.createdAtUtc));
 };
 
-const rotateAutomaticBackups = (
-  backupRootDirectory: string,
-  retainCount: number,
-): void => {
-  const automatic = listBackups(backupRootDirectory).filter(
-    (backup) => backup.kind === 'automatic',
-  );
+const localDate = (timestamp: string): string => {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-  for (const backup of automatic.slice(retainCount)) {
-    rmSync(join(backupRootDirectory, backup.fileName), { force: true });
+const addLocalCalendarDays = (dateText: string, days: number): string => {
+  const [year, month, day] = dateText.split('-').map(Number);
+  const date = new Date(year!, month! - 1, day!);
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
+};
+
+const removeBackupFiles = (backupRootDirectory: string, fileName: string): void => {
+  for (const candidate of [
+    join(backupRootDirectory, fileName),
+    join(backupRootDirectory, `${fileName}-wal`),
+    join(backupRootDirectory, `${fileName}-shm`),
+  ]) {
+    if (existsSync(candidate)) rmSync(candidate, { force: true });
   }
 };
 
@@ -279,6 +299,7 @@ export const createDataManagementService = ({
 }: DataManagementServiceDependencies): DataManagementService => {
   let lastBackup: BackupOperation = backupOperationNotRun;
   let lastRestore: BackupOperation = backupOperationNotRun;
+  const activeBackupIds = new Set<string>();
 
   const ensureBackupRoot = (): void => {
     if (isPathInside(backupRootDirectory, applicationRootDirectory)) {
@@ -304,6 +325,91 @@ export const createDataManagementService = ({
     };
   };
 
+  const validBackups = (): readonly BackupSummary[] =>
+    listBackups(backupRootDirectory).filter(
+      (backup) => backup.integrityStatus === 'valid',
+    );
+
+  const assertCanDeleteBackup = (backup: BackupSummary): void => {
+    if (activeBackupIds.has(backup.id)) {
+      throw new ApplicationServiceError(
+        'conflict',
+        'This backup is currently being validated or restored.',
+      );
+    }
+    if (
+      backup.integrityStatus === 'valid' &&
+      validBackups().filter((candidate) => candidate.id !== backup.id).length === 0
+    ) {
+      throw new ApplicationServiceError(
+        'conflict',
+        'At least one valid backup must be retained.',
+      );
+    }
+  };
+
+  const backupForId = (backupId: string): BackupSummary => {
+    const backupFilePath = join(backupRootDirectory, backupId);
+    if (
+      !isPathInside(backupFilePath, backupRootDirectory) ||
+      !existsSync(backupFilePath)
+    ) {
+      throw new ApplicationServiceError(
+        'validation',
+        'Selected backup is not available.',
+      );
+    }
+    const backup = listBackups(backupRootDirectory).find(
+      (candidate) => candidate.id === basename(backupFilePath),
+    );
+    if (!backup) {
+      throw new ApplicationServiceError(
+        'validation',
+        'Selected backup is not available.',
+      );
+    }
+    return backup;
+  };
+
+  const cleanupAutomaticBackups = (): void => {
+    ensureBackupRoot();
+    const todayLocal = localDate(now());
+    const cutoffLocal = addLocalCalendarDays(todayLocal, -5);
+    const automatic = listBackups(backupRootDirectory).filter(
+      (backup) =>
+        backup.kind === 'automatic' &&
+        localDate(backup.createdAtUtc) < cutoffLocal &&
+        !activeBackupIds.has(backup.id),
+    );
+    const removed: string[] = [];
+
+    for (const backup of automatic) {
+      try {
+        assertCanDeleteBackup(backup);
+        removeBackupFiles(backupRootDirectory, backup.fileName);
+        removed.push(backup.fileName);
+      } catch (error) {
+        if (error instanceof ApplicationServiceError && error.code === 'conflict')
+          break;
+        throw error;
+      }
+    }
+
+    if (removed.length > 0) {
+      insertAuditEvent(getContext(), {
+        id: createId(),
+        eventType: 'database_backup_retention_cleaned',
+        entityType: 'database_backup',
+        entityId: 'automatic-backup-retention',
+        action: 'delete',
+        occurredAtUtc: now(),
+        source: 'system',
+        summary: `Removed ${removed.length} expired automatic backup(s).`,
+        afterMetadataJson: JSON.stringify({ removedCount: removed.length }),
+      });
+    }
+  };
+
   const createBackup = async (
     kind: BackupKind,
     source: 'system' | 'user',
@@ -319,7 +425,12 @@ export const createDataManagementService = ({
     const context = getContext();
     context.sqlite.pragma('wal_checkpoint(PASSIVE)');
     await context.sqlite.backup(filePath);
-    validateDatabaseFile(filePath);
+    activeBackupIds.add(basename(filePath));
+    try {
+      validateDatabaseFile(filePath);
+    } finally {
+      activeBackupIds.delete(basename(filePath));
+    }
 
     const summary = backupSummary(filePath, 'valid');
     insertAuditEvent(context, {
@@ -339,7 +450,6 @@ export const createDataManagementService = ({
           : 'Created and validated a SQLite backup.',
       afterMetadataJson: JSON.stringify({ kind, fileName: summary.fileName }),
     });
-    if (kind === 'automatic') rotateAutomaticBackups(backupRootDirectory, 10);
     lastBackup = {
       status: 'succeeded',
       message: 'Backup completed and passed SQLite integrity checks.',
@@ -350,7 +460,13 @@ export const createDataManagementService = ({
   };
 
   const restoreFromFile = async (backupFilePath: string): Promise<BackupSummary> => {
-    validateDatabaseFile(backupFilePath);
+    const backupId = basename(backupFilePath);
+    activeBackupIds.add(backupId);
+    try {
+      validateDatabaseFile(backupFilePath);
+    } finally {
+      activeBackupIds.delete(backupId);
+    }
     const safetyBackup = await createBackup('pre_restore', 'system');
     const restoreTimestamp = now();
     const tempRestorePath = createUniquePath(
@@ -362,6 +478,7 @@ export const createDataManagementService = ({
     const movedFiles: { readonly from: string; readonly to: string }[] = [];
 
     try {
+      activeBackupIds.add(backupId);
       source = new BetterSqlite3(backupFilePath, {
         fileMustExist: true,
         readonly: true,
@@ -370,6 +487,7 @@ export const createDataManagementService = ({
       validateDatabaseFile(tempRestorePath);
       source.close();
       source = undefined;
+      activeBackupIds.delete(backupId);
 
       getContext().close();
       databaseClosed = true;
@@ -415,6 +533,7 @@ export const createDataManagementService = ({
       return restored;
     } catch (error) {
       source?.close();
+      activeBackupIds.delete(backupId);
       rmSync(tempRestorePath, { force: true });
 
       if (!existsSync(databasePath) && movedFiles.length > 0) {
@@ -661,22 +780,58 @@ export const createDataManagementService = ({
       }
       return status();
     },
-    createAutomaticBackup: (reason) =>
-      createBackup(reason === 'pre_restore' ? 'pre_restore' : 'automatic', 'system'),
+    createAutomaticBackup: async (reason) => {
+      if (reason === 'pre_restore') return createBackup('pre_restore', 'system');
+      ensureBackupRoot();
+      const todayLocal = localDate(now());
+      const successfulAutomaticToday = listBackups(backupRootDirectory).find(
+        (backup) =>
+          backup.kind === 'automatic' &&
+          backup.integrityStatus === 'valid' &&
+          localDate(backup.createdAtUtc) === todayLocal,
+      );
+      if (successfulAutomaticToday) {
+        cleanupAutomaticBackups();
+        return successfulAutomaticToday;
+      }
+      const backup = await createBackup('automatic', 'system');
+      cleanupAutomaticBackups();
+      return backup;
+    },
     restoreBackup: async (request) => {
       const parsed = restoreBackupRequestSchema.parse(request);
       ensureBackupRoot();
-      const backupFilePath = join(backupRootDirectory, parsed.backupId);
-      if (
-        !isPathInside(backupFilePath, backupRootDirectory) ||
-        !existsSync(backupFilePath)
-      ) {
+      const backup = backupForId(parsed.backupId);
+      await restoreFromFile(join(backupRootDirectory, backup.fileName));
+      return status();
+    },
+    deleteBackup: async (request) => {
+      const parsed = restoreBackupRequestSchema.parse(request);
+      ensureBackupRoot();
+      const summary = backupForId(parsed.backupId);
+      assertCanDeleteBackup(summary);
+      try {
+        removeBackupFiles(backupRootDirectory, summary.fileName);
+        insertAuditEvent(getContext(), {
+          id: createId(),
+          eventType: 'database_backup_deleted',
+          entityType: 'database_backup',
+          entityId: summary.id,
+          action: 'delete',
+          occurredAtUtc: now(),
+          source: 'user',
+          summary: 'Deleted a validated local database backup.',
+          afterMetadataJson: JSON.stringify({
+            kind: summary.kind,
+            createdAtUtc: summary.createdAtUtc,
+          }),
+        });
+      } catch (error) {
         throw new ApplicationServiceError(
-          'validation',
-          'Selected backup is not available.',
+          'internal',
+          error instanceof Error ? error.message : 'Backup deletion failed.',
         );
       }
-      await restoreFromFile(backupFilePath);
       return status();
     },
     exportData,

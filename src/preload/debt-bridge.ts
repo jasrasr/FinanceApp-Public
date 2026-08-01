@@ -14,6 +14,7 @@ import {
   dashboardResultSchema,
   dataExportResultSchema,
   dataManagementStatusResultSchema,
+  deleteBackupRequestSchema,
   debtReportsResultSchema,
   debtDetailResultSchema,
   debtListResultSchema,
@@ -56,6 +57,7 @@ import {
   type ArchiveDebtRequest,
   type ArchivePayoffScenarioRequest,
   type CreateDebtRequest,
+  type DeleteBackupRequest,
   type ExportDataRequest,
   type GetDashboardRequest,
   type GetDataManagementStatusRequest,
@@ -86,7 +88,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 18,
+    bridgeVersion: 19,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -118,6 +120,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.restoreBackup,
           restoreBackupRequestSchema.parse(request),
+        ),
+      ),
+    deleteBackup: async (request: DeleteBackupRequest) =>
+      dataManagementStatusResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.deleteBackup,
+          deleteBackupRequestSchema.parse(request),
         ),
       ),
     exportData: async (request: ExportDataRequest) =>

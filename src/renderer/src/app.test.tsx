@@ -14,6 +14,7 @@ import type {
 } from '../../shared/debt-contracts';
 import { App } from './app';
 import {
+  buildChartScale,
   interestYearTreatment,
   monthlyInterestTickIndexes,
 } from './components/chart-helpers';
@@ -23,9 +24,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 18,
+  bridgeVersion: 19,
   appMetadata: {
-    version: '0.22.6',
+    version: '0.23.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -57,6 +58,10 @@ const createBridge = (): AppBridge => ({
         backup: sampleDataManagementStatus.availableBackups[0]!,
       },
     },
+  })),
+  deleteBackup: vi.fn(async () => ({
+    ok: true as const,
+    value: { ...sampleDataManagementStatus, availableBackups: [] },
   })),
   exportData: vi.fn(async () => ({
     ok: true as const,
@@ -1420,7 +1425,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.22.6')).toBeVisible();
+    expect(await screen.findByText('Version 0.23.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1510,6 +1515,10 @@ describe('debt maintenance application', () => {
     expect(screen.getByTestId('balance-history-y-axis-maximum').textContent).not.toBe(
       initialMaximum,
     );
+    expect(screen.getAllByTestId('balance-history-y-tick').length).toBeGreaterThan(2);
+    expect(screen.getAllByTestId('balance-history-y-tick').length).toBeLessThanOrEqual(
+      7,
+    );
     fireEvent.click(mortgageLegend);
     const disabledMortgageLegend = within(legendControls).getByRole('button', {
       name: 'Generated Home Mortgage',
@@ -1549,6 +1558,9 @@ describe('debt maintenance application', () => {
     });
     expect(screen.getByTestId('balance-history-zoom').textContent).not.toBe(
       zoomedStatus,
+    );
+    expect(screen.getByTestId('balance-history-y-axis-maximum').textContent).not.toBe(
+      initialMaximum,
     );
     const draggedStatus = screen.getByTestId('balance-history-zoom').textContent;
     fireEvent.pointerDown(chart, {
@@ -1600,6 +1612,9 @@ describe('debt maintenance application', () => {
     expect(screen.getByText('Monthly interest expense trend')).toBeVisible();
     expect(screen.getAllByTestId('monthly-interest-tooltip')[0]).toHaveTextContent(
       /2026-01\s+\$100.00/,
+    );
+    expect(screen.getAllByTestId('monthly-interest-y-tick')[0]).toHaveTextContent(
+      '$0.00',
     );
     expect(screen.getAllByText(/Date range:/).length).toBeGreaterThan(0);
     expect(
@@ -1653,6 +1668,9 @@ describe('debt maintenance application', () => {
     expect(screen.getAllByTestId('interest-comparison-tooltip')[0]).toHaveTextContent(
       /Jan 2026\s+\$100.00/,
     );
+    expect(screen.getAllByTestId('interest-comparison-y-tick')[0]).toHaveTextContent(
+      '$0.00',
+    );
     expect(
       screen
         .getAllByTestId('interest-comparison-bar')
@@ -1688,6 +1706,33 @@ describe('debt maintenance application', () => {
     expect(interestYearTreatment(0).stroke).not.toBe(interestYearTreatment(2).stroke);
   });
 
+  it('builds readable chart scales with nice major units for short and long ranges', () => {
+    const highDebtScale = buildChartScale({
+      values: [248000, 250000],
+      chartHeight: 218,
+      includeZero: false,
+      allowExcludeZero: true,
+      formatLabel: (value) => `$${value.toFixed(0)}`,
+    });
+    expect(highDebtScale.minimum).toBeGreaterThan(0);
+    expect(highDebtScale.tickValues.length).toBeGreaterThanOrEqual(4);
+    expect(highDebtScale.tickValues.length).toBeLessThanOrEqual(7);
+    expect([1, 2, 2.5, 5, 10]).toContain(
+      highDebtScale.majorUnit /
+        Math.pow(10, Math.floor(Math.log10(highDebtScale.majorUnit))),
+    );
+
+    const zeroScale = buildChartScale({
+      values: [0, 25, 90],
+      chartHeight: 112,
+      includeZero: true,
+      formatLabel: (value) => `$${value.toFixed(0)}`,
+    });
+    expect(zeroScale.minimum).toBe(0);
+    expect(zeroScale.tickValues).toContain(50);
+    expect(zeroScale.tickValues.length).toBeLessThanOrEqual(7);
+  });
+
   it('renders data-management status and runs backup and export actions', async () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
@@ -1697,7 +1742,9 @@ describe('debt maintenance application', () => {
     expect(
       await screen.findByRole('heading', { name: 'Backup, restore, and export' }),
     ).toBeVisible();
-    expect(screen.getByText('manual-2026-07-28T134400-000Z.sqlite3')).toBeVisible();
+    expect(
+      screen.getByText('manual-2026-07-28T134400-000Z.sqlite3'),
+    ).toBeInTheDocument();
     expect(screen.getByText(/C:\\Generated\\Debt Tracker\\backups/)).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Create backup' }));
@@ -1713,6 +1760,16 @@ describe('debt maintenance application', () => {
     expect(bridge.exportData).toHaveBeenCalledWith({
       format: 'csv',
       includeReports: true,
+    });
+
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringMatching(/Delete this manual backup created/),
+    );
+    expect(bridge.deleteBackup).toHaveBeenCalledWith({
+      backupId: 'manual-2026-07-28T134400-000Z.sqlite3',
+      confirmed: true,
     });
   });
 

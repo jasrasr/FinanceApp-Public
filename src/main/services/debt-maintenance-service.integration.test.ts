@@ -2467,6 +2467,170 @@ describe('debt maintenance', () => {
     }
   });
 
+  it('limits automatic startup backups to one successful backup per local day', async () => {
+    service.createDebt(validRequest('Generated Automatic Backup Note'));
+    const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-auto-backups-'));
+    let currentTime = '2026-07-28T13:44:00.000Z';
+    const dataService = createDataManagementService({
+      applicationRootDirectory: process.cwd(),
+      backupRootDirectory: backupRoot,
+      databasePath: temporary.databasePath,
+      getContext: () => context,
+      getDashboard: () => service.getDashboard({}),
+      getReports: () =>
+        service.getDebtReports({
+          startDate: null,
+          endDate: null,
+          debtId: null,
+          ownerEntity: null,
+          debtType: null,
+          status: null,
+        }),
+      now: () => currentTime,
+      reopenContext: () => {
+        context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+        service = createService();
+      },
+    });
+
+    try {
+      await dataService.createAutomaticBackup('startup');
+      currentTime = '2026-07-28T20:44:00.000Z';
+      await dataService.createAutomaticBackup('startup');
+      expect(
+        dataService
+          .getDataManagementStatus({})
+          .availableBackups.filter((backup) => backup.kind === 'automatic'),
+      ).toHaveLength(1);
+
+      currentTime = '2026-07-29T13:44:00.000Z';
+      await dataService.createAutomaticBackup('startup');
+      expect(
+        dataService
+          .getDataManagementStatus({})
+          .availableBackups.filter((backup) => backup.kind === 'automatic'),
+      ).toHaveLength(2);
+    } finally {
+      rmSync(backupRoot, { force: true, recursive: true });
+    }
+  });
+
+  it('removes expired automatic backups while retaining manual and pre-restore backups', async () => {
+    service.createDebt(validRequest('Generated Backup Retention Note'));
+    const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-retention-'));
+    let currentTime = '2026-07-25T12:00:00.000Z';
+    const dataService = createDataManagementService({
+      applicationRootDirectory: process.cwd(),
+      backupRootDirectory: backupRoot,
+      databasePath: temporary.databasePath,
+      getContext: () => context,
+      getDashboard: () => service.getDashboard({}),
+      getReports: () =>
+        service.getDebtReports({
+          startDate: null,
+          endDate: null,
+          debtId: null,
+          ownerEntity: null,
+          debtType: null,
+          status: null,
+        }),
+      now: () => currentTime,
+      reopenContext: () => {
+        context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+        service = createService();
+      },
+    });
+
+    try {
+      await dataService.createAutomaticBackup('startup');
+      await dataService.createManualBackup({});
+      await dataService.createAutomaticBackup('pre_restore');
+      currentTime = '2026-07-26T12:00:00.000Z';
+      await dataService.createAutomaticBackup('startup');
+      currentTime = '2026-08-01T12:00:00.000Z';
+      await dataService.createAutomaticBackup('startup');
+
+      const backups = dataService.getDataManagementStatus({}).availableBackups;
+      expect(backups.filter((backup) => backup.kind === 'automatic')).toHaveLength(1);
+      expect(backups.some((backup) => backup.kind === 'manual')).toBe(true);
+      expect(backups.some((backup) => backup.kind === 'pre_restore')).toBe(true);
+      expect(
+        service.createDebt(validRequest('Generated Post Retention Note')).name,
+      ).toBe('Generated Post Retention Note');
+      expect(
+        context.database
+          .select({ eventType: auditEvents.eventType })
+          .from(auditEvents)
+          .all()
+          .map((event) => event.eventType),
+      ).toContain('database_backup_retention_cleaned');
+    } finally {
+      rmSync(backupRoot, { force: true, recursive: true });
+    }
+  });
+
+  it('deletes a selected backup with sidecars but preserves the last valid backup', async () => {
+    service.createDebt(validRequest('Generated Backup Deletion Note'));
+    const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-delete-backup-'));
+    let currentTime = '2026-07-28T13:44:00.000Z';
+    const dataService = createDataManagementService({
+      applicationRootDirectory: process.cwd(),
+      backupRootDirectory: backupRoot,
+      databasePath: temporary.databasePath,
+      getContext: () => context,
+      getDashboard: () => service.getDashboard({}),
+      getReports: () =>
+        service.getDebtReports({
+          startDate: null,
+          endDate: null,
+          debtId: null,
+          ownerEntity: null,
+          debtType: null,
+          status: null,
+        }),
+      now: () => currentTime,
+      reopenContext: () => {
+        context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+        service = createService();
+      },
+    });
+
+    try {
+      const firstStatus = await dataService.createManualBackup({});
+      const firstBackup = firstStatus.availableBackups[0]!;
+      currentTime = '2026-07-28T13:45:00.000Z';
+      await dataService.createManualBackup({});
+      writeFileSync(join(backupRoot, `${firstBackup.fileName}-wal`), '');
+      writeFileSync(join(backupRoot, `${firstBackup.fileName}-shm`), '');
+
+      const afterDelete = await dataService.deleteBackup({
+        backupId: firstBackup.id,
+        confirmed: true,
+      });
+      expect(afterDelete.availableBackups.map((backup) => backup.id)).not.toContain(
+        firstBackup.id,
+      );
+      expect(existsSync(join(backupRoot, firstBackup.fileName))).toBe(false);
+      expect(existsSync(join(backupRoot, `${firstBackup.fileName}-wal`))).toBe(false);
+      expect(existsSync(join(backupRoot, `${firstBackup.fileName}-shm`))).toBe(false);
+      await expect(
+        dataService.deleteBackup({
+          backupId: afterDelete.availableBackups[0]!.id,
+          confirmed: true,
+        }),
+      ).rejects.toThrow('At least one valid backup must be retained.');
+      expect(
+        context.database
+          .select({ eventType: auditEvents.eventType })
+          .from(auditEvents)
+          .all()
+          .map((event) => event.eventType),
+      ).toContain('database_backup_deleted');
+    } finally {
+      rmSync(backupRoot, { force: true, recursive: true });
+    }
+  });
+
   it('restores from a validated backup and creates a pre-restore safety backup', async () => {
     const original = service.createDebt(validRequest('Generated Restored Note'));
     const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-restore-'));

@@ -246,6 +246,8 @@ export const restoreBackupRequestSchema = z
   })
   .strict();
 
+export const deleteBackupRequestSchema = restoreBackupRequestSchema;
+
 export const exportDataRequestSchema = z
   .object({
     format: z.literal('csv'),
@@ -1047,6 +1049,7 @@ export type GetDataManagementStatusRequest = z.infer<
 >;
 export type CreateManualBackupRequest = z.infer<typeof createManualBackupRequestSchema>;
 export type RestoreBackupRequest = z.infer<typeof restoreBackupRequestSchema>;
+export type DeleteBackupRequest = z.infer<typeof deleteBackupRequestSchema>;
 export type ExportDataRequest = z.infer<typeof exportDataRequestSchema>;
 export type GetDebtReportsRequest = z.infer<typeof getDebtReportsRequestSchema>;
 export type SelectWorkbookForImportRequest = z.infer<

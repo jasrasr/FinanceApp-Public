@@ -12,6 +12,7 @@ import type {
   DashboardDto,
   DataExportDto,
   DataManagementStatusDto,
+  DeleteBackupRequest,
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
@@ -58,6 +59,9 @@ export interface DebtBridge {
   ): Promise<ApplicationResult<DataManagementStatusDto>>;
   restoreBackup(
     request: RestoreBackupRequest,
+  ): Promise<ApplicationResult<DataManagementStatusDto>>;
+  deleteBackup(
+    request: DeleteBackupRequest,
   ): Promise<ApplicationResult<DataManagementStatusDto>>;
   exportData(request: ExportDataRequest): Promise<ApplicationResult<DataExportDto>>;
   getDebtReports(
@@ -128,6 +132,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 18;
+  readonly bridgeVersion: 19;
   readonly appMetadata: AppMetadataDto;
 }
