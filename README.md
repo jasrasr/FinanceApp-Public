@@ -17,6 +17,8 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Manual posted activity entry for payments, draws, fees, penalties, interest,
   principal adjustments, mortgage escrow activity, reversals, and user-facing
   transaction edits implemented as linked superseding corrections.
+- In-place mortgage refinance entry that preserves one continuous debt ID,
+  effective-dated history, fee classification, and escrow separation.
 - Statement-based balance reconciliation against the ledger balance calculated
   through the reconciliation date, including a supporting confirmed balance
   snapshot, automatic reconciliation status assignment, explicit approved
@@ -139,9 +141,10 @@ npm run package:smoke
 `package:smoke` installs that generated installer into a temporary directory,
 launches the installed application without Node, npm, VS Code, or the source
 repository as runtime dependencies, verifies database creation, historical
-mortgage payment/reversal behavior, reconciliation correction, manual debt entry,
-backup, restore, export, same-path reinstall/upgrade preservation, and user-data
-survival after uninstall, then removes the generated temporary test data.
+mortgage payment/reversal behavior, in-place refinance entry, reconciliation
+correction, manual debt entry, backup, restore, export, same-path
+reinstall/upgrade preservation, and user-data survival after uninstall, then
+removes the generated temporary test data.
 If Windows temporarily holds a lock on the generated installation directory after
 uninstall, the smoke harness reports a cleanup warning; generated user-data and
 export directories remain required cleanup targets.
@@ -236,10 +239,11 @@ Electron user-data directory that it removes after the workflow.
   principal. Escrow deposits and disbursements are tracked separately and do not
   change mortgage principal.
 - Reversal transactions preserve the original posted row and its allocations.
-- Refinance links preserve separate debts as separate legal obligations. A prior
-  debt can be marked paid off or refinanced, linked to a replacement debt, and
-  paid off through its own posted payment while the replacement debt keeps its
-  own origination, principal, terms, rate, payment, and maturity.
+- Record refinance keeps one continuous debt record. It closes the prior
+  effective-dated term, creates a new term on the refinance date, posts only the
+  net principal adjustment between the calculated pre-refinance balance and the
+  new refinanced principal, and stores financed fees, cash-paid fees, and escrow
+  handling separately.
 - Malformed historical reversals whose allocations do not fully offset the
   original transaction are shown as data-integrity exceptions. The application
   warns that affected debt, escrow, and YTD amounts require review; it does not
@@ -348,10 +352,9 @@ Electron user-data directory that it removes after the workflow.
   chart-only mouse-wheel zoom, thresholded drag-to-pan without text selection,
   dynamic date ticks, and an accessible disclosure for chart data that is not
   displayed by default.
-- Linked refinance debts can also appear under a shared financing-chain name in
-  balance-trend reporting, while loan-level activity and balances remain
-  separate. The refinance date is identified and rollforwards avoid
-  double-counting payoff proceeds and replacement principal.
+- In-place refinance events remain on the same debt line and can be marked in
+  balance-trend reporting. Rollforwards show only the net refinance principal
+  adjustment, not the full refinanced principal as a new borrowing.
 - Interest analysis separates monthly interest expense trends from annual
   interest comparisons. Monthly charts default to a recent readable period and
   support month-by-month comparison across years, bounded zoom, wheel zoom, and

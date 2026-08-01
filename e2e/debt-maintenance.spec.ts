@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.25.0')).toBeVisible();
+    await expect(window.getByText('Version 0.26.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
       0,
@@ -30,7 +30,7 @@ test('completes the manual debt-maintenance workflow', async () => {
       window.getByRole('heading', { name: 'No active debts to summarize' }),
     ).toBeVisible();
 
-    await window.getByRole('button', { name: 'Debts' }).click();
+    await window.getByRole('button', { name: 'Debts', exact: true }).click();
     await expect(
       window.getByRole('heading', { name: 'No debts to display' }),
     ).toBeVisible();
@@ -63,7 +63,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
     await expect(window.getByText('Total active debt')).toBeVisible();
     await expect(window.getByText('$125,000.00')).toBeVisible();
-    await window.getByRole('button', { name: 'Debts' }).click();
+    await window.getByRole('button', { name: 'Debts', exact: true }).click();
     await window
       .getByRole('button', { name: /Open Fictional Harbor Mortgage Note/ })
       .click();
@@ -103,7 +103,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(window.getByText('Principal reduction YTD')).toBeVisible();
     await expect(window.getByText('Interest activity YTD')).toBeVisible();
     await expect(window.getByText('$0.00', { exact: true }).first()).toBeVisible();
-    await window.getByRole('button', { name: 'Debts' }).click();
+    await window.getByRole('button', { name: 'Debts', exact: true }).click();
     await window
       .getByRole('button', {
         name: /Open Updated Fictional Harbor Mortgage Note/,
@@ -221,7 +221,7 @@ test('completes the manual debt-maintenance workflow', async () => {
       window.getByRole('cell', { name: 'Homeowners insurance payment' }),
     ).toBeVisible();
 
-    await window.getByRole('button', { name: 'Debts' }).click();
+    await window.getByRole('button', { name: 'Debts', exact: true }).click();
     await window
       .getByRole('button', {
         name: /Open Updated Fictional Harbor Mortgage Note/,
@@ -409,7 +409,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByText('Filename').first().click();
     await expect(window.getByText(/manual-/).first()).toBeVisible();
 
-    await window.getByRole('button', { name: 'Debts' }).click();
+    await window.getByRole('button', { name: 'Debts', exact: true }).click();
     await window
       .getByRole('button', {
         name: /Open Updated Fictional Harbor Mortgage Note/,
@@ -458,6 +458,29 @@ test('completes the manual debt-maintenance workflow', async () => {
       .getByRole('button', { name: 'Restore debt', exact: true })
       .click();
     await expect(window.getByText('Debt was restored.')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Record refinance' }).click();
+    await expect(
+      window.getByRole('heading', { name: 'Record refinance' }),
+    ).toBeVisible();
+    await window.getByLabel(/Refinance date/).fill('2026-03-01');
+    await window.getByLabel(/New refinanced principal balance/).fill('124000.00');
+    await window.getByLabel(/New annual interest rate/).fill('4.99');
+    await window.getByLabel(/New required payment/).fill('2150.00');
+    await window.getByLabel(/New maturity date/).fill('2056-03-01');
+    await window.getByLabel(/Refinance fees financed into loan/).fill('2500.00');
+    await window.getByLabel(/Refinance fees paid in cash/).fill('750.00');
+    await window
+      .locator('form')
+      .getByRole('button', { name: 'Record refinance' })
+      .click();
+    await expect(
+      window.getByText('Refinance was recorded on this debt.'),
+    ).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'Refinance history' }),
+    ).toBeVisible();
+    await expect(window.getByText('$2,500.00')).toBeVisible();
 
     await window.getByRole('button', { name: 'Delete debt permanently' }).click();
     const deleteDialog = window.getByRole('dialog', {

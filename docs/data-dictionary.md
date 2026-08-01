@@ -35,10 +35,10 @@ mutable current-balance field.
 | `collateral_description`    |    text |    No    | Non-sensitive collateral description                                                                      |
 | `tax_category`              |    text |   Yes    | Controlled tax classification                                                                             |
 | `deductible_percentage_bps` | integer |   Yes    | From 0 through 10,000                                                                                     |
-| `financing_chain_name`      |    text |    No    | User-facing name for grouping separate refinance-chain obligations                                        |
-| `refinanced_from_debt_id`   |    text |    No    | Nullable self-reference to the prior obligation in a refinance chain                                      |
-| `refinanced_into_debt_id`   |    text |    No    | Nullable self-reference to the replacement obligation in a refinance chain                                |
-| `refinance_date`            |    text |    No    | Financial date identifying the refinance event when applicable                                            |
+| `financing_chain_name`      |    text |    No    | Legacy compatibility name for previously linked separate refinance-chain obligations                      |
+| `refinanced_from_debt_id`   |    text |    No    | Legacy nullable self-reference to the prior obligation in a separate-debt refinance chain                 |
+| `refinanced_into_debt_id`   |    text |    No    | Legacy nullable self-reference to the replacement obligation in a separate-debt refinance chain           |
+| `refinance_date`            |    text |    No    | Legacy financial date identifying a separate-debt refinance link when applicable                          |
 | `notes`                     |    text |    No    | Supporting notes                                                                                          |
 | `created_at_utc`            |    text |   Yes    | UTC timestamp                                                                                             |
 | `updated_at_utc`            |    text |   Yes    | UTC timestamp                                                                                             |
@@ -50,9 +50,11 @@ references, and financing-chain name.
 debt in the default list, while a timestamp preserves the record but hides it
 unless archived records are requested.
 
-Refinance references use `ON DELETE SET NULL` because they are presentation and
-reporting links between separate legal obligations. Permanent deletion of one
-debt does not merge, overwrite, or delete the other debt in the chain.
+Legacy refinance references use `ON DELETE SET NULL` because they are
+presentation links between separate legal obligations created by prior versions.
+Normal refinance entry is now in-place through `refinance_events` and keeps one
+continuous debt ID. Permanent deletion of a legacy replacement debt nulls
+remaining debt pointers rather than leaving broken links.
 
 The application is single-user. Owner/entity is retained for existing database
 compatibility but is not shown in normal user-facing forms, debt cards, reports,
@@ -183,6 +185,38 @@ balances: superseded originals and edit-generated reversals are excluded, voided
 chains net to zero through linked offsetting rows, and only current effective
 escrow activity controls debt detail, dashboard, escrow detail, reports, and
 exports.
+
+## `refinance_events`
+
+Records in-place refinance events for an existing debt. The debt ID remains the
+same, prior history is preserved, and the event links the new term and any
+system-generated refinance transactions.
+
+| Column                           |    Type | Required | Rule                                                                   |
+| -------------------------------- | ------: | :------: | ---------------------------------------------------------------------- |
+| `id`                             |    text |   Yes    | Primary key; UUID                                                      |
+| `debt_id`                        |    text |   Yes    | Foreign key to `debts`                                                 |
+| `refinance_date`                 |    text |   Yes    | Financial date; unique per debt                                        |
+| `pre_refinance_principal_cents`  | integer |   Yes    | Calculated principal immediately before the refinance date             |
+| `lender_payoff_balance_cents`    | integer |    No    | Optional lender payoff balance reviewed by the user                    |
+| `new_refinanced_principal_cents` | integer |   Yes    | New principal balance after the refinance                              |
+| `principal_change_cents`         | integer |   Yes    | New principal less pre-refinance principal; database checked           |
+| `financed_fees_cents`            | integer |   Yes    | Fees included in the new principal, separately identified              |
+| `cash_fees_cents`                | integer |   Yes    | Cash-paid refinance fees; does not affect principal                    |
+| `escrow_handling`                |    text |   Yes    | Carry forward, reset opening balance, refund, or new deposit           |
+| `escrow_amount_cents`            | integer |    No    | User-entered escrow amount for reset, refund, or new deposit options   |
+| `prior_term_id`                  |    text |   Yes    | Term closed the day before the refinance date                          |
+| `new_term_id`                    |    text |   Yes    | New term beginning on the refinance date                               |
+| `principal_transaction_id`       |    text |    No    | System principal-adjustment transaction when the net change is nonzero |
+| `cash_fee_transaction_id`        |    text |    No    | System other-activity transaction for cash-paid fees when nonzero      |
+| `escrow_transaction_id`          |    text |    No    | System escrow transaction when the escrow option changes balance       |
+| `notes`                          |    text |    No    | Reconciliation or closing-statement notes                              |
+| `created_at_utc`                 |    text |   Yes    | UTC timestamp                                                          |
+| `updated_at_utc`                 |    text |   Yes    | UTC timestamp                                                          |
+
+In-place refinance saving is atomic: the prior term is closed, the new term is
+inserted, the net principal adjustment is posted, fees and escrow are separately
+classified, and the event row is inserted in one database transaction.
 
 ## `balance_snapshots`
 

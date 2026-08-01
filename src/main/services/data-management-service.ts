@@ -653,8 +653,15 @@ export const createDataManagementService = ({
             else 'actual/posted allocation detail'
           end as value_basis
         from transaction_allocations
-        where allocation_type <> 'other'
         order by transaction_id, allocation_type`,
+      ),
+    );
+    fileCount += writeCsvFile(
+      exportDirectory,
+      'actual-refinance-events.csv',
+      queryRows(
+        sqlite,
+        "select *, 'actual/in-place refinance event' as value_basis from refinance_events order by refinance_date, created_at_utc",
       ),
     );
     fileCount += writeCsvFile(

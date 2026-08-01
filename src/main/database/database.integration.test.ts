@@ -175,6 +175,7 @@ describe('database migrations and isolation', () => {
       'import_postings',
       'import_sheet_mappings',
       'payoff_scenarios',
+      'refinance_events',
       'staged_import_rows',
       'transaction_allocations',
     ]);
@@ -712,7 +713,7 @@ describe('database migrations and isolation', () => {
       { status: 'superseded', count: 1 },
     ]);
     expect(temporaryRebuildTable).toBeUndefined();
-    expect(migrationCount.count).toBe(8);
+    expect(migrationCount.count).toBe(9);
     expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
     expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
 

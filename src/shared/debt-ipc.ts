@@ -24,6 +24,7 @@ export const DEBT_IPC_CHANNELS = {
   list: 'debt:list',
   reverseTransaction: 'debt:reverse-transaction',
   restore: 'debt:restore',
+  recordRefinance: 'debt:record-refinance',
   deletePermanently: 'debt:delete-permanently',
   update: 'debt:update',
 } as const;

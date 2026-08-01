@@ -41,20 +41,20 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.25.0')).toBeVisible();
+      await expect(window.getByText('Version 0.26.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
       await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
         0,
       );
 
-      await window.getByRole('button', { name: 'Debts' }).click();
+      await window.getByRole('button', { name: 'Debts', exact: true }).click();
       await expect(
         window.getByRole('heading', { name: 'No debts to display' }),
       ).toBeVisible();
 
       await exercisePackagedHistoricalMortgageWorkflow(window);
 
-      await window.getByRole('button', { name: 'Debts' }).click();
+      await window.getByRole('button', { name: 'Debts', exact: true }).click();
       await createGeneratedDebt(window, {
         name: 'Packaged Fictional Baseline Note',
         principal: '42000.00',
@@ -73,7 +73,7 @@ test.describe('packaged Windows application', () => {
       await window.getByText('Filename').first().click();
       await expect(window.getByText(/manual-/).first()).toBeVisible();
 
-      await window.getByRole('button', { name: 'Debts' }).click();
+      await window.getByRole('button', { name: 'Debts', exact: true }).click();
       await createGeneratedDebt(window, {
         name: 'Packaged Fictional Post Backup Draw',
         principal: '8700.00',
@@ -88,7 +88,7 @@ test.describe('packaged Windows application', () => {
         window.getByText('Database restore completed from a validated backup.'),
       ).toBeVisible();
 
-      await window.getByRole('button', { name: 'Debts' }).click();
+      await window.getByRole('button', { name: 'Debts', exact: true }).click();
       await expect(window.getByText('Packaged Fictional Baseline Note')).toBeVisible();
       await expect(
         window.getByText('Packaged Fictional Post Backup Draw'),
@@ -176,7 +176,7 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
     /Application-calculated ledger balances for active debts/i,
   );
 
-  await window.getByRole('button', { name: 'Debts' }).click();
+  await window.getByRole('button', { name: 'Debts', exact: true }).click();
   await window
     .getByRole('button', {
       name: /Open Packaged Historical Mortgage/,
@@ -226,7 +226,7 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
     ),
   );
 
-  await window.getByRole('button', { name: 'Debts' }).click();
+  await window.getByRole('button', { name: 'Debts', exact: true }).click();
   await window
     .getByRole('button', {
       name: /Open Packaged Historical Mortgage/,
@@ -300,7 +300,7 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
     ),
   );
 
-  await window.getByRole('button', { name: 'Debts' }).click();
+  await window.getByRole('button', { name: 'Debts', exact: true }).click();
   await window
     .getByRole('button', {
       name: /Open Packaged Historical Mortgage/,
@@ -348,6 +348,30 @@ const exercisePackagedHistoricalMortgageWorkflow = async (
   ).toBeVisible();
   await expect(window.getByText('Current escrow balance')).toBeVisible();
   await expect(window.getByRole('heading', { name: 'Escrow balances' })).toHaveCount(0);
+
+  await window.getByRole('button', { name: 'Debts', exact: true }).click();
+  await window
+    .getByRole('button', {
+      name: /Open Packaged Historical Mortgage/,
+    })
+    .click();
+  await window.getByRole('button', { name: 'Record refinance' }).click();
+  await expect(window.getByRole('heading', { name: 'Record refinance' })).toBeVisible();
+  await window.getByLabel(/Refinance date/).fill('2026-03-01');
+  await window.getByLabel(/New refinanced principal balance/).fill('102500.00');
+  await window.getByLabel(/New annual interest rate/).fill('4.99');
+  await window.getByLabel(/New required payment/).fill('2150.00');
+  await window.getByLabel(/New maturity date/).fill('2056-03-01');
+  await window.getByLabel(/Refinance fees financed into loan/).fill('2500.00');
+  await window.getByLabel(/Refinance fees paid in cash/).fill('750.00');
+  await window
+    .locator('form')
+    .getByRole('button', { name: 'Record refinance' })
+    .click();
+  await expect(window.getByText('Refinance was recorded on this debt.')).toBeVisible();
+  await expect(
+    window.getByRole('heading', { name: 'Refinance history' }),
+  ).toBeVisible();
 };
 
 const expectDashboardMetric = async (
@@ -465,6 +489,9 @@ const expectHistoricalMortgageExportIntegrity = (exportDirectory: string): void 
       allocation.transaction_id != null &&
       transactionIds.has(allocation.transaction_id),
   );
+  const refinanceEvents = parseCsv(
+    readFileSync(join(exportPath, 'actual-refinance-events.csv'), 'utf8'),
+  ).filter((event) => event.debt_id === historicalMortgageId);
 
   const netByAllocationType = new Map<string, number>();
   for (const allocation of allocations) {
@@ -512,9 +539,24 @@ const expectHistoricalMortgageExportIntegrity = (exportDirectory: string): void 
       }),
     ]),
   );
-  expect(netByAllocationType.get('principal')).toBe(0);
+  expect(
+    transactions.find(
+      (transaction) => transaction.transaction_type === 'principal_adjustment',
+    ),
+  ).toMatchObject({
+    transaction_date: '2026-03-01',
+    total_amount_cents: '250000',
+  });
+  expect(refinanceEvents[0]).toMatchObject({
+    refinance_date: '2026-03-01',
+    principal_change_cents: '250000',
+    financed_fees_cents: '250000',
+    cash_fees_cents: '75000',
+  });
+  expect(netByAllocationType.get('principal')).toBe(250000);
   expect(netByAllocationType.get('interest')).toBe(0);
   expect(netByAllocationType.get('escrow')).toBe(0);
+  expect(netByAllocationType.get('other')).toBe(75000);
 };
 
 const createGeneratedDebt = async (

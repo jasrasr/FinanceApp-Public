@@ -58,6 +58,12 @@ const IMPORT_POSTING_ENTITY_TYPES = [
   'transaction_allocation',
   'balance_snapshot',
 ] as const;
+const REFINANCE_ESCROW_HANDLING = [
+  'carry_forward',
+  'reset_opening_balance',
+  'refund',
+  'new_deposit',
+] as const;
 
 export const debts = sqliteTable(
   'debts',
@@ -690,6 +696,79 @@ export const importPostings = sqliteTable(
   ],
 );
 
+export const refinanceEvents = sqliteTable(
+  'refinance_events',
+  {
+    id: text('id').primaryKey(),
+    debtId: text('debt_id')
+      .notNull()
+      .references(() => debts.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    refinanceDate: text('refinance_date').notNull(),
+    preRefinancePrincipalCents: integer('pre_refinance_principal_cents').notNull(),
+    lenderPayoffBalanceCents: integer('lender_payoff_balance_cents'),
+    newRefinancedPrincipalCents: integer('new_refinanced_principal_cents').notNull(),
+    principalChangeCents: integer('principal_change_cents').notNull(),
+    financedFeesCents: integer('financed_fees_cents').notNull(),
+    cashFeesCents: integer('cash_fees_cents').notNull(),
+    escrowHandling: text('escrow_handling', {
+      enum: REFINANCE_ESCROW_HANDLING,
+    }).notNull(),
+    escrowAmountCents: integer('escrow_amount_cents'),
+    priorTermId: text('prior_term_id')
+      .notNull()
+      .references(() => debtTerms.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
+    newTermId: text('new_term_id')
+      .notNull()
+      .references(() => debtTerms.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
+    principalTransactionId: text('principal_transaction_id').references(
+      () => debtTransactions.id,
+      { onDelete: 'restrict', onUpdate: 'cascade' },
+    ),
+    cashFeeTransactionId: text('cash_fee_transaction_id').references(
+      () => debtTransactions.id,
+      { onDelete: 'restrict', onUpdate: 'cascade' },
+    ),
+    escrowTransactionId: text('escrow_transaction_id').references(
+      () => debtTransactions.id,
+      { onDelete: 'restrict', onUpdate: 'cascade' },
+    ),
+    notes: text('notes'),
+    createdAtUtc: text('created_at_utc').notNull(),
+    updatedAtUtc: text('updated_at_utc').notNull(),
+  },
+  (table) => [
+    uniqueIndex('refinance_events_debt_date_uq').on(table.debtId, table.refinanceDate),
+    index('refinance_events_debt_idx').on(table.debtId),
+    index('refinance_events_date_idx').on(table.refinanceDate),
+    check(
+      'refinance_events_date_format',
+      sql`${table.refinanceDate} GLOB ${FINANCIAL_DATE_GLOB_SQL}`,
+    ),
+    check(
+      'refinance_events_nonnegative_amounts',
+      sql`${table.preRefinancePrincipalCents} >= 0 AND ${table.newRefinancedPrincipalCents} >= 0 AND ${table.financedFeesCents} >= 0 AND ${table.cashFeesCents} >= 0 AND (${table.lenderPayoffBalanceCents} IS NULL OR ${table.lenderPayoffBalanceCents} >= 0)`,
+    ),
+    check(
+      'refinance_events_principal_change',
+      sql`${table.principalChangeCents} = ${table.newRefinancedPrincipalCents} - ${table.preRefinancePrincipalCents}`,
+    ),
+    check(
+      'refinance_events_escrow_handling_valid',
+      sql`${table.escrowHandling} IN (${sqlList(REFINANCE_ESCROW_HANDLING)})`,
+    ),
+    check(
+      'refinance_events_timestamp_format',
+      sql`${table.createdAtUtc} LIKE '%Z' AND ${table.updatedAtUtc} LIKE '%Z'`,
+    ),
+  ],
+);
+
 export const payoffScenarios = sqliteTable(
   'payoff_scenarios',
   {
@@ -744,6 +823,7 @@ export const schema = {
   importPostings,
   importSheetMappings,
   payoffScenarios,
+  refinanceEvents,
   stagedImportRows,
   transactionAllocations,
 };

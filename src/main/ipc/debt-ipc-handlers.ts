@@ -29,6 +29,7 @@ import {
   listPayoffScenariosRequestSchema,
   payoffScenarioDtoSchema,
   permanentDebtDeletionDtoSchema,
+  recordRefinanceRequestSchema,
   reverseDebtTransactionRequestSchema,
   voidDebtTransactionRequestSchema,
   rerunPayoffScenarioRequestSchema,
@@ -395,6 +396,14 @@ export const registerDebtIpcHandlers = (
     debtDetailDtoSchema,
     isTrustedSender,
     (request) => service.restoreDebt(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.recordRefinance,
+    recordRefinanceRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.recordRefinance(request),
   );
   registerAsyncHandler(
     ipcMain,

@@ -27,6 +27,7 @@ import {
   importPostings,
   importSheetMappings,
   payoffScenarios,
+  refinanceEvents,
   stagedImportRows,
   transactionAllocations,
 } from '../database/schema';
@@ -1691,29 +1692,31 @@ describe('debt maintenance', () => {
     });
   });
 
-  it('reports refinance-chain obligations separately with a continuous combined balance trend', () => {
-    const priorRequest = validRequest('Generated Original Mortgage');
-    priorRequest.debt.debtType = 'mortgage';
-    priorRequest.debt.financingChainName = 'Home Mortgage - Primary Residence';
-    priorRequest.debt.originationDate = '2025-01-01';
-    priorRequest.initialTerm.effectiveStartDate = '2025-01-01';
-    const prior = service.createDebt(priorRequest);
-    service.createDebtTransaction(validTransactionRequest(prior.id));
-    const priorAfterPayoff = service.createDebtTransaction({
-      debtId: prior.id,
+  it('records an in-place refinance on one continuous debt without double-counting borrowings', () => {
+    const request = validRequest('Generated Original Mortgage');
+    request.debt.debtType = 'mortgage';
+    request.debt.originationDate = '2025-01-01';
+    request.debt.maturityDate = '2055-01-01';
+    request.initialTerm.effectiveStartDate = '2025-01-01';
+    const created = service.createDebt(request);
+    const afterPayment = service.createDebtTransaction(
+      validTransactionRequest(created.id),
+    );
+    service.createDebtTransaction({
+      debtId: created.id,
       transaction: {
-        transactionType: 'payment',
-        effectiveDate: '2026-03-01',
-        postingDate: '2026-03-01',
+        transactionType: 'escrow_adjustment',
+        effectiveDate: '2026-02-01',
+        postingDate: '2026-02-01',
         status: 'posted',
-        totalAmount: '124600.13',
-        description: 'Generated refinance payoff.',
+        totalAmount: '500.00',
+        description: 'Generated escrow opening balance.',
         sourceType: 'manual',
-        sourceReference: 'REFI-PAYOFF',
+        sourceReference: 'ESCROW-OPEN',
         allocations: {
-          principal: '124600.13',
+          principal: null,
           interest: null,
-          escrow: null,
+          escrow: '500.00',
           fee: null,
           penalty: null,
           extraPrincipal: null,
@@ -1722,41 +1725,26 @@ describe('debt maintenance', () => {
       },
     });
 
-    const replacementRequest = validRequest('Generated Replacement Mortgage');
-    replacementRequest.debt.debtType = 'mortgage';
-    replacementRequest.debt.originalPrincipal = '120000.00';
-    replacementRequest.debt.minimumPayment = '2100.00';
-    replacementRequest.debt.financingChainName = 'Home Mortgage - Primary Residence';
-    replacementRequest.debt.refinancedFromDebtId = prior.id;
-    replacementRequest.debt.refinanceDate = '2026-03-01';
-    replacementRequest.debt.originationDate = '2026-03-01';
-    replacementRequest.initialTerm.effectiveStartDate = '2026-03-01';
-    replacementRequest.initialTerm.requiredPayment = '2100.00';
-    const replacement = service.createDebt(replacementRequest);
-    const updatedPrior = service.updateDebt({
-      id: prior.id,
-      expectedUpdatedAtUtc: priorAfterPayoff.updatedAtUtc,
-      changes: {
-        name: prior.name,
-        creditor: prior.creditor,
-        ownerEntity: prior.ownerEntity,
-        debtType: prior.debtType,
-        purpose: prior.purpose,
-        status: 'refinanced',
-        maturityDate: prior.maturityDate,
-        creditLimit: prior.creditLimit,
-        collateralDescription: prior.collateralDescription,
-        taxCategory: prior.taxCategory,
-        deductiblePercentage: prior.deductiblePercentage,
-        financingChainName: prior.financingChainName,
-        refinancedFromDebtId: null,
-        refinancedIntoDebtId: replacement.id,
-        refinanceDate: '2026-03-01',
-        notes: prior.notes,
-      },
+    const refinanced = service.recordRefinance({
+      debtId: created.id,
+      expectedUpdatedAtUtc: afterPayment.updatedAtUtc,
+      refinanceDate: '2026-03-01',
+      newRefinancedPrincipal: '130000.13',
+      newAnnualInterestRatePercent: '4.99',
+      newRequiredPayment: '2150.00',
+      newPaymentFrequency: 'monthly',
+      newMaturityDate: '2056-03-01',
+      interestRateType: 'fixed',
+      dayCountConvention: 'actual_365',
+      calculationConvention: 'simple_daily',
+      financedFees: '2500.00',
+      cashFees: '750.00',
+      escrowHandling: 'reset_opening_balance',
+      escrowAmount: '900.00',
+      lenderPayoffBalance: '124600.13',
+      payoffDifferenceAcknowledged: true,
+      notes: 'Generated refinance closing statement was reviewed.',
     });
-
-    const detail = service.getDebt({ id: replacement.id });
     const reports = service.getDebtReports({
       startDate: '2026-01-01',
       endDate: '2026-04-30',
@@ -1765,55 +1753,68 @@ describe('debt maintenance', () => {
       debtType: null,
       status: null,
     });
+    const debtRows = service.listDebts({ includeArchived: false });
 
-    expect(updatedPrior.status).toBe('refinanced');
-    expect(detail.refinancedFromDebtId).toBe(prior.id);
-    expect(detail.refinancedFromDebtName).toBe(prior.name);
-    expect(detail.refinanceDate).toBe('2026-03-01');
-    expect(reports.balanceHistory.rows.map((row) => row.debtName)).toContain(
-      prior.name,
+    expect(debtRows).toHaveLength(1);
+    expect(refinanced.id).toBe(created.id);
+    expect(refinanced.currentBalance).toBe('130000.13');
+    expect(refinanced.calculatedEscrowBalance).toBe('900.00');
+    expect(refinanced.maturityDate).toBe('2056-03-01');
+    expect(refinanced.minimumPayment).toBe('2150.00');
+    expect(refinanced.currentTerm).toMatchObject({
+      effectiveStartDate: '2026-03-01',
+      annualInterestRatePercent: '4.99',
+      requiredPayment: '2150.00',
+      paymentFrequency: 'monthly',
+    });
+    expect(refinanced.terms).toHaveLength(2);
+    expect(refinanced.terms[0]).toMatchObject({
+      effectiveStartDate: '2025-01-01',
+      effectiveEndDate: '2026-02-28',
+    });
+    expect(refinanced.refinanceEvents[0]).toMatchObject({
+      refinanceDate: '2026-03-01',
+      preRefinancePrincipal: '124600.13',
+      newRefinancedPrincipal: '130000.13',
+      principalChange: '5400.00',
+      financedFees: '2500.00',
+      cashFees: '750.00',
+      escrowHandling: 'reset_opening_balance',
+      escrowAmount: '900.00',
+    });
+    expect(
+      refinanced.transactions.map((entry) => ({
+        type: entry.transactionType,
+        total: entry.totalAmount,
+        allocationType: entry.allocations[0]?.allocationType,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        { type: 'principal_adjustment', total: '5400.00', allocationType: 'principal' },
+        { type: 'other', total: '750.00', allocationType: 'other' },
+        { type: 'escrow_adjustment', total: '400.00', allocationType: 'escrow' },
+      ]),
     );
-    expect(reports.balanceHistory.rows.map((row) => row.debtName)).toContain(
-      replacement.name,
+    expect(new Set(reports.balanceHistory.rows.map((row) => row.debtId))).toEqual(
+      new Set([created.id]),
     );
     expect(
       reports.monthlyRollforward.rows.find((row) => row.period === '2026-03'),
     ).toMatchObject({
-      borrowings: '120000.00',
-      payments: '124600.13',
-      principalReduction: '124600.13',
-      endingBalance: '120000.00',
+      borrowings: '0.00',
+      payments: '0.00',
+      principalReduction: '0.00',
+      adjustmentsAndOther: '5400.00',
+      endingBalance: '130000.13',
+      rollforwardCheck: '0.00',
     });
     expect(
-      reports.balanceTrends.rows
-        .filter((row) => row.grouping === 'Home Mortgage - Primary Residence')
-        .map((row) => ({
-          period: row.period,
-          endingBalance: row.endingBalance,
-          refinanceDate: row.refinanceDate,
-        })),
-    ).toEqual([
-      {
-        period: '2026-01',
-        endingBalance: '124600.13',
-        refinanceDate: '2026-03-01',
-      },
-      {
-        period: '2026-02',
-        endingBalance: '124600.13',
-        refinanceDate: '2026-03-01',
-      },
-      {
-        period: '2026-03',
-        endingBalance: '120000.00',
-        refinanceDate: '2026-03-01',
-      },
-      {
-        period: '2026-04',
-        endingBalance: '120000.00',
-        refinanceDate: '2026-03-01',
-      },
-    ]);
+      reports.balanceTrends.rows.find((row) => row.period === '2026-03'),
+    ).toMatchObject({
+      grouping: 'Total debt',
+      endingBalance: '130000.13',
+      refinanceDate: '2026-03-01',
+    });
   });
 
   it('clamps advanced report activity to the configured reporting history start date', () => {
@@ -2019,6 +2020,67 @@ describe('debt maintenance', () => {
     expect(service.getDebt({ id: created.id }).name).toBe(created.name);
   });
 
+  it('keeps legacy separate refinance links readable and clears them when deleting a test replacement debt', () => {
+    const originalRequest = validRequest('Generated Legacy Original Mortgage');
+    originalRequest.debt.debtType = 'mortgage';
+    originalRequest.debt.financingChainName = 'Legacy Home Mortgage';
+    const original = service.createDebt(originalRequest);
+
+    const replacementRequest = validRequest('Generated Legacy Replacement Mortgage');
+    replacementRequest.debt.debtType = 'mortgage';
+    replacementRequest.debt.financingChainName = 'Legacy Home Mortgage';
+    replacementRequest.debt.refinancedFromDebtId = original.id;
+    replacementRequest.debt.refinanceDate = '2026-03-01';
+    replacementRequest.debt.originationDate = '2026-03-01';
+    replacementRequest.initialTerm.effectiveStartDate = '2026-03-01';
+    const replacement = service.createDebt(replacementRequest);
+    const linkedOriginal = service.updateDebt({
+      id: original.id,
+      expectedUpdatedAtUtc: original.updatedAtUtc,
+      changes: {
+        name: original.name,
+        creditor: original.creditor,
+        ownerEntity: original.ownerEntity,
+        debtType: original.debtType,
+        purpose: original.purpose,
+        status: 'refinanced',
+        maturityDate: original.maturityDate,
+        creditLimit: original.creditLimit,
+        collateralDescription: original.collateralDescription,
+        taxCategory: original.taxCategory,
+        deductiblePercentage: original.deductiblePercentage,
+        financingChainName: original.financingChainName,
+        refinancedFromDebtId: null,
+        refinancedIntoDebtId: replacement.id,
+        refinanceDate: '2026-03-01',
+        notes: original.notes,
+      },
+    });
+
+    expect(service.getDebt({ id: replacement.id })).toMatchObject({
+      refinancedFromDebtId: original.id,
+      refinancedFromDebtName: original.name,
+      refinanceDate: '2026-03-01',
+    });
+
+    service.deleteDebtPermanently(
+      {
+        id: replacement.id,
+        expectedUpdatedAtUtc: replacement.updatedAtUtc,
+        typedDebtName: replacement.name,
+        confirmed: true,
+        secondConfirmed: true,
+      },
+      'manual-generated-backup.sqlite3',
+    );
+
+    expect(service.getDebt({ id: linkedOriginal.id })).toMatchObject({
+      refinancedIntoDebtId: null,
+      refinancedIntoDebtName: null,
+      refinanceDate: null,
+    });
+  });
+
   it('permanently deletes a debt and dependent records atomically after backup confirmation', () => {
     const created = service.createDebt(
       validRequest('Generated Permanent Deletion Note'),
@@ -2067,6 +2129,26 @@ describe('debt maintenance', () => {
       customPriority: [created.id],
       variableRateOverrides: {},
       maxProjectionMonths: 360,
+    });
+    const afterRefinance = service.recordRefinance({
+      debtId: created.id,
+      expectedUpdatedAtUtc: created.updatedAtUtc,
+      refinanceDate: '2026-06-01',
+      newRefinancedPrincipal: '125000.13',
+      newAnnualInterestRatePercent: '4.99',
+      newRequiredPayment: '2150.00',
+      newPaymentFrequency: 'monthly',
+      newMaturityDate: '2056-06-01',
+      interestRateType: 'fixed',
+      dayCountConvention: 'actual_365',
+      calculationConvention: 'simple_daily',
+      financedFees: '0.00',
+      cashFees: '25.00',
+      escrowHandling: 'carry_forward',
+      escrowAmount: null,
+      lenderPayoffBalance: '124550.13',
+      payoffDifferenceAcknowledged: true,
+      notes: 'Generated deletion refinance event.',
     });
 
     const batchId = randomUUID();
@@ -2140,19 +2222,20 @@ describe('debt maintenance', () => {
 
     const preview = service.getDebt({ id: created.id }).permanentDeletionPreview;
     expect(preview).toMatchObject({
-      debtTerms: 1,
-      transactions: 3,
-      allocations: 6,
+      debtTerms: 2,
+      transactions: 5,
+      allocations: 8,
       balanceSnapshots: 2,
       reconciliations: 1,
       importProvenance: 1,
       payoffScenarioReferences: 1,
+      otherRelatedRecords: 1,
     });
 
     const deleted = service.deleteDebtPermanently(
       {
         id: created.id,
-        expectedUpdatedAtUtc: created.updatedAtUtc,
+        expectedUpdatedAtUtc: afterRefinance.updatedAtUtc,
         typedDebtName: created.name,
         confirmed: true,
         secondConfirmed: true,
@@ -2204,6 +2287,13 @@ describe('debt maintenance', () => {
         .all(),
     ).toHaveLength(0);
     expect(context.database.select().from(payoffScenarios).all()).toHaveLength(0);
+    expect(
+      context.database
+        .select()
+        .from(refinanceEvents)
+        .where(eq(refinanceEvents.debtId, created.id))
+        .all(),
+    ).toHaveLength(0);
     expect(
       context.database
         .select()
@@ -2682,6 +2772,26 @@ describe('debt maintenance', () => {
     const debt = service.createDebt(validRequest('Generated Export Note'));
     service.createDebtTransaction(validTransactionRequest(debt.id));
     service.createBalanceSnapshot(validSnapshotRequest(debt.id));
+    service.recordRefinance({
+      debtId: debt.id,
+      expectedUpdatedAtUtc: debt.updatedAtUtc,
+      refinanceDate: '2026-03-01',
+      newRefinancedPrincipal: '125000.13',
+      newAnnualInterestRatePercent: '4.99',
+      newRequiredPayment: '2150.00',
+      newPaymentFrequency: 'monthly',
+      newMaturityDate: '2056-03-01',
+      interestRateType: 'fixed',
+      dayCountConvention: 'actual_365',
+      calculationConvention: 'simple_daily',
+      financedFees: '2500.00',
+      cashFees: '750.00',
+      escrowHandling: 'carry_forward',
+      escrowAmount: null,
+      lenderPayoffBalance: '124600.13',
+      payoffDifferenceAcknowledged: true,
+      notes: 'Generated export refinance event.',
+    });
     const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-export-backups-'));
     const exportRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-exports-'));
     const dataService = createDataManagementService({
@@ -2708,9 +2818,10 @@ describe('debt maintenance', () => {
 
     try {
       const result = dataService.exportData({ format: 'csv', includeReports: true });
-      expect(result).toMatchObject({ status: 'succeeded', fileCount: 13 });
+      expect(result).toMatchObject({ status: 'succeeded', fileCount: 14 });
       const files = readdirSync(result.exportDirectoryDisplayPath!);
       expect(files).toContain('actual-debts.csv');
+      expect(files).toContain('actual-refinance-events.csv');
       expect(files).toContain('confirmed-balance-snapshots.csv');
       expect(files).toContain('calculated-dashboard-summary.csv');
       expect(
@@ -2725,6 +2836,12 @@ describe('debt maintenance', () => {
           'utf8',
         ),
       ).toContain('calculated/dashboard metric');
+      expect(
+        readFileSync(
+          join(result.exportDirectoryDisplayPath!, 'actual-refinance-events.csv'),
+          'utf8',
+        ),
+      ).toContain('actual/in-place refinance event');
     } finally {
       rmSync(backupRoot, { force: true, recursive: true });
       rmSync(exportRoot, { force: true, recursive: true });

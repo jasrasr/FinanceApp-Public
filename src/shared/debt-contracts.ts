@@ -39,6 +39,13 @@ const transactionAllocationInputSchema = z
   .strict();
 
 const reconciliationStatusSchema = z.enum(RECONCILIATION_STATUSES);
+const refinanceEscrowHandlingSchema = z.enum([
+  'carry_forward',
+  'reset_opening_balance',
+  'refund',
+  'new_deposit',
+]);
+
 export const debtTermInputSchema = z
   .object({
     effectiveStartDate: financialDateInputSchema,
@@ -335,6 +342,29 @@ export const archiveDebtRequestSchema = z
   })
   .strict();
 
+export const recordRefinanceRequestSchema = z
+  .object({
+    debtId: uuidSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+    refinanceDate: financialDateInputSchema,
+    newRefinancedPrincipal: moneyInputSchema,
+    newAnnualInterestRatePercent: requiredTextSchema,
+    newRequiredPayment: moneyInputSchema,
+    newPaymentFrequency: z.enum(PAYMENT_FREQUENCIES),
+    newMaturityDate: financialDateInputSchema,
+    interestRateType: z.enum(INTEREST_RATE_TYPES),
+    dayCountConvention: z.enum(DAY_COUNT_CONVENTIONS),
+    calculationConvention: z.enum(INTEREST_CALCULATION_CONVENTIONS),
+    financedFees: moneyInputSchema,
+    cashFees: moneyInputSchema,
+    escrowHandling: refinanceEscrowHandlingSchema,
+    escrowAmount: z.string().trim().max(100).nullable(),
+    lenderPayoffBalance: z.string().trim().max(100).nullable(),
+    payoffDifferenceAcknowledged: z.boolean(),
+    notes: optionalTextSchema,
+  })
+  .strict();
+
 export const restoreDebtRequestSchema = archiveDebtRequestSchema;
 
 export const deleteDebtPermanentlyRequestSchema = z
@@ -485,6 +515,30 @@ const permanentDebtDeletionPreviewDtoSchema = z
   })
   .strict();
 
+export const refinanceEventDtoSchema = z
+  .object({
+    id: uuidSchema,
+    debtId: uuidSchema,
+    refinanceDate: financialDateInputSchema,
+    preRefinancePrincipal: z.string(),
+    lenderPayoffBalance: z.string().nullable(),
+    newRefinancedPrincipal: z.string(),
+    principalChange: z.string(),
+    financedFees: z.string(),
+    cashFees: z.string(),
+    escrowHandling: refinanceEscrowHandlingSchema,
+    escrowAmount: z.string().nullable(),
+    priorTermId: uuidSchema,
+    newTermId: uuidSchema,
+    principalTransactionId: uuidSchema.nullable(),
+    cashFeeTransactionId: uuidSchema.nullable(),
+    escrowTransactionId: uuidSchema.nullable(),
+    notes: z.string().nullable(),
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+  })
+  .strict();
+
 export const debtDetailDtoSchema = debtSummaryDtoSchema
   .omit({ initialTerm: true, currentTerm: true })
   .extend({
@@ -498,6 +552,7 @@ export const debtDetailDtoSchema = debtSummaryDtoSchema
     notes: z.string().nullable(),
     currentTerm: debtTermDtoSchema,
     terms: z.array(debtTermDtoSchema).min(1),
+    refinanceEvents: z.array(refinanceEventDtoSchema),
     permanentDeletionPreview: permanentDebtDeletionPreviewDtoSchema,
     transactions: z.array(debtTransactionDtoSchema),
     balanceSnapshots: z.array(balanceSnapshotDtoSchema),
@@ -942,6 +997,7 @@ export type ArchivePayoffScenarioRequest = z.infer<
 export type GetDebtRequest = z.infer<typeof getDebtRequestSchema>;
 export type ArchiveDebtRequest = z.infer<typeof archiveDebtRequestSchema>;
 export type RestoreDebtRequest = z.infer<typeof restoreDebtRequestSchema>;
+export type RecordRefinanceRequest = z.infer<typeof recordRefinanceRequestSchema>;
 export type DeleteDebtPermanentlyRequest = z.infer<
   typeof deleteDebtPermanentlyRequestSchema
 >;
@@ -953,6 +1009,7 @@ export type BalanceReconciliationDto = z.infer<typeof balanceReconciliationDtoSc
 export type DebtSummaryDto = z.infer<typeof debtSummaryDtoSchema>;
 export type DebtDetailDto = z.infer<typeof debtDetailDtoSchema>;
 export type PermanentDebtDeletionDto = z.infer<typeof permanentDebtDeletionDtoSchema>;
+export type RefinanceEventDto = z.infer<typeof refinanceEventDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
 export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSchema>;
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;

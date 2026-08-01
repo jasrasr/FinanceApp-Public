@@ -30,6 +30,7 @@ import {
   payoffScenarioListResultSchema,
   payoffScenarioResultSchema,
   permanentDebtDeletionResultSchema,
+  recordRefinanceRequestSchema,
   reverseDebtTransactionRequestSchema,
   rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
@@ -58,6 +59,7 @@ import {
   type ListDebtsRequest,
   type ListPayoffScenariosRequest,
   type RerunPayoffScenarioRequest,
+  type RecordRefinanceRequest,
   type ReverseDebtTransactionRequest,
   type RestoreDebtRequest,
   type RestoreBackupRequest,
@@ -73,7 +75,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 21,
+    bridgeVersion: 22,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -243,6 +245,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.restore,
           restoreDebtRequestSchema.parse(request),
+        ),
+      ),
+    recordRefinance: async (request: RecordRefinanceRequest) =>
+      debtDetailResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.recordRefinance,
+          recordRefinanceRequestSchema.parse(request),
         ),
       ),
     deleteDebtPermanently: async (request: DeleteDebtPermanentlyRequest) =>

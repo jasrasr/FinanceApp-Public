@@ -33,7 +33,7 @@ test.describe('packaged Windows upgrade behavior', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await window.getByRole('button', { name: 'Debts' }).click();
+      await window.getByRole('button', { name: 'Debts', exact: true }).click();
       await expect(window.getByText('Packaged Fictional Baseline Note')).toBeVisible();
       expect(existsSync(join(userDataDirectory, 'debt-tracker.sqlite3'))).toBe(true);
     } finally {

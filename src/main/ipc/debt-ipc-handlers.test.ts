@@ -30,6 +30,7 @@ const createService = (): DebtMaintenanceService => ({
   voidBalanceReconciliation: vi.fn(),
   archiveDebt: vi.fn(),
   restoreDebt: vi.fn(),
+  recordRefinance: vi.fn(),
   deleteDebtPermanently: vi.fn(),
 });
 

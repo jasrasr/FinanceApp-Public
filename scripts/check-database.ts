@@ -13,6 +13,7 @@ const expectedTables = [
   'import_postings',
   'import_sheet_mappings',
   'payoff_scenarios',
+  'refinance_events',
   'staged_import_rows',
   'transaction_allocations',
 ];

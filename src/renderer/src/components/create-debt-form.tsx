@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { CreateDebtRequest, DebtSummaryDto } from '../../../shared/debt-contracts';
+import type { CreateDebtRequest } from '../../../shared/debt-contracts';
 import {
   DAY_COUNT_CONVENTIONS,
   DEBT_STATUSES,
@@ -14,7 +14,6 @@ import { inputClassName, labelFromValue } from './form-utils';
 
 export interface CreateDebtFormProps {
   readonly busy: boolean;
-  readonly debts: readonly DebtSummaryDto[];
   readonly fieldErrors?: Readonly<Record<string, readonly string[]>>;
   readonly onCancel: () => void;
   readonly onSubmit: (request: CreateDebtRequest) => void;
@@ -39,7 +38,6 @@ const Options = ({ values }: { readonly values: readonly string[] }) => (
 
 export const CreateDebtForm = ({
   busy,
-  debts,
   fieldErrors,
   onCancel,
   onSubmit,
@@ -75,10 +73,10 @@ export const CreateDebtForm = ({
           'debt.taxCategory',
         ) as CreateDebtRequest['debt']['taxCategory'],
         deductiblePercentage: value(data, 'debt.deductiblePercentage'),
-        financingChainName: nullableValue(data, 'debt.financingChainName'),
-        refinancedFromDebtId: nullableValue(data, 'debt.refinancedFromDebtId'),
-        refinancedIntoDebtId: nullableValue(data, 'debt.refinancedIntoDebtId'),
-        refinanceDate: nullableValue(data, 'debt.refinanceDate'),
+        financingChainName: null,
+        refinancedFromDebtId: null,
+        refinancedIntoDebtId: null,
+        refinanceDate: null,
         notes: nullableValue(data, 'debt.notes'),
       },
       initialTerm: {
@@ -260,74 +258,6 @@ export const CreateDebtForm = ({
               className={inputClassName}
               id="debt.collateralDescription"
               name="debt.collateralDescription"
-            />
-          </Field>
-          <div className="lg:col-span-2">
-            <Field
-              error={fieldErrors?.['debt.financingChainName']}
-              label="Financing-chain name"
-              name="debt.financingChainName"
-              optional
-            >
-              <input
-                className={inputClassName}
-                id="debt.financingChainName"
-                name="debt.financingChainName"
-                placeholder="Home Mortgage - Primary Residence"
-              />
-            </Field>
-          </div>
-          <Field
-            error={fieldErrors?.['debt.refinancedFromDebtId']}
-            label="Refinanced from"
-            name="debt.refinancedFromDebtId"
-            optional
-          >
-            <select
-              className={inputClassName}
-              defaultValue=""
-              id="debt.refinancedFromDebtId"
-              name="debt.refinancedFromDebtId"
-            >
-              <option value="">Not linked</option>
-              {debts.map((debt) => (
-                <option key={debt.id} value={debt.id}>
-                  {debt.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field
-            error={fieldErrors?.['debt.refinancedIntoDebtId']}
-            label="Refinanced into"
-            name="debt.refinancedIntoDebtId"
-            optional
-          >
-            <select
-              className={inputClassName}
-              defaultValue=""
-              id="debt.refinancedIntoDebtId"
-              name="debt.refinancedIntoDebtId"
-            >
-              <option value="">Not linked</option>
-              {debts.map((debt) => (
-                <option key={debt.id} value={debt.id}>
-                  {debt.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field
-            error={fieldErrors?.['debt.refinanceDate']}
-            label="Refinance date"
-            name="debt.refinanceDate"
-            optional
-          >
-            <input
-              className={inputClassName}
-              id="debt.refinanceDate"
-              name="debt.refinanceDate"
-              type="date"
             />
           </Field>
           <div className="lg:col-span-2">

@@ -1558,3 +1558,66 @@ completed.
 - Recommended next phase:
   - Continue generated-data acceptance testing around manual-entry debt
     maintenance, backup/restore, and administrative recovery.
+
+## Phase 32: In-Place Refinance Workflow
+
+- Completion date: 2026-08-01
+- Application version: 0.26.0
+- Features implemented:
+  - Replaced normal separate-debt refinance entry with a debt-detail
+    `Record refinance` workflow that keeps one continuous debt ID.
+  - Added refinance fields for date, new principal, rate, required payment,
+    payment frequency, maturity, rate/day-count/calculation conventions,
+    financed fees, cash-paid fees, escrow handling, lender payoff review, and
+    notes.
+  - Added refinance history display on debt detail and retained legacy
+    separate-debt refinance links in a compatibility disclosure when present.
+  - Removed financing-chain and refinanced-from/into inputs from normal create
+    and edit forms while preserving existing linked values.
+- Material architecture and accounting decisions:
+  - In-place refinance save is a main-process service operation and repository
+    transaction. It closes the prior term, creates the new term, posts only the
+    net refinance principal adjustment, records fee classifications, and keeps
+    escrow separate from principal.
+  - Reports keep one debt series. Balance trends mark periods containing
+    in-place refinance events and no longer generate normal combined
+    financing-chain rows.
+  - Legacy separate-debt refinance records remain readable. Permanent deletion
+    clears legacy links and deletes refinance event rows safely.
+- Database schema or migration changes:
+  - Added migration `0008_in_place_refinance_events.sql` and the
+    `refinance_events` table for event details, linked term ids, linked system
+    transaction ids, fee classifications, escrow handling, and payoff review.
+- New or changed IPC operations:
+  - Added `debt:record-refinance`.
+  - Increased the typed preload bridge version to 22.
+- New UI screens or workflows:
+  - Added debt-detail `Record refinance` workflow and refinance event history.
+  - Removed normal financing-chain creation controls from debt create/edit.
+- Validation and smoke-test results:
+  - `npm run typecheck` passed.
+  - Focused integration tests passed: 2 files and 63 tests.
+  - Focused renderer, preload, and IPC tests passed: 3 files and 44 tests.
+  - A parallel focused test attempt temporarily broke the native SQLite binding
+    because two `npm run native:node` rebuilds ran at the same time; rerunning
+    `npm run native:node` once repaired it.
+  - `npm run format` passed.
+  - `npm run check` passed under escalation after an initial sandbox
+    access-denied failure in the Electron build. The gate completed with 10
+    Vitest files and 134 tests passing, database integrity passing, production
+    build passing, and the active Electron E2E workflow passing; packaged source
+    specs were skipped in that suite.
+  - `npm run package:smoke` passed packaged launch/export and
+    upgrade-preservation tests after tightening an E2E navigation selector that
+    conflicted with the debt-detail back button. The runner reported the
+    existing Node `fs.R_OK` deprecation warning and a temporary installed-app
+    cleanup warning.
+- Known limitations and technical debt:
+  - Legacy separate-debt refinance columns remain for compatibility and are not
+    removed by this phase.
+  - Refinance payoff differences require user acknowledgement and notes, but a
+    specialized refinance-date reconciliation wizard is not yet implemented.
+- Recommended next phase:
+  - Continue generated-data acceptance testing around in-place refinance review,
+    reconciliation evidence, and backup-assisted deletion of legacy test
+    replacement debts.

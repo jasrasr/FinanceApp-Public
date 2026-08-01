@@ -56,6 +56,12 @@ export const IMPORT_POSTING_ENTITY_TYPES = [
   'transaction_allocation',
   'balance_snapshot',
 ] as const;
+export const REFINANCE_ESCROW_HANDLING = [
+  'carry_forward',
+  'reset_opening_balance',
+  'refund',
+  'new_deposit',
+] as const;
 
 export const debtInsertSchema = z
   .object({
@@ -326,6 +332,41 @@ export const importPostingInsertSchema = z.object({
   createdAtUtc: utcTimestampSchema,
 });
 
+export const refinanceEventInsertSchema = z
+  .object({
+    id: idSchema,
+    debtId: idSchema,
+    refinanceDate: financialDateSchema,
+    preRefinancePrincipalCents: nonnegativeMoneyCentsSchema,
+    lenderPayoffBalanceCents: nonnegativeMoneyCentsSchema.nullable().optional(),
+    newRefinancedPrincipalCents: nonnegativeMoneyCentsSchema,
+    principalChangeCents: moneyCentsSchema,
+    financedFeesCents: nonnegativeMoneyCentsSchema,
+    cashFeesCents: nonnegativeMoneyCentsSchema,
+    escrowHandling: z.enum(REFINANCE_ESCROW_HANDLING),
+    escrowAmountCents: moneyCentsSchema.nullable().optional(),
+    priorTermId: idSchema,
+    newTermId: idSchema,
+    principalTransactionId: idSchema.nullable().optional(),
+    cashFeeTransactionId: idSchema.nullable().optional(),
+    escrowTransactionId: idSchema.nullable().optional(),
+    notes: optionalText,
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+  })
+  .superRefine((value, context) => {
+    if (
+      value.principalChangeCents !==
+      value.newRefinancedPrincipalCents - value.preRefinancePrincipalCents
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Principal change must equal new principal less prior principal.',
+        path: ['principalChangeCents'],
+      });
+    }
+  });
+
 export const payoffScenarioInsertSchema = z.object({
   id: idSchema,
   name: requiredText,
@@ -357,4 +398,5 @@ export type ImportBatchInsert = z.infer<typeof importBatchInsertSchema>;
 export type ImportSheetMappingInsert = z.infer<typeof importSheetMappingInsertSchema>;
 export type StagedImportRowInsert = z.infer<typeof stagedImportRowInsertSchema>;
 export type ImportPostingInsert = z.infer<typeof importPostingInsertSchema>;
+export type RefinanceEventInsert = z.infer<typeof refinanceEventInsertSchema>;
 export type PayoffScenarioInsert = z.infer<typeof payoffScenarioInsertSchema>;

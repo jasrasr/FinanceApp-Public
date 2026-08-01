@@ -22,9 +22,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 21,
+  bridgeVersion: 22,
   appMetadata: {
-    version: '0.25.0',
+    version: '0.26.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -103,6 +103,38 @@ const createBridge = (): AppBridge => ({
   voidBalanceReconciliation: vi.fn(),
   archiveDebt: vi.fn(),
   restoreDebt: vi.fn(),
+  recordRefinance: vi.fn(async () => ({
+    ok: true as const,
+    value: {
+      ...sampleDebtDetail,
+      maturityDate: '2056-07-01',
+      minimumPayment: '2150.00',
+      updatedAtUtc: '2026-07-28T13:50:00.000Z',
+      refinanceEvents: [
+        {
+          id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c071',
+          debtId: sampleDebtDetail.id,
+          refinanceDate: '2026-07-01',
+          preRefinancePrincipal: '124600.00',
+          lenderPayoffBalance: '124600.00',
+          newRefinancedPrincipal: '130000.00',
+          principalChange: '5400.00',
+          financedFees: '2500.00',
+          cashFees: '750.00',
+          escrowHandling: 'carry_forward' as const,
+          escrowAmount: null,
+          priorTermId: sampleDebtDetail.currentTerm.id,
+          newTermId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c072',
+          principalTransactionId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c073',
+          cashFeeTransactionId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c074',
+          escrowTransactionId: null,
+          notes: 'Generated refinance event.',
+          createdAtUtc: '2026-07-28T13:50:00.000Z',
+          updatedAtUtc: '2026-07-28T13:50:00.000Z',
+        },
+      ],
+    },
+  })),
   deleteDebtPermanently: vi.fn(async () => ({
     ok: true as const,
     value: {
@@ -641,6 +673,7 @@ const sampleDebtDetail: DebtDetailDto = {
       updatedAtUtc: '2026-07-27T13:00:00.000Z',
     },
   ],
+  refinanceEvents: [],
   calculatedEscrowBalance: '0.00',
   permanentDeletionPreview: {
     debtTerms: 2,
@@ -783,6 +816,7 @@ describe('debt maintenance application', () => {
       screen.getByRole('heading', { name: 'Balance reconciliations' }),
     ).toBeVisible();
     expect(screen.getByRole('button', { name: 'Record transaction' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Record refinance' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Record snapshot' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Reconcile balance' })).toBeVisible();
   });
@@ -834,6 +868,78 @@ describe('debt maintenance application', () => {
       await screen.findByText('Debt name confirmation did not match.'),
     ).toBeVisible();
     expect(bridge.deleteDebtPermanently).not.toHaveBeenCalled();
+  });
+
+  it('records an in-place refinance from debt detail without creating another debt', async () => {
+    const bridge = createBridge();
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [sampleDebtSummary],
+    }));
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: sampleDebtDetail,
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Open Fictional Equipment Note — Harbor Ridge Cooperative/,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Record refinance' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Record refinance' }),
+    ).toBeVisible();
+    fireEvent.change(screen.getByLabelText(/Refinance date/), {
+      target: { value: '2026-07-01' },
+    });
+    fireEvent.change(screen.getByLabelText(/New refinanced principal balance/), {
+      target: { value: '130000.00' },
+    });
+    fireEvent.change(screen.getByLabelText(/New annual interest rate/), {
+      target: { value: '4.99' },
+    });
+    fireEvent.change(screen.getByLabelText(/New required payment/), {
+      target: { value: '2150.00' },
+    });
+    fireEvent.change(screen.getByLabelText(/New maturity date/), {
+      target: { value: '2056-07-01' },
+    });
+    fireEvent.change(screen.getByLabelText(/Refinance fees financed into loan/), {
+      target: { value: '2500.00' },
+    });
+    fireEvent.change(screen.getByLabelText(/Refinance fees paid in cash/), {
+      target: { value: '750.00' },
+    });
+    fireEvent.change(screen.getByLabelText('Lender payoff balance'), {
+      target: { value: '124600.00' },
+    });
+    fireEvent.click(
+      screen.getByLabelText(
+        'I reviewed the calculated payoff balance and documented any lender payoff difference.',
+      ),
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Record refinance' })[0]!);
+
+    await waitFor(() =>
+      expect(bridge.recordRefinance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          debtId: sampleDebtDetail.id,
+          refinanceDate: '2026-07-01',
+          newRefinancedPrincipal: '130000.00',
+          financedFees: '2500.00',
+          cashFees: '750.00',
+        }),
+      ),
+    );
+    expect(bridge.createDebt).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText('Refinance was recorded on this debt.'),
+    ).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Refinance history' })).toBeVisible();
   });
 
   it('permanently deletes debt after confirmations and refreshes summaries', async () => {
@@ -1451,7 +1557,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.25.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.26.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,

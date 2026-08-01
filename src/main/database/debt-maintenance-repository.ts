@@ -20,6 +20,7 @@ import {
   debts,
   importPostings,
   payoffScenarios,
+  refinanceEvents,
   transactionAllocations,
 } from './schema';
 import {
@@ -31,6 +32,7 @@ import {
   debtTermInsertSchema,
   debtTransactionInsertSchema,
   payoffScenarioInsertSchema,
+  refinanceEventInsertSchema,
   transactionAllocationInsertSchema,
   type AuditEventInsert,
   type BalanceReconciliationInput,
@@ -39,6 +41,7 @@ import {
   type DebtTermInsert,
   type DebtTransactionInsert,
   type PayoffScenarioInsert,
+  type RefinanceEventInsert,
   type TransactionAllocationInsert,
 } from './validation';
 import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
@@ -50,6 +53,7 @@ export type TransactionAllocationRecord = typeof transactionAllocations.$inferSe
 export type BalanceSnapshotRecord = typeof balanceSnapshots.$inferSelect;
 export type BalanceReconciliationRecord = typeof balanceReconciliations.$inferSelect;
 export type PayoffScenarioRecord = typeof payoffScenarios.$inferSelect;
+export type RefinanceEventRecord = typeof refinanceEvents.$inferSelect;
 
 export interface DebtWithTermsRecord {
   readonly debt: DebtRecord;
@@ -65,6 +69,7 @@ export interface DebtWithActivityRecord extends DebtWithTermsRecord {
   readonly transactions: readonly DebtTransactionWithAllocationsRecord[];
   readonly balanceSnapshots: readonly BalanceSnapshotRecord[];
   readonly balanceReconciliations: readonly BalanceReconciliationRecord[];
+  readonly refinanceEvents: readonly RefinanceEventRecord[];
 }
 
 export interface PermanentDebtDeletionCounts {
@@ -89,6 +94,26 @@ export interface PermanentDebtDeletionRecordInput {
 export interface PostedTransactionInput {
   readonly transaction: DebtTransactionInsert;
   readonly allocations: readonly TransactionAllocationInsert[];
+}
+
+export interface RecordInPlaceRefinanceRecordInput {
+  readonly debtId: string;
+  readonly expectedDebtUpdatedAtUtc: string;
+  readonly priorTermId: string;
+  readonly expectedPriorEndDate: string | null;
+  readonly priorEndDate: string;
+  readonly debtUpdate: {
+    readonly maturityDate: string;
+    readonly minimumPaymentCents: number;
+    readonly paymentFrequency: DebtRecord['paymentFrequency'];
+    readonly updatedAtUtc: string;
+  };
+  readonly newTerm: DebtTermInsert;
+  readonly principalAdjustment?: PostedTransactionInput;
+  readonly cashFeeTransaction?: PostedTransactionInput;
+  readonly escrowTransaction?: PostedTransactionInput;
+  readonly refinanceEvent: RefinanceEventInsert;
+  readonly auditInputs: readonly AuditEventInsert[];
 }
 
 export interface EditPostedTransactionRecordInput {
@@ -199,6 +224,17 @@ const getBalanceReconciliations = (
     )
     .all();
 
+const getRefinanceEvents = (
+  database: AppDatabase,
+  debtId: string,
+): readonly RefinanceEventRecord[] =>
+  database
+    .select()
+    .from(refinanceEvents)
+    .where(eq(refinanceEvents.debtId, debtId))
+    .orderBy(asc(refinanceEvents.refinanceDate), asc(refinanceEvents.createdAtUtc))
+    .all();
+
 export const listDebtRecords = (
   database: AppDatabase,
   includeArchived: boolean,
@@ -245,6 +281,7 @@ export const getDebtActivityRecord = (
         transactions: getTransactions(database, debtId),
         balanceSnapshots: getBalanceSnapshots(database, debtId),
         balanceReconciliations: getBalanceReconciliations(database, debtId),
+        refinanceEvents: getRefinanceEvents(database, debtId),
       }
     : undefined;
 };
@@ -265,6 +302,7 @@ export const listActiveDebtActivityRecords = (
     transactions: getTransactions(database, debt.id),
     balanceSnapshots: getBalanceSnapshots(database, debt.id),
     balanceReconciliations: getBalanceReconciliations(database, debt.id),
+    refinanceEvents: getRefinanceEvents(database, debt.id),
   }));
 };
 
@@ -287,6 +325,7 @@ export const listDebtActivityRecords = (
     transactions: getTransactions(database, debt.id),
     balanceSnapshots: getBalanceSnapshots(database, debt.id),
     balanceReconciliations: getBalanceReconciliations(database, debt.id),
+    refinanceEvents: getRefinanceEvents(database, debt.id),
   }));
 };
 
@@ -504,6 +543,7 @@ const permanentDeletionRelatedIds = (
   readonly snapshotIds: readonly string[];
   readonly reconciliationIds: readonly string[];
   readonly termIds: readonly string[];
+  readonly refinanceEventIds: readonly string[];
   readonly payoffScenarioIds: readonly string[];
 } => {
   const record = getDebtActivityRecord(database, debtId);
@@ -519,6 +559,7 @@ const permanentDeletionRelatedIds = (
       (reconciliation) => reconciliation.id,
     ),
     termIds: record.terms.map((term) => term.id),
+    refinanceEventIds: record.refinanceEvents.map((event) => event.id),
     payoffScenarioIds: payoffScenariosReferencingDebt(database, debtId).map(
       (scenario) => scenario.id,
     ),
@@ -536,6 +577,7 @@ const permanentDeletionImportPostingIds = (
     ...related.transactionIds.map((id) => ['debt_transaction', id]),
     ...related.allocationIds.map((id) => ['transaction_allocation', id]),
     ...related.snapshotIds.map((id) => ['balance_snapshot', id]),
+    ...related.refinanceEventIds.map((id) => ['refinance_event', id]),
   ] as const;
 
   return database
@@ -604,6 +646,7 @@ export const previewPermanentDebtDeletion = (
     ...related.allocationIds.map((id) => ['transaction_allocation', id]),
     ...related.snapshotIds.map((id) => ['balance_snapshot', id]),
     ...related.reconciliationIds.map((id) => ['balance_reconciliation', id]),
+    ...related.refinanceEventIds.map((id) => ['refinance_event', id]),
     ...related.payoffScenarioIds.map((id) => ['payoff_scenario', id]),
   ] as const;
   const auditEventCount = database
@@ -621,16 +664,17 @@ export const previewPermanentDebtDeletion = (
     debtId,
     related,
   ).length;
-  const otherRelatedRecords = database
-    .select()
-    .from(debts)
-    .where(
-      or(
-        eq(debts.refinancedFromDebtId, debtId),
-        eq(debts.refinancedIntoDebtId, debtId),
-      ),
-    )
-    .all().length;
+  const otherRelatedRecords =
+    database
+      .select()
+      .from(debts)
+      .where(
+        or(
+          eq(debts.refinancedFromDebtId, debtId),
+          eq(debts.refinancedIntoDebtId, debtId),
+        ),
+      )
+      .all().length + related.refinanceEventIds.length;
 
   return {
     debtTerms: count(record.terms),
@@ -704,6 +748,12 @@ export const deleteDebtPermanentlyRecord = (
         .where(inArray(payoffScenarios.id, related.payoffScenarioIds))
         .run();
     }
+    if (related.refinanceEventIds.length > 0) {
+      transaction
+        .delete(refinanceEvents)
+        .where(inArray(refinanceEvents.id, related.refinanceEventIds))
+        .run();
+    }
     if (related.allocationIds.length > 0) {
       transaction
         .delete(transactionAllocations)
@@ -749,6 +799,7 @@ export const deleteDebtPermanentlyRecord = (
       ...related.allocationIds.map((id) => ['transaction_allocation', id]),
       ...related.snapshotIds.map((id) => ['balance_snapshot', id]),
       ...related.reconciliationIds.map((id) => ['balance_reconciliation', id]),
+      ...related.refinanceEventIds.map((id) => ['refinance_event', id]),
       ...related.payoffScenarioIds.map((id) => ['payoff_scenario', id]),
     ] as const;
     const auditIds = transaction
@@ -817,6 +868,136 @@ export const createPostedTransactionRecord = (
   database.transaction((transactionDb) => {
     transactionDb.insert(debtTransactions).values(transaction).run();
     transactionDb.insert(transactionAllocations).values(allocations).run();
+    transactionDb.insert(auditEvents).values(audit).run();
+  });
+};
+
+const parsePostedTransactionInput = (
+  input: PostedTransactionInput | undefined,
+): PostedTransactionInput | undefined => {
+  if (!input) return undefined;
+
+  const transaction = debtTransactionInsertSchema.parse(input.transaction);
+  const allocations = input.allocations.map((allocation) =>
+    transactionAllocationInsertSchema.parse(allocation),
+  );
+
+  if (allocations.some((allocation) => allocation.transactionId !== transaction.id)) {
+    throw new Error('Every allocation must reference its transaction.');
+  }
+
+  const errors = validateTransactionSignConvention(transaction, allocations);
+  if (errors.length > 0) {
+    throw new Error(errors.join(' '));
+  }
+
+  return { transaction, allocations };
+};
+
+export const recordInPlaceRefinanceRecord = (
+  database: AppDatabase,
+  input: RecordInPlaceRefinanceRecordInput,
+): void => {
+  const newTerm = debtTermInsertSchema.parse(input.newTerm);
+  const principalAdjustment = parsePostedTransactionInput(input.principalAdjustment);
+  const cashFeeTransaction = parsePostedTransactionInput(input.cashFeeTransaction);
+  const escrowTransaction = parsePostedTransactionInput(input.escrowTransaction);
+  const refinanceEvent = refinanceEventInsertSchema.parse(input.refinanceEvent);
+  const audit = input.auditInputs.map((event) => auditEventInsertSchema.parse(event));
+
+  if (newTerm.debtId !== input.debtId) {
+    throw new Error('The new refinance term must reference the refinanced debt.');
+  }
+
+  for (const postedTransaction of [
+    principalAdjustment,
+    cashFeeTransaction,
+    escrowTransaction,
+  ]) {
+    if (postedTransaction && postedTransaction.transaction.debtId !== input.debtId) {
+      throw new Error('Refinance transactions must reference the refinanced debt.');
+    }
+  }
+
+  if (
+    refinanceEvent.debtId !== input.debtId ||
+    refinanceEvent.priorTermId !== input.priorTermId ||
+    refinanceEvent.newTermId !== newTerm.id ||
+    refinanceEvent.principalTransactionId !==
+      (principalAdjustment?.transaction.id ?? null) ||
+    refinanceEvent.cashFeeTransactionId !==
+      (cashFeeTransaction?.transaction.id ?? null) ||
+    refinanceEvent.escrowTransactionId !== (escrowTransaction?.transaction.id ?? null)
+  ) {
+    throw new Error('Refinance event links must match the atomic ledger records.');
+  }
+
+  database.transaction((transactionDb) => {
+    const debtUpdate = transactionDb
+      .update(debts)
+      .set({
+        maturityDate: input.debtUpdate.maturityDate,
+        minimumPaymentCents: input.debtUpdate.minimumPaymentCents,
+        paymentFrequency: input.debtUpdate.paymentFrequency,
+        updatedAtUtc: input.debtUpdate.updatedAtUtc,
+      })
+      .where(
+        and(
+          eq(debts.id, input.debtId),
+          eq(debts.updatedAtUtc, input.expectedDebtUpdatedAtUtc),
+          isNull(debts.archivedAtUtc),
+        ),
+      )
+      .run();
+
+    if (debtUpdate.changes !== 1) {
+      throw new RepositoryConflictError(
+        'Debt changed or was archived before the refinance was saved.',
+      );
+    }
+
+    const priorTermCondition =
+      input.expectedPriorEndDate === null
+        ? isNull(debtTerms.effectiveEndDate)
+        : eq(debtTerms.effectiveEndDate, input.expectedPriorEndDate);
+    const priorTermUpdate = transactionDb
+      .update(debtTerms)
+      .set({
+        effectiveEndDate: input.priorEndDate,
+        updatedAtUtc: input.debtUpdate.updatedAtUtc,
+      })
+      .where(
+        and(
+          eq(debtTerms.id, input.priorTermId),
+          eq(debtTerms.debtId, input.debtId),
+          priorTermCondition,
+        ),
+      )
+      .run();
+
+    if (priorTermUpdate.changes !== 1) {
+      throw new RepositoryConflictError(
+        'Debt terms changed before the refinance was saved.',
+      );
+    }
+
+    transactionDb.insert(debtTerms).values(newTerm).run();
+    for (const postedTransaction of [
+      principalAdjustment,
+      cashFeeTransaction,
+      escrowTransaction,
+    ]) {
+      if (!postedTransaction) continue;
+      transactionDb
+        .insert(debtTransactions)
+        .values(postedTransaction.transaction)
+        .run();
+      transactionDb
+        .insert(transactionAllocations)
+        .values([...postedTransaction.allocations])
+        .run();
+    }
+    transactionDb.insert(refinanceEvents).values(refinanceEvent).run();
     transactionDb.insert(auditEvents).values(audit).run();
   });
 };

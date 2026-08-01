@@ -57,6 +57,13 @@
       "when": 1785599773878,
       "tag": "0007_bumpy_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785611040000,
+      "tag": "0008_in_place_refinance_events",
+      "breakpoints": true
     }
   ]
 }

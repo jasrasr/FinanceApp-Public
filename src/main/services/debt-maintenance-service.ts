@@ -22,6 +22,7 @@ import type {
   ListDebtsRequest,
   ListPayoffScenariosRequest,
   PayoffScenarioDto,
+  RecordRefinanceRequest,
   RerunPayoffScenarioRequest,
   ReverseDebtTransactionRequest,
   RestoreDebtRequest,
@@ -46,6 +47,7 @@ import {
   getPayoffScenarioRequestSchema,
   listPayoffScenariosRequestSchema,
   listDebtsRequestSchema,
+  recordRefinanceRequestSchema,
   rerunPayoffScenarioRequestSchema,
   reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
@@ -58,6 +60,7 @@ import { REPORTING_HISTORY_START_DATE } from '../../shared/reporting-constants';
 import type { AppDatabase } from '../database/connection';
 import {
   calculateLedgerBalanceThroughDate,
+  calculateEscrowBalanceThroughDate,
   createPayoffScenarioRecord,
   createBalanceReconciliationRecord,
   createBalanceSnapshotRecord,
@@ -74,6 +77,7 @@ import {
   listDebtActivityRecords,
   listPayoffScenarioRecords,
   previewPermanentDebtDeletion,
+  recordInPlaceRefinanceRecord,
   RepositoryConflictError,
   RepositoryNotFoundError,
   setDebtArchivedState,
@@ -88,6 +92,7 @@ import {
   type DebtWithTermsRecord,
   type DebtWithActivityRecord,
   type PayoffScenarioRecord,
+  type PostedTransactionInput,
 } from '../database/debt-maintenance-repository';
 import { reversePostedTransaction } from '../database/repository';
 import type {
@@ -96,6 +101,7 @@ import type {
   DebtInsert,
   DebtTermInsert,
   DebtTransactionInsert,
+  RefinanceEventInsert,
   PayoffScenarioInsert,
   TransactionAllocationInsert,
 } from '../database/validation';
@@ -151,6 +157,7 @@ export interface DebtMaintenanceService {
   voidBalanceReconciliation(request: VoidBalanceReconciliationRequest): DebtDetailDto;
   archiveDebt(request: ArchiveDebtRequest): DebtDetailDto;
   restoreDebt(request: RestoreDebtRequest): DebtDetailDto;
+  recordRefinance(request: RecordRefinanceRequest): DebtDetailDto;
   deleteDebtPermanently(
     request: DeleteDebtPermanentlyRequest,
     backupId: string,
@@ -622,6 +629,34 @@ const mapBalanceReconciliation = (
   updatedAtUtc: reconciliation.updatedAtUtc,
 });
 
+const mapRefinanceEvent = (
+  event: DebtWithActivityRecord['refinanceEvents'][number],
+): DebtDetailDto['refinanceEvents'][number] => ({
+  id: event.id,
+  debtId: event.debtId,
+  refinanceDate: event.refinanceDate,
+  preRefinancePrincipal: centsToDollars(event.preRefinancePrincipalCents),
+  lenderPayoffBalance:
+    event.lenderPayoffBalanceCents === null
+      ? null
+      : centsToDollars(event.lenderPayoffBalanceCents),
+  newRefinancedPrincipal: centsToDollars(event.newRefinancedPrincipalCents),
+  principalChange: centsToDollars(event.principalChangeCents),
+  financedFees: centsToDollars(event.financedFeesCents),
+  cashFees: centsToDollars(event.cashFeesCents),
+  escrowHandling: event.escrowHandling,
+  escrowAmount:
+    event.escrowAmountCents === null ? null : centsToDollars(event.escrowAmountCents),
+  priorTermId: event.priorTermId,
+  newTermId: event.newTermId,
+  principalTransactionId: event.principalTransactionId,
+  cashFeeTransactionId: event.cashFeeTransactionId,
+  escrowTransactionId: event.escrowTransactionId,
+  notes: event.notes,
+  createdAtUtc: event.createdAtUtc,
+  updatedAtUtc: event.updatedAtUtc,
+});
+
 const currentActualTransactionEntriesThrough = (
   record: DebtWithActivityRecord,
   effectiveDate: string,
@@ -998,6 +1033,7 @@ const mapDetail = (
     transactions: record.transactions.map(mapTransaction),
     balanceSnapshots: record.balanceSnapshots.map(mapBalanceSnapshot),
     balanceReconciliations: record.balanceReconciliations.map(mapBalanceReconciliation),
+    refinanceEvents: record.refinanceEvents.map(mapRefinanceEvent),
     calculatedEscrowBalance: centsToDollars(
       calculateEscrowBalanceFromActivity(record, effectiveDate),
     ),
@@ -1629,63 +1665,27 @@ const createBalanceTrendRows = (
       priorEndingBalance === null ? null : endingBalance - priorEndingBalance;
     priorEndingBalance = endingBalance;
     const isAnnual = /^\d{4}$/.test(row.period);
+    const periodStartDate = isAnnual ? `${row.period}-01-01` : `${row.period}-01`;
+    const periodEndDate = isAnnual
+      ? `${row.period}-12-31`
+      : periodEnd(row.period, 'monthly');
+    const refinanceDate =
+      records
+        .flatMap((record) => record.refinanceEvents.map((event) => event.refinanceDate))
+        .filter((date) => date >= periodStartDate && date <= periodEndDate)
+        .sort()[0] ?? null;
     return {
       period: row.period,
-      periodEndDate: isAnnual
-        ? `${row.period}-12-31`
-        : periodEnd(row.period, 'monthly'),
+      periodEndDate,
       grouping: 'Total debt',
-      refinanceDate: null,
+      refinanceDate,
       endingBalance: row.endingBalance,
       changeFromPriorPeriod:
         change === null ? null : centsToDollars(Math.round(change * 100)),
     };
   });
 
-  const recordsByChain = new Map<string, DebtWithActivityRecord[]>();
-  for (const record of records) {
-    if (!record.debt.financingChainName) continue;
-    recordsByChain.set(record.debt.financingChainName, [
-      ...(recordsByChain.get(record.debt.financingChainName) ?? []),
-      record,
-    ]);
-  }
-
-  const chainRows = [...recordsByChain.entries()].flatMap(
-    ([chainName, chainRecords]) => {
-      if (chainRecords.length < 2) return [];
-      let priorChainBalance: number | null = null;
-      const refinanceDate =
-        chainRecords
-          .map((record) => record.debt.refinanceDate)
-          .filter((date): date is string => date !== null)
-          .sort()[0] ?? null;
-      return rows.map((row) => {
-        const isAnnual = /^\d{4}$/.test(row.period);
-        const periodEndDate = isAnnual
-          ? `${row.period}-12-31`
-          : periodEnd(row.period, 'monthly');
-        const endingBalanceCents = chainRecords.reduce(
-          (total, record) =>
-            total + calculateReportPrincipalBalanceThroughDate(record, periodEndDate),
-          0,
-        );
-        const change =
-          priorChainBalance === null ? null : endingBalanceCents - priorChainBalance;
-        priorChainBalance = endingBalanceCents;
-        return {
-          period: row.period,
-          periodEndDate,
-          grouping: chainName,
-          refinanceDate,
-          endingBalance: centsToDollars(endingBalanceCents),
-          changeFromPriorPeriod: change === null ? null : centsToDollars(change),
-        };
-      });
-    },
-  );
-
-  return [...totalRows, ...chainRows];
+  return totalRows;
 };
 
 const monthsBetweenDates = (
@@ -2680,6 +2680,336 @@ export const createDebtMaintenanceService = ({
         return mapDetail(
           database,
           getRecordOrThrow(parsed.id),
+          currentFinancialDate(now),
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    recordRefinance: (request) => {
+      try {
+        const parsed = recordRefinanceRequestSchema.parse(request);
+        const existing = getRecordOrThrow(parsed.debtId);
+
+        if (existing.debt.archivedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Restore this debt before recording a refinance.',
+          );
+        }
+
+        const latestTerm = existing.terms.at(-1);
+        if (!latestTerm) {
+          throw new ApplicationServiceError(
+            'internal',
+            'This debt is missing its required initial terms record.',
+          );
+        }
+
+        const refinanceDate = ensureNotBefore(
+          'refinanceDate',
+          ensureCalendarDate('refinanceDate', parsed.refinanceDate),
+          existing.debt.originationDate,
+        );
+        if (refinanceDate <= latestTerm.effectiveStartDate) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              refinanceDate: [
+                'Refinance date must be after the latest effective-dated term begins.',
+              ],
+            },
+          );
+        }
+        if (
+          latestTerm.effectiveEndDate &&
+          refinanceDate <= latestTerm.effectiveEndDate
+        ) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              refinanceDate: ['Refinance date overlaps a closed term period.'],
+            },
+          );
+        }
+        if (
+          existing.refinanceEvents.some(
+            (event) => event.refinanceDate === refinanceDate,
+          )
+        ) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            { refinanceDate: ['A refinance is already recorded on this date.'] },
+          );
+        }
+
+        const newMaturityDate = ensureCalendarDate(
+          'newMaturityDate',
+          parsed.newMaturityDate,
+        );
+        if (newMaturityDate < refinanceDate) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              newMaturityDate: ['Maturity date cannot precede the refinance date.'],
+            },
+          );
+        }
+
+        const interestRateMicros = convertRate(
+          'newAnnualInterestRatePercent',
+          parsed.newAnnualInterestRatePercent,
+        );
+        if (parsed.interestRateType === 'zero' && interestRateMicros !== 0) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              newAnnualInterestRatePercent: [
+                'A zero-rate term must use a 0% annual rate.',
+              ],
+            },
+          );
+        }
+
+        const preRefinanceDate = previousFinancialDate(refinanceDate);
+        const preRefinancePrincipal = calculateLedgerBalanceThroughDate(
+          database,
+          parsed.debtId,
+          preRefinanceDate,
+        );
+        const lenderPayoffBalance = nullableText(parsed.lenderPayoffBalance)
+          ? convertMoney('lenderPayoffBalance', parsed.lenderPayoffBalance ?? '')
+          : null;
+        const notes = nullableText(parsed.notes);
+        if (
+          lenderPayoffBalance !== null &&
+          lenderPayoffBalance !== preRefinancePrincipal
+        ) {
+          if (!parsed.payoffDifferenceAcknowledged) {
+            throw new ApplicationServiceError(
+              'validation',
+              'Review the highlighted fields.',
+              {
+                payoffDifferenceAcknowledged: [
+                  'Acknowledge and document the payoff difference before saving.',
+                ],
+              },
+            );
+          }
+          if (!notes) {
+            throw new ApplicationServiceError(
+              'validation',
+              'Review the highlighted fields.',
+              {
+                notes: ['Document why the refinance payoff difference is appropriate.'],
+              },
+            );
+          }
+        }
+
+        const newRefinancedPrincipal = convertMoney(
+          'newRefinancedPrincipal',
+          parsed.newRefinancedPrincipal,
+        );
+        const principalChange = newRefinancedPrincipal - preRefinancePrincipal;
+        const financedFees = convertMoney('financedFees', parsed.financedFees);
+        const cashFees = convertMoney('cashFees', parsed.cashFees);
+        const requiredPayment = convertMoney(
+          'newRequiredPayment',
+          parsed.newRequiredPayment,
+        );
+        const escrowAmountInput = nullableText(parsed.escrowAmount);
+        const escrowAmount =
+          parsed.escrowHandling === 'carry_forward'
+            ? null
+            : convertMoney('escrowAmount', escrowAmountInput ?? '0');
+        if (parsed.escrowHandling !== 'carry_forward' && escrowAmountInput === null) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            { escrowAmount: ['Enter the escrow amount for this handling option.'] },
+          );
+        }
+
+        const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
+        const refinanceEventId = createId();
+        const newTermId = createId();
+        const principalTransactionId = principalChange === 0 ? null : createId();
+        const cashFeeTransactionId = cashFees === 0 ? null : createId();
+        const currentEscrowBalance = calculateEscrowBalanceThroughDate(
+          database,
+          parsed.debtId,
+          preRefinanceDate,
+        );
+        const escrowChange =
+          parsed.escrowHandling === 'reset_opening_balance'
+            ? (escrowAmount ?? 0) - currentEscrowBalance
+            : parsed.escrowHandling === 'refund'
+              ? (escrowAmount ?? 0)
+              : parsed.escrowHandling === 'new_deposit'
+                ? (escrowAmount ?? 0)
+                : 0;
+        const escrowTransactionId = escrowChange === 0 ? null : createId();
+
+        const buildSystemTransaction = (
+          transactionId: string,
+          transactionType: DebtTransactionInsert['transactionType'],
+          allocationType: TransactionAllocationInsert['allocationType'],
+          amountCents: number,
+          description: string,
+          sourceReference: string,
+        ): PostedTransactionInput => ({
+          transaction: {
+            id: transactionId,
+            debtId: parsed.debtId,
+            transactionType,
+            effectiveDate: refinanceDate,
+            postingDate: refinanceDate,
+            totalAmountCents: amountCents,
+            status: 'posted',
+            description,
+            sourceType: 'system',
+            sourceReference,
+            reversalOfTransactionId: null,
+            supersedesTransactionId: null,
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          },
+          allocations: [
+            {
+              id: createId(),
+              transactionId,
+              allocationType,
+              amountCents,
+              notes: description,
+              createdAtUtc: timestamp,
+              updatedAtUtc: timestamp,
+            },
+          ],
+        });
+
+        const principalAdjustment =
+          principalTransactionId === null
+            ? undefined
+            : buildSystemTransaction(
+                principalTransactionId,
+                'principal_adjustment',
+                'principal',
+                principalChange,
+                'In-place refinance principal adjustment.',
+                refinanceEventId,
+              );
+        const cashFeeTransaction =
+          cashFeeTransactionId === null
+            ? undefined
+            : buildSystemTransaction(
+                cashFeeTransactionId,
+                'other',
+                'other',
+                cashFees,
+                'Cash-paid refinance fees recorded separately from principal.',
+                refinanceEventId,
+              );
+        const escrowTransaction =
+          escrowTransactionId === null
+            ? undefined
+            : buildSystemTransaction(
+                escrowTransactionId,
+                parsed.escrowHandling === 'refund'
+                  ? 'escrow_refund'
+                  : 'escrow_adjustment',
+                'escrow',
+                escrowChange,
+                'Refinance escrow adjustment recorded separately from principal.',
+                refinanceEventId,
+              );
+
+        const newTerm: DebtTermInsert = {
+          id: newTermId,
+          debtId: parsed.debtId,
+          effectiveStartDate: refinanceDate,
+          effectiveEndDate: null,
+          interestRateType: parsed.interestRateType,
+          interestRateMicros,
+          dayCountConvention: parsed.dayCountConvention,
+          calculationConvention: parsed.calculationConvention,
+          requiredPaymentCents: requiredPayment,
+          paymentFrequency: parsed.newPaymentFrequency,
+          notes,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+        };
+        const refinanceEvent: RefinanceEventInsert = {
+          id: refinanceEventId,
+          debtId: parsed.debtId,
+          refinanceDate,
+          preRefinancePrincipalCents: preRefinancePrincipal,
+          lenderPayoffBalanceCents: lenderPayoffBalance,
+          newRefinancedPrincipalCents: newRefinancedPrincipal,
+          principalChangeCents: principalChange,
+          financedFeesCents: financedFees,
+          cashFeesCents: cashFees,
+          escrowHandling: parsed.escrowHandling,
+          escrowAmountCents: escrowAmount,
+          priorTermId: latestTerm.id,
+          newTermId,
+          principalTransactionId,
+          cashFeeTransactionId,
+          escrowTransactionId,
+          notes,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+        };
+
+        recordInPlaceRefinanceRecord(database, {
+          debtId: parsed.debtId,
+          expectedDebtUpdatedAtUtc: parsed.expectedUpdatedAtUtc,
+          priorTermId: latestTerm.id,
+          expectedPriorEndDate: latestTerm.effectiveEndDate,
+          priorEndDate: previousFinancialDate(refinanceDate),
+          debtUpdate: {
+            maturityDate: newMaturityDate,
+            minimumPaymentCents: requiredPayment,
+            paymentFrequency: parsed.newPaymentFrequency,
+            updatedAtUtc: timestamp,
+          },
+          newTerm,
+          principalAdjustment,
+          cashFeeTransaction,
+          escrowTransaction,
+          refinanceEvent,
+          auditInputs: [
+            createDebtAudit(
+              createId(),
+              parsed.debtId,
+              'debt_refinance_recorded',
+              'record_refinance',
+              timestamp,
+              'In-place refinance was recorded without creating a new debt.',
+              ['maturityDate', 'minimumPaymentCents', 'paymentFrequency'],
+            ),
+            createAudit(
+              createId(),
+              'refinance_event',
+              refinanceEventId,
+              'refinance_event_created',
+              'create',
+              timestamp,
+              'Refinance event details were recorded.',
+              ['refinanceDate'],
+            ),
+          ],
+        });
+
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.debtId),
           currentFinancialDate(now),
         );
       } catch (error) {

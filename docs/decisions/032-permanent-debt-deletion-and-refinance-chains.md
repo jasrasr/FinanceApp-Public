@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Accepted. The separate-debt refinance-chain decision is superseded by ADR 034
+for the normal user-facing refinance workflow. The permanent-deletion decision
+remains accepted.
 
 ## Context
 

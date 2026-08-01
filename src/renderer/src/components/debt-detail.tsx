@@ -39,6 +39,7 @@ export interface DebtDetailProps {
   readonly onBack: () => void;
   readonly onDeletePermanently: () => void;
   readonly onEdit: () => void;
+  readonly onRecordRefinance: () => void;
   readonly onRecordReconciliation: () => void;
   readonly onCorrectReconciliation: (reconciliation: BalanceReconciliationDto) => void;
   readonly onVoidReconciliation: (reconciliation: BalanceReconciliationDto) => void;
@@ -92,6 +93,7 @@ export const DebtDetail = ({
   onBack,
   onDeletePermanently,
   onEdit,
+  onRecordRefinance,
   onRecordReconciliation,
   onCorrectReconciliation,
   onVoidReconciliation,
@@ -143,6 +145,13 @@ export const DebtDetail = ({
               type="button"
             >
               Add term period
+            </button>
+            <button
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              onClick={onRecordRefinance}
+              type="button"
+            >
+              Record refinance
             </button>
             <button
               className="rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"
@@ -214,27 +223,121 @@ export const DebtDetail = ({
             />
           ) : null}
           <Definition label="Status" value={labelFromValue(debt.status)} />
-          {debt.financingChainName ? (
-            <Definition label="Financing chain" value={debt.financingChainName} />
-          ) : null}
-          <Definition
-            label="Refinanced from"
-            value={debt.refinancedFromDebtName ?? 'Not linked'}
-          />
-          <Definition
-            label="Refinanced into"
-            value={debt.refinancedIntoDebtName ?? 'Not linked'}
-          />
-          <Definition
-            label="Refinance date"
-            value={debt.refinanceDate ?? 'Not applicable'}
-          />
           {debt.archivedAtUtc ? (
             <Definition label="Archived" value={formatTimestamp(debt.archivedAtUtc)} />
           ) : null}
         </dl>
+        {debt.financingChainName ||
+        debt.refinancedFromDebtName ||
+        debt.refinancedIntoDebtName ||
+        debt.refinanceDate ? (
+          <details className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-800">
+              Legacy separate-debt refinance links
+            </summary>
+            <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+              {debt.financingChainName ? (
+                <Definition label="Financing chain" value={debt.financingChainName} />
+              ) : null}
+              <Definition
+                label="Refinanced from"
+                value={debt.refinancedFromDebtName ?? 'Not linked'}
+              />
+              <Definition
+                label="Refinanced into"
+                value={debt.refinancedIntoDebtName ?? 'Not linked'}
+              />
+              <Definition
+                label="Refinance date"
+                value={debt.refinanceDate ?? 'Not applicable'}
+              />
+            </dl>
+          </details>
+        ) : null}
       </section>
     </div>
+
+    <section
+      className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+      aria-labelledby="refinance-history-heading"
+    >
+      <h3 className="text-lg font-semibold" id="refinance-history-heading">
+        Refinance history
+      </h3>
+      {debt.refinanceEvents.length === 0 ? (
+        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-8 py-10 text-center">
+          <h4 className="text-base font-semibold text-slate-900">
+            No in-place refinances recorded
+          </h4>
+        </div>
+      ) : (
+        <div className="mt-5 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+              <tr>
+                <th className="py-3 pr-4 font-semibold" scope="col">
+                  Date
+                </th>
+                <th className="px-4 py-3 text-right font-semibold" scope="col">
+                  Prior principal
+                </th>
+                <th className="px-4 py-3 text-right font-semibold" scope="col">
+                  New principal
+                </th>
+                <th className="px-4 py-3 text-right font-semibold" scope="col">
+                  Principal change
+                </th>
+                <th className="px-4 py-3 text-right font-semibold" scope="col">
+                  Financed fees
+                </th>
+                <th className="px-4 py-3 text-right font-semibold" scope="col">
+                  Cash fees
+                </th>
+                <th className="px-4 py-3 font-semibold" scope="col">
+                  Escrow
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {[...debt.refinanceEvents]
+                .sort((left, right) =>
+                  right.refinanceDate.localeCompare(left.refinanceDate),
+                )
+                .map((event) => (
+                  <tr key={event.id}>
+                    <td className="py-4 pr-4 align-top font-medium text-slate-900">
+                      {event.refinanceDate}
+                    </td>
+                    <td className="px-4 py-4 text-right align-top tabular-nums">
+                      {formatDollarString(event.preRefinancePrincipal)}
+                    </td>
+                    <td className="px-4 py-4 text-right align-top tabular-nums">
+                      {formatDollarString(event.newRefinancedPrincipal)}
+                    </td>
+                    <td className="px-4 py-4 text-right align-top tabular-nums">
+                      {formatDollarString(event.principalChange)}
+                    </td>
+                    <td className="px-4 py-4 text-right align-top tabular-nums">
+                      {formatDollarString(event.financedFees)}
+                    </td>
+                    <td className="px-4 py-4 text-right align-top tabular-nums">
+                      {formatDollarString(event.cashFees)}
+                    </td>
+                    <td className="px-4 py-4 align-top text-slate-700">
+                      {labelFromValue(event.escrowHandling)}
+                      {event.escrowAmount ? (
+                        <span className="block text-xs text-slate-500">
+                          {formatDollarString(event.escrowAmount)}
+                        </span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
 
     <section
       className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"

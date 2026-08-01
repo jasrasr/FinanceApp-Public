@@ -197,22 +197,51 @@ new manual debts.
   audit event after a successful deletion so the deleted debt chain is not needed
   to preserve evidence that the administrative action occurred.
 
-## Refinance Chains
+## In-Place Refinances
 
-Refinancing preserves separate legal obligations. The prior debt remains its own
-ledger, terms, transactions, snapshots, and reconciliations. The replacement debt
-is created as a separate obligation with its own origination date, original
-principal, effective-dated terms, rate, required payment, and maturity.
+The normal refinance workflow keeps one continuous debt record. A mortgage from
+purchase through later refinances remains the same debt ID in debt lists,
+dashboard metrics, reports, rollforwards, payoff scenarios, and maturity
+schedules.
 
-- `refinanced_from_debt_id` links a replacement debt to the prior debt.
-- `refinanced_into_debt_id` links a prior debt to its replacement debt.
-- `financing_chain_name` provides a shared user-facing grouping label.
-- `refinance_date` identifies the refinance event in detail and reports.
-- Prior debts may be marked `paid_off` or `refinanced`.
-- The payoff of the prior loan is recorded as a posted payment on the prior debt.
-- The replacement borrowing is represented by the replacement debt's original
-  principal and any separately posted borrowing/draw activity.
-- Historical terms are not merged or overwritten during refinance linking.
+On save, the application performs one atomic refinance operation:
+
+- Calculate principal immediately before the refinance date.
+- Close the prior effective-dated term on the day before the refinance date.
+- Insert a new term beginning on the refinance date with the new rate, required
+  payment, payment frequency, maturity, rate type, day-count convention, and
+  calculation convention.
+- Calculate principal change as new refinanced principal less pre-refinance
+  calculated principal.
+- Post a `principal_adjustment` only for that net change.
+- Record a `refinance_events` row linking the prior term, new term, and any
+  system-generated refinance transactions.
+
+The new refinanced principal may be higher or lower than the prior calculated
+principal. Increases are principal increases; decreases are principal
+reductions. The full refinanced balance is not reported as a new borrowing, and
+the prior balance payoff is not double-counted.
+
+Refinance fees are classified separately:
+
+- Financed fees are included in the new refinanced principal but are also stored
+  on the refinance event for future reporting.
+- Cash-paid fees are stored separately and may create a system `other`
+  transaction; they do not change principal and are not interest or principal
+  payments.
+
+Escrow handling remains separate from principal. The refinance may carry forward
+the calculated escrow balance, reset escrow to an opening amount, record a
+refund, or record a new deposit. Any resulting escrow transaction uses escrow
+classification and does not change debt principal.
+
+If a lender payoff balance differs from the calculated pre-refinance principal,
+the user must acknowledge and document the difference. The application does not
+silently force a reconciliation difference into the ledger.
+
+Legacy separate-debt refinance columns remain readable for databases created by
+prior versions, but normal user-facing forms no longer create financing chains or
+replacement debts.
 
 ## Manual Posted Activity and Snapshots
 
@@ -448,14 +477,13 @@ calculated from the visible date range rather than rendering every monthly
 period. Period-end balances and period-over-period changes are available through
 an accessible chart-data disclosure that is closed by default.
 
-When two or more visible debts share a financing-chain name, balance-trend
-reporting also provides an optional combined financing-chain row. The combined
-row sums the separate obligations' application-calculated balances at each
-period end and carries the refinance date as event context. Loan-level history
-remains visible separately. Rollforwards treat the original loan payoff as
-principal reduction on the prior debt and the replacement loan principal as a
-new borrowing only once, so payoff proceeds and replacement principal are not
-double-counted.
+In-place refinance events remain on the same debt series. Balance-trend
+reporting marks periods containing a refinance event where practical, while
+debt-balance history continues as one line for the debt. Rollforwards show only
+the net refinance principal adjustment in adjustments and other; they do not
+show the full refinanced balance as a new borrowing and do not double-count a
+payoff/new-principal exchange. Legacy separate-debt refinance links remain
+readable but no longer generate normal combined financing-chain trend rows.
 
 Interest analysis is separate from debt balance trends. Monthly interest expense
 charts omit zero-only periods when they add no analytical value and default to a

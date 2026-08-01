@@ -20,6 +20,7 @@ import type {
   DebtTransactionDto,
   GetDebtReportsRequest,
   PayoffScenarioDto,
+  RecordRefinanceRequest,
   UpdateDebtRequest,
   ReverseDebtTransactionRequest,
   VoidBalanceReconciliationRequest,
@@ -39,6 +40,7 @@ import { EditDebtForm } from './components/edit-debt-form';
 import { EscrowDetail } from './components/escrow-detail';
 import { formatLastChanged, formatTimestamp } from './components/display-format';
 import { PayoffScenarios } from './components/payoff-scenarios';
+import { RecordRefinanceForm } from './components/record-refinance-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
 
 type View =
@@ -52,7 +54,8 @@ type View =
   | 'reports'
   | 'escrow-detail'
   | 'data-management';
-type DetailPanel = 'overview' | 'transaction' | 'transaction-edit' | 'reconciliation';
+type DetailPanel =
+  'overview' | 'transaction' | 'transaction-edit' | 'reconciliation' | 'refinance';
 type Confirmation =
   'archive' | 'restore' | 'reverse' | 'void-transaction' | 'void-reconciliation' | null;
 type ReverseTarget = {
@@ -683,6 +686,28 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
+  const recordRefinance = async (request: RecordRefinanceRequest): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() => bridge.recordRefinance(request));
+
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Refinance was recorded on this debt.');
+      setDetailPanel('overview');
+      await loadDebts();
+      await loadDashboard();
+      await loadReports();
+      await loadEscrowDetail();
+      await loadPayoffScenarios();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
   const recordTransaction = async (
     request: CreateDebtTransactionRequest,
   ): Promise<void> => {
@@ -1197,7 +1222,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               <div className="mt-8">
                 <CreateDebtForm
                   busy={saving}
-                  debts={debts}
                   fieldErrors={fieldErrors}
                   onCancel={showList}
                   onSubmit={(request) => void createDebt(request)}
@@ -1307,6 +1331,36 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 </section>
               ) : null}
 
+              {detailPanel === 'refinance' ? (
+                <section
+                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
+                  aria-labelledby="refinance-workflow-heading"
+                >
+                  <p className="text-sm font-medium text-slate-500">
+                    {combinedDebtLabel(selectedDebt)}
+                  </p>
+                  <h2
+                    className="mt-1 text-3xl font-semibold tracking-tight"
+                    id="refinance-workflow-heading"
+                  >
+                    Record refinance
+                  </h2>
+                  <div className="mt-8">
+                    <RecordRefinanceForm
+                      busy={saving}
+                      debt={selectedDebt}
+                      fieldErrors={fieldErrors}
+                      onCancel={() => {
+                        setDetailPanel('overview');
+                        setError(null);
+                        setFieldErrors(undefined);
+                      }}
+                      onSubmit={(request) => void recordRefinance(request)}
+                    />
+                  </div>
+                </section>
+              ) : null}
+
               <DebtDetail
                 busy={saving}
                 debt={selectedDebt}
@@ -1336,6 +1390,12 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   setFieldErrors(undefined);
                   setDetailPanel('overview');
                   setView('edit');
+                }}
+                onRecordRefinance={() => {
+                  setError(null);
+                  setFieldErrors(undefined);
+                  setSuccessMessage(null);
+                  setDetailPanel('refinance');
                 }}
                 onRecordReconciliation={() => {
                   setError(null);
@@ -1383,7 +1443,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 <EditDebtForm
                   busy={saving}
                   debt={selectedDebt}
-                  debts={debts}
                   fieldErrors={fieldErrors}
                   onCancel={() => setView('detail')}
                   onSubmit={(request) => void updateDebt(request)}
