@@ -25,7 +25,7 @@ export const ConfirmationDialog = ({
     className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-6"
     role="dialog"
   >
-    <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+    <div className="max-h-[calc(100vh-3rem)] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
       <h2 className="text-xl font-semibold text-slate-950" id="confirmation-title">
         {title}
       </h2>

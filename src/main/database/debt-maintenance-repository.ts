@@ -18,11 +18,8 @@ import {
   debtTerms,
   debtTransactions,
   debts,
-  importBatches,
   importPostings,
-  importSheetMappings,
   payoffScenarios,
-  stagedImportRows,
   transactionAllocations,
 } from './schema';
 import {
@@ -33,11 +30,7 @@ import {
   debtInsertSchema,
   debtTermInsertSchema,
   debtTransactionInsertSchema,
-  importBatchInsertSchema,
-  importPostingInsertSchema,
-  importSheetMappingInsertSchema,
   payoffScenarioInsertSchema,
-  stagedImportRowInsertSchema,
   transactionAllocationInsertSchema,
   type AuditEventInsert,
   type BalanceReconciliationInput,
@@ -45,11 +38,7 @@ import {
   type DebtInsert,
   type DebtTermInsert,
   type DebtTransactionInsert,
-  type ImportBatchInsert,
-  type ImportPostingInsert,
-  type ImportSheetMappingInsert,
   type PayoffScenarioInsert,
-  type StagedImportRowInsert,
   type TransactionAllocationInsert,
 } from './validation';
 import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
@@ -60,11 +49,7 @@ export type DebtTransactionRecord = typeof debtTransactions.$inferSelect;
 export type TransactionAllocationRecord = typeof transactionAllocations.$inferSelect;
 export type BalanceSnapshotRecord = typeof balanceSnapshots.$inferSelect;
 export type BalanceReconciliationRecord = typeof balanceReconciliations.$inferSelect;
-export type ImportBatchRecord = typeof importBatches.$inferSelect;
-export type ImportPostingRecord = typeof importPostings.$inferSelect;
-export type ImportSheetMappingRecord = typeof importSheetMappings.$inferSelect;
 export type PayoffScenarioRecord = typeof payoffScenarios.$inferSelect;
-export type StagedImportRowRecord = typeof stagedImportRows.$inferSelect;
 
 export interface DebtWithTermsRecord {
   readonly debt: DebtRecord;
@@ -101,13 +86,6 @@ export interface PermanentDebtDeletionRecordInput {
   readonly simulateFailure?: boolean;
 }
 
-export interface ImportBatchWithRowsRecord {
-  readonly batch: ImportBatchRecord;
-  readonly sheetMappings: readonly ImportSheetMappingRecord[];
-  readonly stagedRows: readonly StagedImportRowRecord[];
-  readonly postings: readonly ImportPostingRecord[];
-}
-
 export interface PostedTransactionInput {
   readonly transaction: DebtTransactionInsert;
   readonly allocations: readonly TransactionAllocationInsert[];
@@ -132,18 +110,6 @@ export interface CreateBalanceReconciliationRecordInput {
     readonly expectedUpdatedAtUtc: string;
     readonly supersededAtUtc: string;
   };
-  readonly auditInputs: readonly AuditEventInsert[];
-}
-
-export interface PostImportBatchRecordInput {
-  readonly batchId: string;
-  readonly updatedAtUtc: string;
-  readonly debts: readonly DebtInsert[];
-  readonly terms: readonly DebtTermInsert[];
-  readonly transactions: readonly DebtTransactionInsert[];
-  readonly allocations: readonly TransactionAllocationInsert[];
-  readonly snapshots: readonly BalanceSnapshotInsert[];
-  readonly postings: readonly ImportPostingInsert[];
   readonly auditInputs: readonly AuditEventInsert[];
 }
 
@@ -585,6 +551,45 @@ const permanentDeletionImportPostingIds = (
     .map((posting) => posting.id);
 };
 
+const permanentDeletionTransactionDeleteOrder = (
+  database: AppDatabase,
+  transactionIds: readonly string[],
+): readonly string[] => {
+  if (transactionIds.length === 0) return [];
+
+  const remaining = new Set(transactionIds);
+  const rows = database
+    .select()
+    .from(debtTransactions)
+    .where(inArray(debtTransactions.id, transactionIds))
+    .all();
+  const ordered: string[] = [];
+
+  while (remaining.size > 0) {
+    const leaves = [...remaining].filter(
+      (id) =>
+        !rows.some(
+          (row) =>
+            remaining.has(row.id) &&
+            (row.reversalOfTransactionId === id || row.supersedesTransactionId === id),
+        ),
+    );
+
+    if (leaves.length === 0) {
+      throw new RepositoryConflictError(
+        'Debt transaction history could not be ordered for deletion.',
+      );
+    }
+
+    for (const id of leaves) {
+      ordered.push(id);
+      remaining.delete(id);
+    }
+  }
+
+  return ordered;
+};
+
 export const previewPermanentDebtDeletion = (
   database: AppDatabase,
   debtId: string,
@@ -651,6 +656,10 @@ export const deleteDebtPermanentlyRecord = (
     input.debtId,
     related,
   );
+  const transactionDeleteOrder = permanentDeletionTransactionDeleteOrder(
+    database,
+    related.transactionIds,
+  );
 
   database.transaction((transaction) => {
     const existing = transaction
@@ -703,6 +712,14 @@ export const deleteDebtPermanentlyRecord = (
     }
     if (related.reconciliationIds.length > 0) {
       transaction
+        .update(balanceReconciliations)
+        .set({
+          supersedesReconciliationId: null,
+          supersededByReconciliationId: null,
+        })
+        .where(inArray(balanceReconciliations.id, related.reconciliationIds))
+        .run();
+      transaction
         .delete(balanceReconciliations)
         .where(inArray(balanceReconciliations.id, related.reconciliationIds))
         .run();
@@ -714,10 +731,12 @@ export const deleteDebtPermanentlyRecord = (
         .run();
     }
     if (related.transactionIds.length > 0) {
-      transaction
-        .delete(debtTransactions)
-        .where(inArray(debtTransactions.id, related.transactionIds))
-        .run();
+      for (const transactionId of transactionDeleteOrder) {
+        transaction
+          .delete(debtTransactions)
+          .where(eq(debtTransactions.id, transactionId))
+          .run();
+      }
     }
     if (related.termIds.length > 0) {
       transaction.delete(debtTerms).where(inArray(debtTerms.id, related.termIds)).run();
@@ -1256,247 +1275,6 @@ export const setDebtArchivedState = (
     }
 
     transaction.insert(auditEvents).values(audit).run();
-  });
-};
-
-export const createImportBatchRecord = (
-  database: AppDatabase,
-  input: {
-    readonly batch: ImportBatchInsert;
-    readonly sheetMappings: readonly ImportSheetMappingInsert[];
-    readonly stagedRows: readonly StagedImportRowInsert[];
-    readonly audit: AuditEventInsert;
-  },
-): void => {
-  const batch = importBatchInsertSchema.parse(input.batch);
-  const sheetMappings = input.sheetMappings.map((mapping) =>
-    importSheetMappingInsertSchema.parse(mapping),
-  );
-  const stagedRows = input.stagedRows.map((row) =>
-    stagedImportRowInsertSchema.parse(row),
-  );
-  const audit = auditEventInsertSchema.parse(input.audit);
-
-  database.transaction((transaction) => {
-    transaction.insert(importBatches).values(batch).run();
-    if (sheetMappings.length > 0) {
-      transaction.insert(importSheetMappings).values(sheetMappings).run();
-    }
-    if (stagedRows.length > 0) {
-      transaction.insert(stagedImportRows).values(stagedRows).run();
-    }
-    transaction.insert(auditEvents).values(audit).run();
-  });
-};
-
-export const getImportBatchRecord = (
-  database: AppDatabase,
-  batchId: string,
-): ImportBatchWithRowsRecord | undefined => {
-  const batch = database
-    .select()
-    .from(importBatches)
-    .where(eq(importBatches.id, batchId))
-    .get();
-
-  if (!batch) return undefined;
-
-  return {
-    batch,
-    sheetMappings: database
-      .select()
-      .from(importSheetMappings)
-      .where(eq(importSheetMappings.batchId, batchId))
-      .orderBy(asc(importSheetMappings.sourceSheetName))
-      .all(),
-    stagedRows: database
-      .select()
-      .from(stagedImportRows)
-      .where(eq(stagedImportRows.batchId, batchId))
-      .orderBy(
-        asc(stagedImportRows.sourceSheetName),
-        asc(stagedImportRows.sourceRowNumber),
-      )
-      .all(),
-    postings: database
-      .select()
-      .from(importPostings)
-      .where(eq(importPostings.batchId, batchId))
-      .orderBy(asc(importPostings.postedAtUtc), asc(importPostings.liveEntityType))
-      .all(),
-  };
-};
-
-export const listImportBatchRecords = (
-  database: AppDatabase,
-): readonly ImportBatchRecord[] =>
-  database.select().from(importBatches).orderBy(asc(importBatches.importedAtUtc)).all();
-
-export const updateImportSheetMappingReview = (
-  database: AppDatabase,
-  input: {
-    readonly id: string;
-    readonly batchId: string;
-    readonly reviewStatus: ImportSheetMappingRecord['reviewStatus'];
-    readonly proposedRecordType: ImportSheetMappingRecord['proposedRecordType'];
-    readonly fieldMappingJson: string;
-    readonly notes: string | null;
-    readonly updatedAtUtc: string;
-    readonly audit: AuditEventInsert;
-  },
-): void => {
-  const audit = auditEventInsertSchema.parse(input.audit);
-
-  database.transaction((transaction) => {
-    const result = transaction
-      .update(importSheetMappings)
-      .set({
-        reviewStatus: input.reviewStatus,
-        proposedRecordType: input.proposedRecordType,
-        fieldMappingJson: input.fieldMappingJson,
-        notes: input.notes,
-        updatedAtUtc: input.updatedAtUtc,
-      })
-      .where(
-        and(
-          eq(importSheetMappings.id, input.id),
-          eq(importSheetMappings.batchId, input.batchId),
-        ),
-      )
-      .run();
-
-    if (result.changes !== 1) {
-      throw new RepositoryNotFoundError('Import sheet mapping was not found.');
-    }
-
-    transaction.insert(auditEvents).values(audit).run();
-  });
-};
-
-export const updateStagedImportRowReview = (
-  database: AppDatabase,
-  input: {
-    readonly id: string;
-    readonly batchId: string;
-    readonly reviewStatus: StagedImportRowRecord['reviewStatus'];
-    readonly proposedRecordType: StagedImportRowRecord['proposedRecordType'];
-    readonly activityClassification: StagedImportRowRecord['activityClassification'];
-    readonly normalizedValuesJson: string;
-    readonly reviewNotes: string | null;
-    readonly reviewedAtUtc: string | null;
-    readonly updatedAtUtc: string;
-    readonly audit: AuditEventInsert;
-  },
-): void => {
-  const audit = auditEventInsertSchema.parse(input.audit);
-
-  database.transaction((transaction) => {
-    const result = transaction
-      .update(stagedImportRows)
-      .set({
-        reviewStatus: input.reviewStatus,
-        proposedRecordType: input.proposedRecordType,
-        activityClassification: input.activityClassification,
-        normalizedValuesJson: input.normalizedValuesJson,
-        reviewNotes: input.reviewNotes,
-        reviewedAtUtc: input.reviewedAtUtc,
-        updatedAtUtc: input.updatedAtUtc,
-      })
-      .where(
-        and(
-          eq(stagedImportRows.id, input.id),
-          eq(stagedImportRows.batchId, input.batchId),
-        ),
-      )
-      .run();
-
-    if (result.changes !== 1) {
-      throw new RepositoryNotFoundError('Staged import row was not found.');
-    }
-
-    transaction.insert(auditEvents).values(audit).run();
-  });
-};
-
-export const postImportBatchRecord = (
-  database: AppDatabase,
-  input: PostImportBatchRecordInput,
-): void => {
-  const debtInputs = input.debts.map((debt) => debtInsertSchema.parse(debt));
-  const termInputs = input.terms.map((term) => debtTermInsertSchema.parse(term));
-  const transactionInputs = input.transactions.map((transaction) =>
-    debtTransactionInsertSchema.parse(transaction),
-  );
-  const allocationInputs = input.allocations.map((allocation) =>
-    transactionAllocationInsertSchema.parse(allocation),
-  );
-  const snapshotInputs = input.snapshots.map((snapshot) =>
-    balanceSnapshotInsertSchema.parse(snapshot),
-  );
-  const postingInputs = input.postings.map((posting) =>
-    importPostingInsertSchema.parse(posting),
-  );
-  const auditInputs = input.auditInputs.map((event) =>
-    auditEventInsertSchema.parse(event),
-  );
-
-  const allocationsByTransaction = new Map<string, TransactionAllocationInsert[]>();
-  for (const allocation of allocationInputs) {
-    const allocations = allocationsByTransaction.get(allocation.transactionId) ?? [];
-    allocations.push(allocation);
-    allocationsByTransaction.set(allocation.transactionId, allocations);
-  }
-
-  for (const transaction of transactionInputs) {
-    const errors = validateTransactionSignConvention(
-      transaction,
-      allocationsByTransaction.get(transaction.id) ?? [],
-    );
-
-    if (errors.length > 0) {
-      throw new Error(errors.join(' '));
-    }
-  }
-
-  database.transaction((transactionDb) => {
-    const existingPostings = transactionDb
-      .select({ id: importPostings.id })
-      .from(importPostings)
-      .where(eq(importPostings.batchId, input.batchId))
-      .all();
-
-    if (existingPostings.length > 0) {
-      throw new RepositoryConflictError('Import batch has already been posted.');
-    }
-
-    const batchUpdate = transactionDb
-      .update(importBatches)
-      .set({ status: 'closed', updatedAtUtc: input.updatedAtUtc })
-      .where(
-        and(eq(importBatches.id, input.batchId), ne(importBatches.status, 'closed')),
-      )
-      .run();
-
-    if (batchUpdate.changes !== 1) {
-      throw new RepositoryConflictError('Import batch is already closed or missing.');
-    }
-
-    if (debtInputs.length > 0) transactionDb.insert(debts).values(debtInputs).run();
-    if (termInputs.length > 0) transactionDb.insert(debtTerms).values(termInputs).run();
-    if (transactionInputs.length > 0) {
-      transactionDb.insert(debtTransactions).values(transactionInputs).run();
-    }
-    if (allocationInputs.length > 0) {
-      transactionDb.insert(transactionAllocations).values(allocationInputs).run();
-    }
-    if (snapshotInputs.length > 0) {
-      transactionDb.insert(balanceSnapshots).values(snapshotInputs).run();
-    }
-    if (postingInputs.length > 0) {
-      transactionDb.insert(importPostings).values(postingInputs).run();
-    }
-    if (auditInputs.length > 0)
-      transactionDb.insert(auditEvents).values(auditInputs).run();
   });
 };
 

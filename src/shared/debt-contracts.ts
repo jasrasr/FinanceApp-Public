@@ -39,21 +39,6 @@ const transactionAllocationInputSchema = z
   .strict();
 
 const reconciliationStatusSchema = z.enum(RECONCILIATION_STATUSES);
-const importRecordTypeSchema = z.enum([
-  'debt',
-  'transaction',
-  'term',
-  'balance_snapshot',
-  'unknown',
-]);
-const importReviewStatusSchema = z.enum([
-  'needs_review',
-  'approved',
-  'rejected',
-  'deferred',
-]);
-const importActivityClassificationSchema = z.enum(['actual', 'projected', 'ambiguous']);
-
 export const debtTermInputSchema = z
   .object({
     effectiveStartDate: financialDateInputSchema,
@@ -310,18 +295,6 @@ export const getDebtReportsRequestSchema = z
     }
   });
 
-export const selectWorkbookForImportRequestSchema = z.object({}).strict();
-
-export const listImportBatchesRequestSchema = z.object({}).strict();
-
-export const getImportBatchRequestSchema = z.object({ id: uuidSchema }).strict();
-export const previewImportBatchPostingRequestSchema = z
-  .object({ batchId: uuidSchema })
-  .strict();
-export const postImportBatchRequestSchema = z
-  .object({ batchId: uuidSchema, confirmed: z.literal(true) })
-  .strict();
-
 const payoffStrategySchema = z.enum(PAYOFF_STRATEGIES);
 
 export const createPayoffScenarioRequestSchema = z
@@ -351,42 +324,6 @@ export const archivePayoffScenarioRequestSchema = z
     confirmed: z.literal(true),
   })
   .strict();
-
-export const updateImportSheetMappingRequestSchema = z
-  .object({
-    batchId: uuidSchema,
-    mappingId: uuidSchema,
-    proposedRecordType: importRecordTypeSchema,
-    reviewStatus: importReviewStatusSchema,
-    fieldMapping: z.record(z.string(), z.string().trim().max(200)),
-    notes: optionalTextSchema,
-  })
-  .strict();
-
-export const updateStagedImportRowReviewRequestSchema = z
-  .object({
-    batchId: uuidSchema,
-    rowId: uuidSchema,
-    proposedRecordType: importRecordTypeSchema,
-    activityClassification: importActivityClassificationSchema,
-    reviewStatus: importReviewStatusSchema,
-    normalizedValues: z.record(z.string(), z.string().trim().max(500).nullable()),
-    reviewNotes: optionalTextSchema,
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (
-      value.reviewStatus === 'approved' &&
-      value.activityClassification === 'ambiguous'
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message:
-          'Ambiguous actual-versus-projected rows must be classified before approval.',
-        path: ['activityClassification'],
-      });
-    }
-  });
 
 export const getDebtRequestSchema = z.object({ id: uuidSchema }).strict();
 
@@ -858,133 +795,6 @@ export const appMetadataDtoSchema = z
   })
   .strict();
 
-export const importSheetMappingDtoSchema = z
-  .object({
-    id: uuidSchema,
-    batchId: uuidSchema,
-    sourceSheetName: z.string(),
-    proposedRecordType: importRecordTypeSchema,
-    reviewStatus: importReviewStatusSchema,
-    fieldMapping: z.record(z.string(), z.string()),
-    notes: z.string().nullable(),
-    createdAtUtc: utcTimestampSchema,
-    updatedAtUtc: utcTimestampSchema,
-  })
-  .strict();
-
-export const stagedImportRowDtoSchema = z
-  .object({
-    id: uuidSchema,
-    batchId: uuidSchema,
-    sheetMappingId: uuidSchema,
-    sourceSheetName: z.string(),
-    sourceRowNumber: z.number().int().positive(),
-    sourceCellReferences: z.record(z.string(), z.string()),
-    sourceDisplayedValues: z.record(z.string(), z.string()),
-    sourceFormulas: z.record(z.string(), z.string()),
-    proposedRecordType: importRecordTypeSchema,
-    activityClassification: importActivityClassificationSchema,
-    normalizedValues: z.record(z.string(), z.string().nullable()),
-    validationMessages: z.array(z.string()),
-    duplicateCandidate: z.string().nullable(),
-    reconciliationException: z.string().nullable(),
-    reviewStatus: importReviewStatusSchema,
-    reviewNotes: z.string().nullable(),
-    reviewedAtUtc: utcTimestampSchema.nullable(),
-    createdAtUtc: utcTimestampSchema,
-    updatedAtUtc: utcTimestampSchema,
-  })
-  .strict();
-
-export const importControlTotalsDtoSchema = z
-  .object({
-    totalRows: z.number().int().nonnegative(),
-    needsReviewRows: z.number().int().nonnegative(),
-    approvedRows: z.number().int().nonnegative(),
-    rejectedRows: z.number().int().nonnegative(),
-    deferredRows: z.number().int().nonnegative(),
-    ambiguousRows: z.number().int().nonnegative(),
-    duplicateCandidateRows: z.number().int().nonnegative(),
-    invalidRows: z.number().int().nonnegative(),
-    reconciliationExceptionRows: z.number().int().nonnegative(),
-    candidateTotalsByType: z.record(
-      importRecordTypeSchema,
-      z.number().int().nonnegative(),
-    ),
-  })
-  .strict();
-
-export const importBatchSummaryDtoSchema = z
-  .object({
-    id: uuidSchema,
-    sourceWorkbookName: z.string(),
-    sourceWorkbookFingerprint: z.string(),
-    sourceWorkbookModifiedAtUtc: utcTimestampSchema.nullable(),
-    status: z.enum(['open', 'reviewed', 'closed']),
-    importedAtUtc: utcTimestampSchema,
-    createdAtUtc: utcTimestampSchema,
-    updatedAtUtc: utcTimestampSchema,
-  })
-  .strict();
-
-export const importBatchDtoSchema = importBatchSummaryDtoSchema
-  .extend({
-    sheetMappings: z.array(importSheetMappingDtoSchema),
-    stagedRows: z.array(stagedImportRowDtoSchema),
-    controlTotals: importControlTotalsDtoSchema,
-  })
-  .strict();
-
-export const importPostingLiveRecordDtoSchema = z
-  .object({
-    entityType: z.enum([
-      'debt',
-      'debt_term',
-      'debt_transaction',
-      'transaction_allocation',
-      'balance_snapshot',
-    ]),
-    entityId: uuidSchema,
-    label: z.string(),
-  })
-  .strict();
-
-export const importPostingRowResultDtoSchema = z
-  .object({
-    stagedRowId: uuidSchema,
-    sourceSheetName: z.string(),
-    sourceRowNumber: z.number().int().positive(),
-    proposedRecordType: importRecordTypeSchema,
-    reviewStatus: importReviewStatusSchema,
-    canPost: z.boolean(),
-    validationMessages: z.array(z.string()),
-    createdRecords: z.array(importPostingLiveRecordDtoSchema),
-  })
-  .strict();
-
-export const importPostingPreviewDtoSchema = z
-  .object({
-    batchId: uuidSchema,
-    batchStatus: z.enum(['open', 'reviewed', 'closed']),
-    approvedMappings: z.number().int().nonnegative(),
-    unapprovedMappings: z.number().int().nonnegative(),
-    approvedRows: z.number().int().nonnegative(),
-    rejectedRows: z.number().int().nonnegative(),
-    deferredRows: z.number().int().nonnegative(),
-    postableRows: z.number().int().nonnegative(),
-    exceptionRows: z.number().int().nonnegative(),
-    alreadyPosted: z.boolean(),
-    rowResults: z.array(importPostingRowResultDtoSchema),
-  })
-  .strict();
-
-export const importPostingResultDtoSchema = importPostingPreviewDtoSchema
-  .extend({
-    postedAtUtc: utcTimestampSchema.nullable(),
-    createdRecordCount: z.number().int().nonnegative(),
-  })
-  .strict();
-
 export const payoffScenarioDebtResultDtoSchema = z
   .object({
     debtId: uuidSchema,
@@ -1073,19 +883,6 @@ export const dataManagementStatusResultSchema = applicationResultSchema(
 );
 export const dataExportResultSchema = applicationResultSchema(dataExportDtoSchema);
 export const debtReportsResultSchema = applicationResultSchema(debtReportsDtoSchema);
-export const importBatchResultSchema = applicationResultSchema(importBatchDtoSchema);
-export const importBatchOrNullResultSchema = applicationResultSchema(
-  importBatchDtoSchema.nullable(),
-);
-export const importBatchSummaryListResultSchema = applicationResultSchema(
-  z.array(importBatchSummaryDtoSchema),
-);
-export const importPostingPreviewResultSchema = applicationResultSchema(
-  importPostingPreviewDtoSchema,
-);
-export const importPostingResultSchema = applicationResultSchema(
-  importPostingResultDtoSchema,
-);
 export const payoffScenarioResultSchema = applicationResultSchema(
   payoffScenarioDtoSchema,
 );
@@ -1129,15 +926,6 @@ export type RestoreBackupRequest = z.infer<typeof restoreBackupRequestSchema>;
 export type DeleteBackupRequest = z.infer<typeof deleteBackupRequestSchema>;
 export type ExportDataRequest = z.infer<typeof exportDataRequestSchema>;
 export type GetDebtReportsRequest = z.infer<typeof getDebtReportsRequestSchema>;
-export type SelectWorkbookForImportRequest = z.infer<
-  typeof selectWorkbookForImportRequestSchema
->;
-export type ListImportBatchesRequest = z.infer<typeof listImportBatchesRequestSchema>;
-export type GetImportBatchRequest = z.infer<typeof getImportBatchRequestSchema>;
-export type PreviewImportBatchPostingRequest = z.infer<
-  typeof previewImportBatchPostingRequestSchema
->;
-export type PostImportBatchRequest = z.infer<typeof postImportBatchRequestSchema>;
 export type CreatePayoffScenarioRequest = z.infer<
   typeof createPayoffScenarioRequestSchema
 >;
@@ -1150,12 +938,6 @@ export type RerunPayoffScenarioRequest = z.infer<
 >;
 export type ArchivePayoffScenarioRequest = z.infer<
   typeof archivePayoffScenarioRequestSchema
->;
-export type UpdateImportSheetMappingRequest = z.infer<
-  typeof updateImportSheetMappingRequestSchema
->;
-export type UpdateStagedImportRowReviewRequest = z.infer<
-  typeof updateStagedImportRowReviewRequestSchema
 >;
 export type GetDebtRequest = z.infer<typeof getDebtRequestSchema>;
 export type ArchiveDebtRequest = z.infer<typeof archiveDebtRequestSchema>;
@@ -1176,12 +958,6 @@ export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSche
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;
 export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
-export type ImportBatchSummaryDto = z.infer<typeof importBatchSummaryDtoSchema>;
-export type ImportBatchDto = z.infer<typeof importBatchDtoSchema>;
-export type ImportSheetMappingDto = z.infer<typeof importSheetMappingDtoSchema>;
-export type StagedImportRowDto = z.infer<typeof stagedImportRowDtoSchema>;
-export type ImportPostingPreviewDto = z.infer<typeof importPostingPreviewDtoSchema>;
-export type ImportPostingResultDto = z.infer<typeof importPostingResultDtoSchema>;
 export type PayoffScenarioDto = z.infer<typeof payoffScenarioDtoSchema>;
 export type PayoffScenarioResultDto = z.infer<typeof payoffScenarioResultDtoSchema>;
 export type ApplicationError = z.infer<typeof applicationErrorSchema>;

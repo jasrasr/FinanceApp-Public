@@ -1506,3 +1506,55 @@ completed.
 - Recommended next phase:
   - Continue generated-data acceptance testing around administrative recovery
     and refinance-chain report review.
+
+## Phase 31: Permanent Deletion Fix and Workbook Import Removal
+
+- Completion date: 2026-08-01
+- Application version: 0.25.0
+- Features implemented:
+  - Reproduced the installed-app permanent-deletion defect and replaced
+    browser-native prompts with an in-app deletion confirmation workflow.
+  - Removed workbook import from normal navigation, renderer screens, preload
+    bridge, IPC handlers, parser code, and import-posting service/repository
+    helpers.
+  - Retained dormant legacy import tables and provenance cleanup for existing
+    databases.
+- Material architecture and accounting decisions:
+  - Permanent deletion still requires a main-process validated backup before
+    deletion and remains a narrow typed IPC operation.
+  - Linked transaction edit/reversal rows are deleted in dependency order, and
+    reconciliation correction links are cleared inside the same transaction so
+    permanent deletion remains atomic.
+  - Current activity entry is manual-only; legacy import tables do not create
+    new ledger activity.
+- Database schema or migration changes:
+  - None. Legacy import tables and migrations remain to avoid unnecessary
+    destructive migration risk.
+- New or changed IPC operations:
+  - Removed workbook import IPC channels and preload bridge methods.
+  - Increased the typed preload bridge version to 21.
+- New UI screens or workflows:
+  - Debt detail permanent deletion now opens an in-app dialog showing debt name,
+    related-record counts, required immediate-backup status, exact typed-name
+    confirmation, and irreversible-action confirmation.
+  - Workbook import no longer appears in normal navigation.
+- Validation and smoke-test results:
+  - Installed-app reproduction on version 0.24.0 confirmed that clicking
+    `Delete debt permanently` opened no usable dialog and never reached the
+    bridge/IPC/service path.
+  - Focused tests passed for renderer app, preload bridge, IPC handlers,
+    service integration, and database integration: 5 files and 105 tests.
+  - `npm run format` passed.
+  - `npm run check` passed under escalation after an initial sandbox
+    access-denied failure in the Electron build. The gate completed with 10
+    Vitest files and 132 tests passing, database integrity passing, production
+    build passing, and the active Electron E2E workflow passing; packaged source
+    specs were skipped in that suite.
+  - `npm run package:smoke` passed packaged launch and upgrade-preservation
+    tests. The runner reported the existing Node `fs.R_OK` deprecation warning.
+- Known limitations and technical debt:
+  - Legacy import tables remain in the schema for compatibility but are dormant
+    and not exposed through current UI or IPC.
+- Recommended next phase:
+  - Continue generated-data acceptance testing around manual-entry debt
+    maintenance, backup/restore, and administrative recovery.

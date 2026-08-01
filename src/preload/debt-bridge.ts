@@ -24,28 +24,16 @@ import {
   getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
-  getImportBatchRequestSchema,
   getPayoffScenarioRequestSchema,
-  importBatchOrNullResultSchema,
-  importBatchResultSchema,
-  importBatchSummaryListResultSchema,
-  importPostingPreviewResultSchema,
-  importPostingResultSchema,
   listPayoffScenariosRequestSchema,
-  listImportBatchesRequestSchema,
   listDebtsRequestSchema,
   payoffScenarioListResultSchema,
   payoffScenarioResultSchema,
   permanentDebtDeletionResultSchema,
-  postImportBatchRequestSchema,
-  previewImportBatchPostingRequestSchema,
   reverseDebtTransactionRequestSchema,
   rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
   restoreBackupRequestSchema,
-  selectWorkbookForImportRequestSchema,
-  updateImportSheetMappingRequestSchema,
-  updateStagedImportRowReviewRequestSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
   voidDebtTransactionRequestSchema,
@@ -66,19 +54,13 @@ import {
   type GetDataManagementStatusRequest,
   type GetDebtReportsRequest,
   type GetDebtRequest,
-  type GetImportBatchRequest,
   type GetPayoffScenarioRequest,
   type ListDebtsRequest,
   type ListPayoffScenariosRequest,
-  type PostImportBatchRequest,
-  type PreviewImportBatchPostingRequest,
   type RerunPayoffScenarioRequest,
   type ReverseDebtTransactionRequest,
   type RestoreDebtRequest,
   type RestoreBackupRequest,
-  type SelectWorkbookForImportRequest,
-  type UpdateImportSheetMappingRequest,
-  type UpdateStagedImportRowReviewRequest,
   type UpdateDebtRequest,
   type VoidBalanceReconciliationRequest,
   type VoidDebtTransactionRequest,
@@ -91,7 +73,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 20,
+    bridgeVersion: 21,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -144,55 +126,6 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.reports,
           getDebtReportsRequestSchema.parse(request),
-        ),
-      ),
-    selectWorkbookForImport: async (request: SelectWorkbookForImportRequest) =>
-      importBatchOrNullResultSchema.parse(
-        await invoke(
-          DEBT_IPC_CHANNELS.selectWorkbookForImport,
-          selectWorkbookForImportRequestSchema.parse(request),
-        ),
-      ),
-    listImportBatches: async () =>
-      importBatchSummaryListResultSchema.parse(
-        await invoke(
-          DEBT_IPC_CHANNELS.listImportBatches,
-          listImportBatchesRequestSchema.parse({}),
-        ),
-      ),
-    previewImportBatchPosting: async (request: PreviewImportBatchPostingRequest) =>
-      importPostingPreviewResultSchema.parse(
-        await invoke(
-          DEBT_IPC_CHANNELS.previewImportBatchPosting,
-          previewImportBatchPostingRequestSchema.parse(request),
-        ),
-      ),
-    postImportBatch: async (request: PostImportBatchRequest) =>
-      importPostingResultSchema.parse(
-        await invoke(
-          DEBT_IPC_CHANNELS.postImportBatch,
-          postImportBatchRequestSchema.parse(request),
-        ),
-      ),
-    getImportBatch: async (request: GetImportBatchRequest) =>
-      importBatchResultSchema.parse(
-        await invoke(
-          DEBT_IPC_CHANNELS.getImportBatch,
-          getImportBatchRequestSchema.parse(request),
-        ),
-      ),
-    updateImportSheetMapping: async (request: UpdateImportSheetMappingRequest) =>
-      importBatchResultSchema.parse(
-        await invoke(
-          DEBT_IPC_CHANNELS.updateImportSheetMapping,
-          updateImportSheetMappingRequestSchema.parse(request),
-        ),
-      ),
-    updateStagedImportRowReview: async (request: UpdateStagedImportRowReviewRequest) =>
-      importBatchResultSchema.parse(
-        await invoke(
-          DEBT_IPC_CHANNELS.updateStagedImportRowReview,
-          updateStagedImportRowReviewRequestSchema.parse(request),
         ),
       ),
     createPayoffScenario: async (request: CreatePayoffScenarioRequest) =>

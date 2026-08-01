@@ -22,11 +22,6 @@ import type {
   GetDataManagementStatusRequest,
   GetDebtReportsRequest,
   GetDebtRequest,
-  GetImportBatchRequest,
-  ImportBatchDto,
-  ImportBatchSummaryDto,
-  ImportPostingPreviewDto,
-  ImportPostingResultDto,
   ListDebtsRequest,
   ListPayoffScenariosRequest,
   CreatePayoffScenarioRequest,
@@ -35,14 +30,9 @@ import type {
   ArchivePayoffScenarioRequest,
   PayoffScenarioDto,
   PermanentDebtDeletionDto,
-  PostImportBatchRequest,
-  PreviewImportBatchPostingRequest,
   ReverseDebtTransactionRequest,
   RestoreDebtRequest,
   RestoreBackupRequest,
-  SelectWorkbookForImportRequest,
-  UpdateImportSheetMappingRequest,
-  UpdateStagedImportRowReviewRequest,
   UpdateDebtRequest,
   VoidBalanceReconciliationRequest,
   VoidDebtTransactionRequest,
@@ -69,19 +59,6 @@ export interface DebtBridge {
   getDebtReports(
     request: GetDebtReportsRequest,
   ): Promise<ApplicationResult<DebtReportsDto>>;
-  selectWorkbookForImport(
-    request: SelectWorkbookForImportRequest,
-  ): Promise<ApplicationResult<ImportBatchDto | null>>;
-  getImportBatch(
-    request: GetImportBatchRequest,
-  ): Promise<ApplicationResult<ImportBatchDto>>;
-  listImportBatches(): Promise<ApplicationResult<readonly ImportBatchSummaryDto[]>>;
-  previewImportBatchPosting(
-    request: PreviewImportBatchPostingRequest,
-  ): Promise<ApplicationResult<ImportPostingPreviewDto>>;
-  postImportBatch(
-    request: PostImportBatchRequest,
-  ): Promise<ApplicationResult<ImportPostingResultDto>>;
   createPayoffScenario(
     request: CreatePayoffScenarioRequest,
   ): Promise<ApplicationResult<PayoffScenarioDto>>;
@@ -97,12 +74,6 @@ export interface DebtBridge {
   archivePayoffScenario(
     request: ArchivePayoffScenarioRequest,
   ): Promise<ApplicationResult<PayoffScenarioDto>>;
-  updateImportSheetMapping(
-    request: UpdateImportSheetMappingRequest,
-  ): Promise<ApplicationResult<ImportBatchDto>>;
-  updateStagedImportRowReview(
-    request: UpdateStagedImportRowReviewRequest,
-  ): Promise<ApplicationResult<ImportBatchDto>>;
   getDebt(request: GetDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   createDebt(request: CreateDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   updateDebt(request: UpdateDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
@@ -137,6 +108,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 20;
+  readonly bridgeVersion: 21;
   readonly appMetadata: AppMetadataDto;
 }

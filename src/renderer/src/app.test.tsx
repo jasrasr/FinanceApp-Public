@@ -8,8 +8,6 @@ import type {
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
-  ImportBatchDto,
-  ImportPostingPreviewDto,
   PayoffScenarioDto,
 } from '../../shared/debt-contracts';
 import { App } from './app';
@@ -24,9 +22,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 20,
+  bridgeVersion: 21,
   appMetadata: {
-    version: '0.24.0',
+    version: '0.25.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -75,28 +73,6 @@ const createBridge = (): AppBridge => ({
     },
   })),
   getDebtReports: vi.fn(async () => ({ ok: true as const, value: sampleReports })),
-  selectWorkbookForImport: vi.fn(async () => ({
-    ok: true as const,
-    value: sampleImportBatch,
-  })),
-  listImportBatches: vi.fn(async () => ({ ok: true as const, value: [] })),
-  getImportBatch: vi.fn(async () => ({ ok: true as const, value: sampleImportBatch })),
-  previewImportBatchPosting: vi.fn(async () => ({
-    ok: true as const,
-    value: sampleImportPostingPreview,
-  })),
-  postImportBatch: vi.fn(async () => ({
-    ok: true as const,
-    value: { ...sampleImportPostingPreview, postedAtUtc: null, createdRecordCount: 0 },
-  })),
-  updateImportSheetMapping: vi.fn(async () => ({
-    ok: true as const,
-    value: sampleImportBatch,
-  })),
-  updateStagedImportRowReview: vi.fn(async () => ({
-    ok: true as const,
-    value: sampleImportBatch,
-  })),
   createPayoffScenario: vi.fn(async () => ({
     ok: true as const,
     value: samplePayoffScenario,
@@ -454,104 +430,6 @@ const sampleReports: DebtReportsDto = {
       },
     ],
   },
-};
-
-const sampleImportBatch: ImportBatchDto = {
-  id: '44444444-4444-4444-4444-444444444444',
-  sourceWorkbookName: 'generated-debt-schedule.xlsx',
-  sourceWorkbookFingerprint: 'generated-fingerprint',
-  sourceWorkbookModifiedAtUtc: '2026-07-28T10:00:00.000Z',
-  status: 'open',
-  importedAtUtc: '2026-07-28T10:00:00.000Z',
-  createdAtUtc: '2026-07-28T10:00:00.000Z',
-  updatedAtUtc: '2026-07-28T10:00:00.000Z',
-  sheetMappings: [
-    {
-      id: '55555555-5555-5555-5555-555555555555',
-      batchId: '44444444-4444-4444-4444-444444444444',
-      sourceSheetName: 'Generated Transactions',
-      proposedRecordType: 'transaction',
-      reviewStatus: 'needs_review',
-      fieldMapping: { date: 'date', amount: 'amount' },
-      notes: null,
-      createdAtUtc: '2026-07-28T10:00:00.000Z',
-      updatedAtUtc: '2026-07-28T10:00:00.000Z',
-    },
-  ],
-  stagedRows: [
-    {
-      id: '66666666-6666-6666-6666-666666666666',
-      batchId: '44444444-4444-4444-4444-444444444444',
-      sheetMappingId: '55555555-5555-5555-5555-555555555555',
-      sourceSheetName: 'Generated Transactions',
-      sourceRowNumber: 2,
-      sourceCellReferences: { date: 'A2', amount: 'B2', status: 'C2' },
-      sourceDisplayedValues: {
-        date: '2026-01-15',
-        amount: '-250.00',
-        status: 'projected or actual',
-      },
-      sourceFormulas: { amount: 'B1*-1' },
-      proposedRecordType: 'transaction',
-      activityClassification: 'ambiguous',
-      normalizedValues: {
-        date: '2026-01-15',
-        amount: '-250.00',
-        status: 'projected or actual',
-      },
-      validationMessages: ['Actual versus projected classification requires review.'],
-      duplicateCandidate: 'transaction:unknown:2026-01-15:-250.00',
-      reconciliationException: null,
-      reviewStatus: 'needs_review',
-      reviewNotes: null,
-      reviewedAtUtc: null,
-      createdAtUtc: '2026-07-28T10:00:00.000Z',
-      updatedAtUtc: '2026-07-28T10:00:00.000Z',
-    },
-  ],
-  controlTotals: {
-    totalRows: 1,
-    needsReviewRows: 1,
-    approvedRows: 0,
-    rejectedRows: 0,
-    deferredRows: 0,
-    ambiguousRows: 1,
-    duplicateCandidateRows: 1,
-    invalidRows: 1,
-    reconciliationExceptionRows: 0,
-    candidateTotalsByType: {
-      debt: 0,
-      transaction: 1,
-      term: 0,
-      balance_snapshot: 0,
-      unknown: 0,
-    },
-  },
-};
-
-const sampleImportPostingPreview: ImportPostingPreviewDto = {
-  batchId: '44444444-4444-4444-4444-444444444444',
-  batchStatus: 'open',
-  approvedMappings: 0,
-  unapprovedMappings: 1,
-  approvedRows: 0,
-  rejectedRows: 0,
-  deferredRows: 0,
-  postableRows: 0,
-  exceptionRows: 1,
-  alreadyPosted: false,
-  rowResults: [
-    {
-      stagedRowId: '66666666-6666-6666-6666-666666666666',
-      sourceSheetName: 'Generated Transactions',
-      sourceRowNumber: 2,
-      proposedRecordType: 'transaction',
-      reviewStatus: 'needs_review',
-      canPost: false,
-      validationMessages: ['Actual versus projected classification requires review.'],
-      createdRecords: [],
-    },
-  ],
 };
 
 const samplePayoffScenario: PayoffScenarioDto = {
@@ -919,9 +797,6 @@ describe('debt maintenance application', () => {
       ok: true as const,
       value: sampleDebtDetail,
     }));
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Wrong debt name');
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-
     render(<App bridge={bridge} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
@@ -933,14 +808,31 @@ describe('debt maintenance application', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'Delete debt permanently' }),
     );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Delete debt permanently?',
+    });
+    expect(within(dialog).getByText('Fictional Equipment Note')).toBeVisible();
+    expect(
+      within(dialog).getByText('Related records that will be deleted'),
+    ).toBeVisible();
+    expect(within(dialog).getByText('Required immediate backup status')).toBeVisible();
+    expect(within(dialog).getByText('Debt terms')).toBeVisible();
+    expect(within(dialog).getByText('Transactions')).toBeVisible();
+    fireEvent.change(within(dialog).getByLabelText('Type the debt name to confirm'), {
+      target: { value: 'Wrong debt name' },
+    });
+    fireEvent.click(
+      within(dialog).getByLabelText(
+        'I understand this cannot be undone except by restoring the validated backup.',
+      ),
+    );
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete debt permanently' }),
+    );
 
     expect(
       await screen.findByText('Debt name confirmation did not match.'),
     ).toBeVisible();
-    expect(promptSpy).toHaveBeenCalledWith(
-      'Type "Fictional Equipment Note" to permanently delete this debt and its history.',
-    );
-    expect(confirmSpy).not.toHaveBeenCalled();
     expect(bridge.deleteDebtPermanently).not.toHaveBeenCalled();
   });
 
@@ -954,11 +846,6 @@ describe('debt maintenance application', () => {
       ok: true as const,
       value: sampleDebtDetail,
     }));
-    const promptSpy = vi
-      .spyOn(window, 'prompt')
-      .mockReturnValue('Fictional Equipment Note');
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-
     render(<App bridge={bridge} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
@@ -973,10 +860,27 @@ describe('debt maintenance application', () => {
     const dashboardCallsBeforeDelete = vi.mocked(bridge.getDashboard).mock.calls.length;
     const reportCallsBeforeDelete = vi.mocked(bridge.getDebtReports).mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'Delete debt permanently' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Delete debt permanently?',
+    });
+    expect(
+      within(dialog).getByText(
+        'Not started. A validated backup will be created before deletion begins.',
+      ),
+    ).toBeVisible();
+    fireEvent.change(within(dialog).getByLabelText('Type the debt name to confirm'), {
+      target: { value: 'Fictional Equipment Note' },
+    });
+    fireEvent.click(
+      within(dialog).getByLabelText(
+        'I understand this cannot be undone except by restoring the validated backup.',
+      ),
+    );
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete debt permanently' }),
+    );
 
     await waitFor(() => expect(bridge.deleteDebtPermanently).toHaveBeenCalledTimes(1));
-    expect(promptSpy).toHaveBeenCalled();
-    expect(confirmSpy).toHaveBeenCalledTimes(2);
     expect(bridge.deleteDebtPermanently).toHaveBeenCalledWith({
       id: sampleDebtDetail.id,
       expectedUpdatedAtUtc: sampleDebtDetail.updatedAtUtc,
@@ -996,6 +900,7 @@ describe('debt maintenance application', () => {
     expect(
       await screen.findByText(/Debt was permanently deleted after validated backup/),
     ).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Danger zone' })).toBeNull();
   });
 
   it('shows only current effective transaction rows while audit history keeps the full chain', async () => {
@@ -1546,7 +1451,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.24.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.25.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1894,16 +1799,13 @@ describe('debt maintenance application', () => {
     });
   });
 
-  it('renders the workbook import empty state', async () => {
+  it('does not expose workbook import in the normal navigation', async () => {
     render(<App bridge={createBridge()} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Workbook import' }));
+    await screen.findByRole('button', { name: 'Debts' });
 
-    expect(
-      await screen.findByRole('heading', { name: 'Stage and map workbook rows' }),
-    ).toBeVisible();
-    expect(screen.getByText(/No staged workbook imports yet/)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Select workbook' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Workbook import' })).toBeNull();
+    expect('selectWorkbookForImport' in createBridge()).toBe(false);
   });
 
   it('renders saved payoff scenarios and scenario-only assumptions', async () => {
@@ -1947,28 +1849,6 @@ describe('debt maintenance application', () => {
         'Payment frequency irregular is not yet supported for reliable payoff projection.',
       ),
     ).toBeVisible();
-  });
-
-  it('stages a generated workbook and displays review-only import rows', async () => {
-    const bridge = createBridge();
-    render(<App bridge={bridge} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Workbook import' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Select workbook' }));
-
-    expect(await screen.findByText('generated-debt-schedule.xlsx')).toBeVisible();
-    expect(screen.getByText('Ambiguous rows')).toBeVisible();
-    expect(screen.getByText('Posting preview')).toBeVisible();
-    expect(
-      screen.getByText('Actual versus projected classification requires review.'),
-    ).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Post approved rows' })).toBeDisabled();
-    expect(screen.getAllByText('Generated Transactions row 2')).toHaveLength(2);
-    expect(screen.getByText('Formula source preserved')).toBeVisible();
-    expect(bridge.selectWorkbookForImport).toHaveBeenCalledWith({});
-    expect(bridge.previewImportBatchPosting).toHaveBeenCalledWith({
-      batchId: sampleImportBatch.id,
-    });
   });
 
   it('renders the record-transaction form controls', () => {

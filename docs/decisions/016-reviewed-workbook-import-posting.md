@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Superseded by ADR 033. This record documents historical implementation only.
 
 ## Context
 

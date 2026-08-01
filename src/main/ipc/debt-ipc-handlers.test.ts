@@ -12,18 +12,11 @@ const createService = (): DebtMaintenanceService => ({
   listDebts: vi.fn(() => []),
   getDashboard: vi.fn(),
   getDebtReports: vi.fn(),
-  selectWorkbookForImport: vi.fn(() => null),
-  listImportBatches: vi.fn(() => []),
-  getImportBatch: vi.fn(),
-  previewImportBatchPosting: vi.fn(),
-  postImportBatch: vi.fn(),
   listPayoffScenarios: vi.fn(() => []),
   getPayoffScenario: vi.fn(),
   createPayoffScenario: vi.fn(),
   rerunPayoffScenario: vi.fn(),
   archivePayoffScenario: vi.fn(),
-  updateImportSheetMapping: vi.fn(),
-  updateStagedImportRowReview: vi.fn(),
   getDebt: vi.fn(),
   createDebt: vi.fn(),
   updateDebt: vi.fn(),
@@ -148,6 +141,21 @@ describe('debt IPC handlers', () => {
     expect(service.listDebts).toHaveBeenCalledWith({ includeArchived: false });
   });
 
+  it('does not register removed workbook import IPC handlers', () => {
+    const service = createService();
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
+
+    expect([...handlers.keys()].some((channel) => channel.includes(':import'))).toBe(
+      false,
+    );
+  });
+
   it('rejects invalid posted-transaction payloads on the new channel', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
@@ -216,58 +224,6 @@ describe('debt IPC handlers', () => {
       error: { code: 'validation' },
     });
     expect(service.createBalanceReconciliation).not.toHaveBeenCalled();
-  });
-
-  it('rejects ambiguous staged rows when approval is requested', () => {
-    const service = createService();
-    const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(
-      registrar,
-      service,
-      createDataManagementService(),
-      () => true,
-    );
-
-    const result = handlers.get(DEBT_IPC_CHANNELS.updateStagedImportRowReview)?.(
-      event,
-      {
-        batchId: randomUUID(),
-        rowId: randomUUID(),
-        proposedRecordType: 'transaction',
-        activityClassification: 'ambiguous',
-        reviewStatus: 'approved',
-        normalizedValues: { amount: '100.00' },
-        reviewNotes: null,
-      },
-    );
-
-    expect(result).toMatchObject({
-      ok: false,
-      error: { code: 'validation' },
-    });
-    expect(service.updateStagedImportRowReview).not.toHaveBeenCalled();
-  });
-
-  it('requires explicit confirmation before posting an import batch', () => {
-    const service = createService();
-    const { handlers, registrar } = createRegistrar();
-    registerDebtIpcHandlers(
-      registrar,
-      service,
-      createDataManagementService(),
-      () => true,
-    );
-
-    const result = handlers.get(DEBT_IPC_CHANNELS.postImportBatch)?.(event, {
-      batchId: randomUUID(),
-      confirmed: false,
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      error: { code: 'validation' },
-    });
-    expect(service.postImportBatch).not.toHaveBeenCalled();
   });
 
   it('rejects invalid payoff scenario payloads on the projection channel', () => {

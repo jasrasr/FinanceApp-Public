@@ -29,27 +29,20 @@ describe('typed preload bridge', () => {
       'getDataManagementStatus',
       'getDebt',
       'getDebtReports',
-      'getImportBatch',
       'getPayoffScenario',
       'listDebts',
-      'listImportBatches',
       'listPayoffScenarios',
-      'postImportBatch',
-      'previewImportBatchPosting',
       'rerunPayoffScenario',
       'restoreBackup',
       'restoreDebt',
       'reverseDebtTransaction',
-      'selectWorkbookForImport',
       'updateDebt',
-      'updateImportSheetMapping',
-      'updateStagedImportRowReview',
       'voidBalanceReconciliation',
       'voidDebtTransaction',
     ]);
-    expect(bridge.bridgeVersion).toBe(20);
+    expect(bridge.bridgeVersion).toBe(21);
     expect(bridge.appMetadata).toEqual({
-      version: '0.24.0',
+      version: '0.25.0',
       lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);
@@ -60,6 +53,9 @@ describe('typed preload bridge', () => {
     expect('process' in bridge).toBe(false);
     expect('environment' in bridge).toBe(false);
     expect('require' in bridge).toBe(false);
+    expect('selectWorkbookForImport' in bridge).toBe(false);
+    expect('postImportBatch' in bridge).toBe(false);
+    expect('updateStagedImportRowReview' in bridge).toBe(false);
   });
 
   it('uses the fixed list channel and validates the response', async () => {
@@ -81,50 +77,11 @@ describe('typed preload bridge', () => {
     await expect(bridge.listDebts({ includeArchived: false })).rejects.toThrow();
   });
 
-  it('uses fixed import channels and validates cancel response', async () => {
-    const invoke = vi.fn(async () => ({ ok: true, value: null }));
-    const bridge = createAppBridge(invoke);
+  it('does not expose removed workbook import bridge operations', () => {
+    const bridge = createAppBridge(vi.fn());
 
-    await expect(bridge.selectWorkbookForImport({})).resolves.toEqual({
-      ok: true,
-      value: null,
-    });
-    expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.selectWorkbookForImport, {});
-  });
-
-  it('uses fixed import posting channels and requires confirmation', async () => {
-    const invoke = vi.fn(async () => ({
-      ok: true,
-      value: {
-        batchId: '11111111-1111-4111-8111-111111111111',
-        batchStatus: 'open',
-        approvedMappings: 1,
-        unapprovedMappings: 0,
-        approvedRows: 1,
-        rejectedRows: 0,
-        deferredRows: 0,
-        postableRows: 1,
-        exceptionRows: 0,
-        alreadyPosted: false,
-        rowResults: [],
-      },
-    }));
-    const bridge = createAppBridge(invoke);
-
-    await expect(
-      bridge.previewImportBatchPosting({
-        batchId: '11111111-1111-4111-8111-111111111111',
-      }),
-    ).resolves.toMatchObject({ ok: true });
-    expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.previewImportBatchPosting, {
-      batchId: '11111111-1111-4111-8111-111111111111',
-    });
-
-    await expect(
-      bridge.postImportBatch({
-        batchId: '11111111-1111-4111-8111-111111111111',
-        confirmed: false,
-      } as never),
-    ).rejects.toThrow();
+    expect(
+      Object.keys(bridge).some((key) => key.toLowerCase().includes('import')),
+    ).toBe(false);
   });
 });

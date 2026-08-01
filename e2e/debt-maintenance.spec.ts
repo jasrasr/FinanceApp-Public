@@ -21,18 +21,14 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.24.0')).toBeVisible();
+    await expect(window.getByText('Version 0.25.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
+      0,
+    );
     await expect(
       window.getByRole('heading', { name: 'No active debts to summarize' }),
     ).toBeVisible();
-
-    await window.getByRole('button', { name: 'Workbook import' }).click();
-    await expect(
-      window.getByRole('heading', { name: 'Stage and map workbook rows' }),
-    ).toBeVisible();
-    await expect(window.getByText(/No staged workbook imports yet/)).toBeVisible();
-    await expect(window.getByText(/staged for review before posting/)).toBeVisible();
 
     await window.getByRole('button', { name: 'Debts' }).click();
     await expect(
@@ -462,6 +458,37 @@ test('completes the manual debt-maintenance workflow', async () => {
       .getByRole('button', { name: 'Restore debt', exact: true })
       .click();
     await expect(window.getByText('Debt was restored.')).toBeVisible();
+
+    await window.getByRole('button', { name: 'Delete debt permanently' }).click();
+    const deleteDialog = window.getByRole('dialog', {
+      name: 'Delete debt permanently?',
+    });
+    await expect(
+      deleteDialog.getByText('Updated Fictional Harbor Mortgage Note'),
+    ).toBeVisible();
+    await expect(
+      deleteDialog.getByText('Related records that will be deleted'),
+    ).toBeVisible();
+    await expect(
+      deleteDialog.getByText('Required immediate backup status'),
+    ).toBeVisible();
+    await deleteDialog
+      .getByLabel('Type the debt name to confirm')
+      .fill('Updated Fictional Harbor Mortgage Note');
+    await deleteDialog
+      .getByLabel(
+        'I understand this cannot be undone except by restoring the validated backup.',
+      )
+      .check();
+    await deleteDialog
+      .getByRole('button', { name: 'Delete debt permanently', exact: true })
+      .click();
+    await expect(
+      window.getByText(/Debt was permanently deleted after validated backup/),
+    ).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'No debts to display' }),
+    ).toBeVisible();
 
     expect(existsSync(join(userDataDirectory, 'debt-tracker.sqlite3'))).toBe(true);
   } finally {

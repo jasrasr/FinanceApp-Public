@@ -24,27 +24,16 @@ import {
   getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
-  getImportBatchRequestSchema,
   getPayoffScenarioRequestSchema,
-  importBatchDtoSchema,
-  importBatchSummaryDtoSchema,
-  importPostingPreviewDtoSchema,
-  importPostingResultDtoSchema,
-  listImportBatchesRequestSchema,
   listDebtsRequestSchema,
   listPayoffScenariosRequestSchema,
   payoffScenarioDtoSchema,
   permanentDebtDeletionDtoSchema,
-  postImportBatchRequestSchema,
-  previewImportBatchPostingRequestSchema,
   reverseDebtTransactionRequestSchema,
   voidDebtTransactionRequestSchema,
   rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
   restoreBackupRequestSchema,
-  selectWorkbookForImportRequestSchema,
-  updateImportSheetMappingRequestSchema,
-  updateStagedImportRowReviewRequestSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
   type ApplicationError,
@@ -265,59 +254,6 @@ export const registerDebtIpcHandlers = (
   );
   registerHandler(
     ipcMain,
-    DEBT_IPC_CHANNELS.selectWorkbookForImport,
-    selectWorkbookForImportRequestSchema,
-    importBatchDtoSchema.nullable(),
-    isTrustedSender,
-    (request) => service.selectWorkbookForImport(request),
-  );
-  registerHandler(
-    ipcMain,
-    DEBT_IPC_CHANNELS.listImportBatches,
-    listImportBatchesRequestSchema,
-    importBatchSummaryDtoSchema.array(),
-    isTrustedSender,
-    () => service.listImportBatches(),
-  );
-  registerHandler(
-    ipcMain,
-    DEBT_IPC_CHANNELS.getImportBatch,
-    getImportBatchRequestSchema,
-    importBatchDtoSchema,
-    isTrustedSender,
-    (request) => service.getImportBatch(request),
-  );
-  registerHandler(
-    ipcMain,
-    DEBT_IPC_CHANNELS.previewImportBatchPosting,
-    previewImportBatchPostingRequestSchema,
-    importPostingPreviewDtoSchema,
-    isTrustedSender,
-    (request) => service.previewImportBatchPosting(request),
-  );
-  registerHandler(
-    ipcMain,
-    DEBT_IPC_CHANNELS.postImportBatch,
-    postImportBatchRequestSchema,
-    importPostingResultDtoSchema,
-    isTrustedSender,
-    (request) => {
-      if (databaseOperationActive) {
-        throw new ApplicationServiceError(
-          'conflict',
-          'Another database operation is already in progress. Try again after it finishes.',
-        );
-      }
-      databaseOperationActive = true;
-      try {
-        return service.postImportBatch(request);
-      } finally {
-        databaseOperationActive = false;
-      }
-    },
-  );
-  registerHandler(
-    ipcMain,
     DEBT_IPC_CHANNELS.createPayoffScenario,
     createPayoffScenarioRequestSchema,
     payoffScenarioDtoSchema,
@@ -355,22 +291,6 @@ export const registerDebtIpcHandlers = (
     payoffScenarioDtoSchema,
     isTrustedSender,
     (request) => service.archivePayoffScenario(request),
-  );
-  registerHandler(
-    ipcMain,
-    DEBT_IPC_CHANNELS.updateImportSheetMapping,
-    updateImportSheetMappingRequestSchema,
-    importBatchDtoSchema,
-    isTrustedSender,
-    (request) => service.updateImportSheetMapping(request),
-  );
-  registerHandler(
-    ipcMain,
-    DEBT_IPC_CHANNELS.updateStagedImportRowReview,
-    updateStagedImportRowReviewRequestSchema,
-    importBatchDtoSchema,
-    isTrustedSender,
-    (request) => service.updateStagedImportRowReview(request),
   );
   registerHandler(
     ipcMain,

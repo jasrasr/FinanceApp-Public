@@ -19,10 +19,6 @@ import type {
   DebtSummaryDto,
   DebtTransactionDto,
   GetDebtReportsRequest,
-  ImportBatchDto,
-  ImportBatchSummaryDto,
-  ImportPostingPreviewDto,
-  ImportPostingResultDto,
   PayoffScenarioDto,
   UpdateDebtRequest,
   ReverseDebtTransactionRequest,
@@ -44,7 +40,6 @@ import { EscrowDetail } from './components/escrow-detail';
 import { formatLastChanged, formatTimestamp } from './components/display-format';
 import { PayoffScenarios } from './components/payoff-scenarios';
 import { RecordTransactionForm } from './components/record-transaction-form';
-import { WorkbookImport } from './components/workbook-import';
 
 type View =
   | 'dashboard'
@@ -53,7 +48,6 @@ type View =
   | 'detail'
   | 'edit'
   | 'add-term'
-  | 'import'
   | 'payoff'
   | 'reports'
   | 'escrow-detail'
@@ -70,6 +64,11 @@ type VoidTransactionTarget = {
   readonly id: string;
   readonly expectedUpdatedAtUtc: string;
   readonly voidDate: string;
+} | null;
+type PermanentDeletionConfirmation = {
+  readonly debt: DebtDetailDto;
+  readonly typedName: string;
+  readonly secondConfirmed: boolean;
 } | null;
 
 const invokeBridge = async <T,>(
@@ -92,6 +91,21 @@ const navigationButtonClassName = (active: boolean): string =>
   active
     ? 'w-full rounded-md bg-slate-200 px-3 py-2 text-left text-sm font-semibold text-slate-900 hover:bg-slate-300'
     : 'w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200';
+
+const permanentDeletionCountLabels: Record<
+  keyof DebtDetailDto['permanentDeletionPreview'],
+  string
+> = {
+  debtTerms: 'Debt terms',
+  transactions: 'Transactions',
+  allocations: 'Allocations',
+  balanceSnapshots: 'Balance snapshots',
+  reconciliations: 'Reconciliations',
+  auditEvents: 'Audit events',
+  importProvenance: 'Import provenance',
+  payoffScenarioReferences: 'Payoff-scenario references',
+  otherRelatedRecords: 'Other related records',
+};
 
 export interface AppProps {
   readonly bridge?: AppBridge;
@@ -124,16 +138,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [reports, setReports] = useState<DebtReportsDto | null>(null);
   const [dataManagementStatus, setDataManagementStatus] =
     useState<DataManagementStatusDto | null>(null);
-  const [importBatches, setImportBatches] = useState<readonly ImportBatchSummaryDto[]>(
-    [],
-  );
-  const [selectedImportBatch, setSelectedImportBatch] = useState<ImportBatchDto | null>(
-    null,
-  );
-  const [importPostingPreview, setImportPostingPreview] =
-    useState<ImportPostingPreviewDto | null>(null);
-  const [importPostingResult, setImportPostingResult] =
-    useState<ImportPostingResultDto | null>(null);
   const [payoffScenarios, setPayoffScenarios] = useState<readonly PayoffScenarioDto[]>(
     [],
   );
@@ -157,6 +161,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     useState<DebtTransactionDto | null>(null);
   const [reconciliationTarget, setReconciliationTarget] =
     useState<BalanceReconciliationDto | null>(null);
+  const [permanentDeletionConfirmation, setPermanentDeletionConfirmation] =
+    useState<PermanentDeletionConfirmation>(null);
   const detailFocusRequestRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -298,20 +304,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setLoading(false);
   };
 
-  const loadImportBatches = async (): Promise<void> => {
-    setLoading(true);
-    setError(null);
-    const result = await invokeBridge(() => bridge.listImportBatches());
-
-    if (result.ok) {
-      setImportBatches(result.value);
-    } else {
-      setError(result.error);
-    }
-
-    setLoading(false);
-  };
-
   const loadPayoffScenarios = async (): Promise<void> => {
     setLoading(true);
     setError(null);
@@ -321,28 +313,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setPayoffScenarios(result.value);
-    } else {
-      setError(result.error);
-    }
-
-    setLoading(false);
-  };
-
-  const loadImportBatch = async (id: string): Promise<void> => {
-    setLoading(true);
-    setError(null);
-    const result = await invokeBridge(() => bridge.getImportBatch({ id }));
-
-    if (result.ok) {
-      setSelectedImportBatch(result.value);
-      const preview = await invokeBridge(() =>
-        bridge.previewImportBatchPosting({ batchId: id }),
-      );
-      if (preview.ok) {
-        setImportPostingPreview(preview.value);
-      } else {
-        setError(preview.error);
-      }
     } else {
       setError(result.error);
     }
@@ -404,18 +374,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     void loadDebts();
   };
 
-  const showImports = (): void => {
-    setView('import');
-    setSelectedDebt(null);
-    setDetailPanel('overview');
-    setConfirmation(null);
-    setReverseTarget(null);
-    setError(null);
-    setFieldErrors(undefined);
-    setImportPostingResult(null);
-    void loadImportBatches();
-  };
-
   const showPayoffScenarios = (): void => {
     setView('payoff');
     setSelectedDebt(null);
@@ -447,125 +405,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setError(null);
     setFieldErrors(undefined);
     void loadDataManagementStatus();
-  };
-
-  const selectWorkbookForImport = async (): Promise<void> => {
-    setSaving(true);
-    setError(null);
-    setFieldErrors(undefined);
-    const result = await invokeBridge(() => bridge.selectWorkbookForImport({}));
-
-    if (result.ok) {
-      if (result.value) {
-        const selectedBatch = result.value;
-        setSelectedImportBatch(selectedBatch);
-        const preview = await invokeBridge(() =>
-          bridge.previewImportBatchPosting({ batchId: selectedBatch.id }),
-        );
-        if (preview.ok) setImportPostingPreview(preview.value);
-        setImportPostingResult(null);
-        setSuccessMessage('Workbook rows were staged for review.');
-      }
-      await loadImportBatches();
-    } else {
-      handleFailure(result.error);
-    }
-
-    setSaving(false);
-  };
-
-  const reviewImportMapping = async (
-    mapping: ImportBatchDto['sheetMappings'][number],
-    reviewStatus: 'approved' | 'rejected' | 'deferred',
-  ): Promise<void> => {
-    if (!selectedImportBatch) return;
-
-    setSaving(true);
-    setError(null);
-    const result = await invokeBridge(() =>
-      bridge.updateImportSheetMapping({
-        batchId: selectedImportBatch.id,
-        mappingId: mapping.id,
-        proposedRecordType: mapping.proposedRecordType,
-        reviewStatus,
-        fieldMapping: mapping.fieldMapping,
-        notes: mapping.notes,
-      }),
-    );
-
-    if (result.ok) {
-      setSelectedImportBatch(result.value);
-      const preview = await invokeBridge(() =>
-        bridge.previewImportBatchPosting({ batchId: selectedImportBatch.id }),
-      );
-      if (preview.ok) setImportPostingPreview(preview.value);
-      setSuccessMessage('Sheet mapping review was saved.');
-      await loadImportBatches();
-    } else {
-      handleFailure(result.error);
-    }
-
-    setSaving(false);
-  };
-
-  const reviewImportRow = async (
-    row: ImportBatchDto['stagedRows'][number],
-    reviewStatus: 'approved' | 'rejected' | 'deferred',
-  ): Promise<void> => {
-    if (!selectedImportBatch) return;
-
-    setSaving(true);
-    setError(null);
-    const result = await invokeBridge(() =>
-      bridge.updateStagedImportRowReview({
-        batchId: selectedImportBatch.id,
-        rowId: row.id,
-        proposedRecordType: row.proposedRecordType,
-        activityClassification: row.activityClassification,
-        reviewStatus,
-        normalizedValues: row.normalizedValues,
-        reviewNotes: row.reviewNotes,
-      }),
-    );
-
-    if (result.ok) {
-      setSelectedImportBatch(result.value);
-      const preview = await invokeBridge(() =>
-        bridge.previewImportBatchPosting({ batchId: selectedImportBatch.id }),
-      );
-      if (preview.ok) setImportPostingPreview(preview.value);
-      setSuccessMessage('Staged row review was saved.');
-      await loadImportBatches();
-    } else {
-      handleFailure(result.error);
-    }
-
-    setSaving(false);
-  };
-
-  const postSelectedImportBatch = async (): Promise<void> => {
-    if (!selectedImportBatch) return;
-
-    setSaving(true);
-    setError(null);
-    setFieldErrors(undefined);
-    const result = await invokeBridge(() =>
-      bridge.postImportBatch({ batchId: selectedImportBatch.id, confirmed: true }),
-    );
-
-    if (result.ok) {
-      setImportPostingResult(result.value);
-      setImportPostingPreview(result.value);
-      await loadImportBatch(selectedImportBatch.id);
-      await loadImportBatches();
-      await loadDebts();
-      await loadDashboard();
-      setSuccessMessage('Approved workbook rows were posted transactionally.');
-    } else {
-      handleFailure(result.error);
-    }
-
-    setSaving(false);
   };
 
   const createPayoffScenario = async (
@@ -773,35 +612,33 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const deleteDebtPermanently = async (): Promise<void> => {
-    if (!selectedDebt || saving) return;
-    const typedDebtName = window.prompt(
-      `Type "${selectedDebt.name}" to permanently delete this debt and its history.`,
-    );
-    if (typedDebtName === null) return;
-    if (typedDebtName.trim() !== selectedDebt.name) {
+    if (!permanentDeletionConfirmation || saving) return;
+    const { debt, secondConfirmed, typedName } = permanentDeletionConfirmation;
+
+    if (typedName.trim() !== debt.name) {
       setError({
         code: 'validation',
         message: 'Debt name confirmation did not match.',
       });
       return;
     }
-    const confirmed = window.confirm(
-      'Debt Tracker will create a validated backup immediately before deletion. Continue?',
-    );
-    if (!confirmed) return;
-    const secondConfirmed = window.confirm(
-      'This action cannot be undone except by restoring a backup. Permanently delete this debt?',
-    );
-    if (!secondConfirmed) return;
+    if (!secondConfirmed) {
+      setError({
+        code: 'validation',
+        message:
+          'Confirm that this action cannot be undone except by restoring a backup.',
+      });
+      return;
+    }
 
     setSaving(true);
     setError(null);
     setFieldErrors(undefined);
     const result = await invokeBridge(() =>
       bridge.deleteDebtPermanently({
-        id: selectedDebt.id,
-        expectedUpdatedAtUtc: selectedDebt.updatedAtUtc,
-        typedDebtName: typedDebtName.trim(),
+        id: debt.id,
+        expectedUpdatedAtUtc: debt.updatedAtUtc,
+        typedDebtName: typedName.trim(),
         confirmed: true,
         secondConfirmed: true,
       }),
@@ -809,6 +646,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setSelectedDebt(null);
+      setPermanentDeletionConfirmation(null);
       setSuccessMessage(
         `Debt was permanently deleted after validated backup ${result.value.backupId}.`,
       );
@@ -1171,16 +1009,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
-                aria-current={view === 'import' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'import')}
-                onClick={showImports}
-                type="button"
-              >
-                Workbook import
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
                 aria-current={view === 'payoff' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'payoff')}
                 onClick={showPayoffScenarios}
@@ -1245,17 +1073,15 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                     ? () => void loadDebts()
                     : view === 'dashboard'
                       ? () => void loadDashboard()
-                      : view === 'import'
-                        ? () => void loadImportBatches()
-                        : view === 'payoff'
-                          ? () => void loadPayoffScenarios()
-                          : view === 'reports'
-                            ? () => void loadReports()
-                            : view === 'data-management'
-                              ? () => void loadDataManagementStatus()
-                              : view === 'escrow-detail'
-                                ? () => void loadEscrowDetail()
-                                : undefined
+                      : view === 'payoff'
+                        ? () => void loadPayoffScenarios()
+                        : view === 'reports'
+                          ? () => void loadReports()
+                          : view === 'data-management'
+                            ? () => void loadDataManagementStatus()
+                            : view === 'escrow-detail'
+                              ? () => void loadEscrowDetail()
+                              : undefined
                 }
               />
             </div>
@@ -1318,26 +1144,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 void loadDebts(nextValue);
               }}
               onSelect={(id) => void selectDebt(id)}
-            />
-          ) : null}
-
-          {view === 'import' ? (
-            <WorkbookImport
-              batches={importBatches}
-              loading={loading}
-              onReviewMapping={(mapping, reviewStatus) =>
-                void reviewImportMapping(mapping, reviewStatus)
-              }
-              onReviewRow={(row, reviewStatus) =>
-                void reviewImportRow(row, reviewStatus)
-              }
-              onPostBatch={() => void postSelectedImportBatch()}
-              onSelectBatch={(id) => void loadImportBatch(id)}
-              onSelectWorkbook={() => void selectWorkbookForImport()}
-              postingPreview={importPostingPreview}
-              postingResult={importPostingResult}
-              saving={saving}
-              selectedBatch={selectedImportBatch}
             />
           ) : null}
 
@@ -1515,7 +1321,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 }
                 onBack={showList}
                 onCorrectReconciliation={requestCorrectReconciliation}
-                onDeletePermanently={() => void deleteDebtPermanently()}
+                onDeletePermanently={() => {
+                  setError(null);
+                  setFieldErrors(undefined);
+                  setSuccessMessage(null);
+                  setPermanentDeletionConfirmation({
+                    debt: selectedDebt,
+                    typedName: '',
+                    secondConfirmed: false,
+                  });
+                }}
                 onEdit={() => {
                   setError(null);
                   setFieldErrors(undefined);
@@ -1604,6 +1419,94 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           ) : null}
         </main>
       </div>
+
+      {permanentDeletionConfirmation ? (
+        <ConfirmationDialog
+          busy={saving}
+          confirmLabel="Delete debt permanently"
+          description="Debt Tracker will create and validate a backup immediately before deleting this debt and its dependent records."
+          onCancel={() => {
+            if (saving) return;
+            setPermanentDeletionConfirmation(null);
+            setError(null);
+          }}
+          onConfirm={() => void deleteDebtPermanently()}
+          title="Delete debt permanently?"
+        >
+          <div className="space-y-4 text-sm">
+            <div>
+              <p className="font-semibold text-slate-900">
+                {permanentDeletionConfirmation.debt.name}
+              </p>
+              <p className="text-slate-600">
+                This action cannot be undone except by restoring the required validated
+                backup.
+              </p>
+            </div>
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-blue-950">
+              <p className="font-semibold">Required immediate backup status</p>
+              <p className="mt-1">
+                Not started. A validated backup will be created before deletion begins.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-900">
+                Related records that will be deleted
+              </p>
+              <dl className="mt-2 grid grid-cols-2 gap-3">
+                {Object.entries(
+                  permanentDeletionConfirmation.debt.permanentDeletionPreview,
+                ).map(([key, value]) => (
+                  <div key={key} className="rounded-md border border-slate-200 p-2">
+                    <dt className="text-xs font-semibold text-slate-500 uppercase">
+                      {permanentDeletionCountLabels[
+                        key as keyof DebtDetailDto['permanentDeletionPreview']
+                      ] ?? key}
+                    </dt>
+                    <dd className="mt-1 font-mono text-slate-950">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+            <label
+              className="block font-medium text-slate-700"
+              htmlFor="permanent-delete-typed-name"
+            >
+              Type the debt name to confirm
+              <input
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-red-600 focus:ring-red-600"
+                disabled={saving}
+                id="permanent-delete-typed-name"
+                onChange={(event) =>
+                  setPermanentDeletionConfirmation({
+                    ...permanentDeletionConfirmation,
+                    typedName: event.target.value,
+                  })
+                }
+                value={permanentDeletionConfirmation.typedName}
+              />
+            </label>
+            <label className="flex items-start gap-2 font-medium text-slate-700">
+              <input
+                checked={permanentDeletionConfirmation.secondConfirmed}
+                className="mt-1"
+                disabled={saving}
+                onChange={(event) =>
+                  setPermanentDeletionConfirmation({
+                    ...permanentDeletionConfirmation,
+                    secondConfirmed: event.target.checked,
+                  })
+                }
+                type="checkbox"
+              />
+              <span>
+                I understand this cannot be undone except by restoring the validated
+                backup.
+              </span>
+            </label>
+          </div>
+        </ConfirmationDialog>
+      ) : null}
 
       {confirmation &&
       ((confirmation === 'reverse' && reverseTarget) ||

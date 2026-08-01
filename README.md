@@ -26,12 +26,6 @@ for maintaining debts and supporting future debt-paydown analysis.
   current escrow balance, current-term payment and rate summaries, upcoming
   maturities, open reconciliation attention items, and drill-through navigation
   to debt and escrow detail.
-- Workbook import staging and mapping for Excel files, including source
-  provenance, sheet and row review, formulas as source metadata, ambiguous-row
-  flags, control totals, and review-only approve/reject/defer states.
-- Reviewed workbook import posting for approved actual rows into debts, debt
-  terms, posted transactions, allocations, and balance snapshots, with batch
-  previews, all-or-nothing posting, safe retry behavior, and source provenance.
 - Saved payoff scenarios using baseline, debt avalanche, debt snowball, and
   custom-priority strategies, with rerun and archive support.
 - Advanced read-only debt reports for rollforwards, balance history, activity
@@ -412,26 +406,6 @@ Electron user-data directory that it removes after the workflow.
   message, and failing stage; raw database paths, financial values, and stack
   traces are not exposed to the renderer.
 
-## Workbook Import Rules
-
-- Workbook selection and parsing occur only in the Electron main process.
-- Excel workbooks are treated as untrusted input and are never modified by Debt
-  Tracker.
-- Import first creates batches, sheet mappings, and staged rows. Posting is a
-  separate reviewed action.
-- Reviewed posting may create debts, terms, posted transactions, allocations,
-  and balance snapshots from approved actual staged rows.
-- Import posting does not create reconciliations or payoff projections.
-- Posting is all-or-nothing for a batch. Failed posting leaves no partial live
-  records, and retrying a completed batch does not create duplicates.
-- Source workbook name, fingerprint, sheet, row, cell references, displayed
-  values, formulas, and import timestamps are preserved as import provenance.
-- Original source values remain separate from normalized proposed values.
-- Actual-versus-projected ambiguity is flagged for review and cannot be approved
-  silently.
-- Workbook formulas are preserved as source metadata only and are not translated
-  into application calculation logic.
-
 ## Privacy
 
 Use only generated or irreversibly sanitized data in source code, tests,
@@ -442,5 +416,4 @@ financial data, databases, exports, or backups into this repository.
 
 - [`docs/data-dictionary.md`](docs/data-dictionary.md)
 - [`docs/accounting-rules.md`](docs/accounting-rules.md)
-- [`docs/workbook-mapping.md`](docs/workbook-mapping.md)
 - [`docs/decisions/`](docs/decisions/)

@@ -107,111 +107,6 @@ const validTransactionRequest = (debtId: string) => ({
   },
 });
 
-const createGeneratedWorkbook = (): string => {
-  const folder = mkdtempSync(join(tmpdir(), 'debt-tracker-import-'));
-  const workbookPath = join(folder, 'generated-debt-schedule.xlsx');
-  const textCell = (address: string, value: string) =>
-    `<c r="${address}" t="inlineStr"><is><t>${value}</t></is></c>`;
-  const numberCell = (address: string, value: number, formula?: string) =>
-    `<c r="${address}">${formula ? `<f>${formula}</f>` : ''}<v>${value}</v></c>`;
-  const worksheet = (rows: readonly string[]) =>
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rows.join('')}</sheetData></worksheet>`;
-  const row = (number: number, cells: readonly string[]) =>
-    `<row r="${number}">${cells.join('')}</row>`;
-  const parts: Readonly<Record<string, string>> = {
-    '[Content_Types].xml':
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
-    '_rels/.rels':
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
-    'xl/workbook.xml':
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Generated Transactions" sheetId="1" r:id="rId1"/><sheet name="Generated Balances" sheetId="2" r:id="rId2"/></sheets></workbook>',
-    'xl/_rels/workbook.xml.rels':
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>',
-    'xl/worksheets/sheet1.xml': worksheet([
-      row(1, [
-        textCell('A1', 'Date'),
-        textCell('B1', 'Description'),
-        textCell('C1', 'Amount'),
-        textCell('D1', 'Status'),
-      ]),
-      row(2, [
-        textCell('A2', '2026-01-15'),
-        textCell('B2', 'Generated actual payment'),
-        numberCell('C2', -250),
-        textCell('D2', 'Actual posted'),
-      ]),
-      row(3, [
-        textCell('A3', '2026-02-15'),
-        textCell('B3', 'Generated planned payment'),
-        numberCell('C3', -275),
-        textCell('D3', 'Projected plan'),
-      ]),
-      row(4, [
-        textCell('A4', '2026-03-15'),
-        textCell('B4', 'Generated ambiguous row'),
-        numberCell('C4', -300, 'C2+C3'),
-        textCell('D4', 'Actual or projected'),
-      ]),
-    ]),
-    'xl/worksheets/sheet2.xml': worksheet([
-      row(1, [
-        textCell('A1', 'Statement Date'),
-        textCell('B1', 'Ending Balance'),
-        textCell('C1', 'Difference'),
-      ]),
-      row(2, [
-        textCell('A2', '2026-01-31'),
-        numberCell('B2', 100000),
-        numberCell('C2', 25),
-      ]),
-    ]),
-  };
-  const localParts: Buffer[] = [];
-  const centralParts: Buffer[] = [];
-  let offset = 0;
-
-  for (const [filename, content] of Object.entries(parts)) {
-    const nameBuffer = Buffer.from(filename, 'utf8');
-    const data = Buffer.from(content, 'utf8');
-    const localHeader = Buffer.alloc(30);
-    localHeader.writeUInt32LE(0x04034b50, 0);
-    localHeader.writeUInt16LE(20, 4);
-    localHeader.writeUInt16LE(0, 6);
-    localHeader.writeUInt16LE(0, 8);
-    localHeader.writeUInt32LE(0, 10);
-    localHeader.writeUInt32LE(0, 14);
-    localHeader.writeUInt32LE(data.length, 18);
-    localHeader.writeUInt32LE(data.length, 22);
-    localHeader.writeUInt16LE(nameBuffer.length, 26);
-    localParts.push(localHeader, nameBuffer, data);
-
-    const centralHeader = Buffer.alloc(46);
-    centralHeader.writeUInt32LE(0x02014b50, 0);
-    centralHeader.writeUInt16LE(20, 4);
-    centralHeader.writeUInt16LE(20, 6);
-    centralHeader.writeUInt16LE(0, 8);
-    centralHeader.writeUInt16LE(0, 10);
-    centralHeader.writeUInt32LE(0, 12);
-    centralHeader.writeUInt32LE(0, 16);
-    centralHeader.writeUInt32LE(data.length, 20);
-    centralHeader.writeUInt32LE(data.length, 24);
-    centralHeader.writeUInt16LE(nameBuffer.length, 28);
-    centralHeader.writeUInt32LE(offset, 42);
-    centralParts.push(centralHeader, nameBuffer);
-    offset += localHeader.length + nameBuffer.length + data.length;
-  }
-
-  const centralDirectory = Buffer.concat(centralParts);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(Object.keys(parts).length, 8);
-  end.writeUInt16LE(Object.keys(parts).length, 10);
-  end.writeUInt32LE(centralDirectory.length, 12);
-  end.writeUInt32LE(offset, 16);
-  writeFileSync(workbookPath, Buffer.concat([...localParts, centralDirectory, end]));
-  return workbookPath;
-};
-
 const validSnapshotRequest = (debtId: string) => ({
   debtId,
   snapshot: {
@@ -268,86 +163,6 @@ const createService = (createId: () => string = randomUUID): DebtMaintenanceServ
       return new Date(clock).toISOString();
     },
   });
-
-const stageApprovedImportBatch = (
-  rows: readonly {
-    readonly id: string;
-    readonly sheet: string;
-    readonly rowNumber: number;
-    readonly recordType: 'debt' | 'transaction' | 'term' | 'balance_snapshot';
-    readonly normalizedValues: Readonly<Record<string, string | null>>;
-  }[],
-): string => {
-  const batchId = randomUUID();
-  const timestamp = new Date(clock).toISOString();
-  const mappingIds = new Map<string, string>();
-
-  context.database
-    .insert(importBatches)
-    .values({
-      id: batchId,
-      sourceWorkbookName: 'generated-reviewed-import.xlsx',
-      sourceWorkbookFingerprint: `generated-${batchId}`,
-      sourceWorkbookModifiedAtUtc: timestamp,
-      status: 'reviewed',
-      importedAtUtc: timestamp,
-      createdAtUtc: timestamp,
-      updatedAtUtc: timestamp,
-    })
-    .run();
-
-  for (const row of rows) {
-    if (!mappingIds.has(row.sheet)) {
-      const mappingId = randomUUID();
-      mappingIds.set(row.sheet, mappingId);
-      context.database
-        .insert(importSheetMappings)
-        .values({
-          id: mappingId,
-          batchId,
-          sourceSheetName: row.sheet,
-          proposedRecordType: row.recordType,
-          reviewStatus: 'approved',
-          fieldMappingJson: JSON.stringify(
-            Object.fromEntries(
-              Object.keys(row.normalizedValues).map((key) => [key, key]),
-            ),
-          ),
-          notes: null,
-          createdAtUtc: timestamp,
-          updatedAtUtc: timestamp,
-        })
-        .run();
-    }
-
-    context.database
-      .insert(stagedImportRows)
-      .values({
-        id: row.id,
-        batchId,
-        sheetMappingId: mappingIds.get(row.sheet)!,
-        sourceSheetName: row.sheet,
-        sourceRowNumber: row.rowNumber,
-        sourceCellReferencesJson: JSON.stringify({ generated: `A${row.rowNumber}` }),
-        sourceDisplayedValuesJson: JSON.stringify(row.normalizedValues),
-        sourceFormulasJson: JSON.stringify({}),
-        proposedRecordType: row.recordType,
-        activityClassification: 'actual',
-        normalizedValuesJson: JSON.stringify(row.normalizedValues),
-        validationMessagesJson: JSON.stringify([]),
-        duplicateCandidateJson: null,
-        reconciliationExceptionJson: null,
-        reviewStatus: 'approved',
-        reviewNotes: 'Generated approved test row.',
-        reviewedAtUtc: timestamp,
-        createdAtUtc: timestamp,
-        updatedAtUtc: timestamp,
-      })
-      .run();
-  }
-
-  return batchId;
-};
 
 beforeEach(() => {
   temporary = createTemporaryDatabaseLocation();
@@ -2211,8 +2026,39 @@ describe('debt maintenance', () => {
     const afterTransaction = service.createDebtTransaction(
       validTransactionRequest(created.id),
     );
+    const originalTransaction = afterTransaction.transactions[0]!;
+    service.editDebtTransaction({
+      id: originalTransaction.id,
+      debtId: created.id,
+      expectedUpdatedAtUtc: originalTransaction.updatedAtUtc,
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2026-01-15',
+        postingDate: '2026-01-16',
+        status: 'posted',
+        totalAmount: '500.00',
+        description: 'Generated corrected payment.',
+        sourceType: 'manual',
+        sourceReference: 'CHK-1001-CORRECTED',
+        allocations: {
+          principal: '450.00',
+          interest: '50.00',
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
     service.createBalanceSnapshot(validSnapshotRequest(created.id));
-    service.createBalanceReconciliation(validReconciliationRequest(created.id));
+    service.createBalanceReconciliation({
+      ...validReconciliationRequest(created.id),
+      reconciliation: {
+        ...validReconciliationRequest(created.id).reconciliation,
+        statementEndingBalance: '124550.13',
+      },
+    });
     service.createPayoffScenario({
       name: 'Generated deletion scenario',
       scenarioStartDate: '2026-07-28',
@@ -2227,7 +2073,7 @@ describe('debt maintenance', () => {
     const mappingId = randomUUID();
     const rowId = randomUUID();
     const postingId = randomUUID();
-    const transactionId = afterTransaction.transactions[0]!.id;
+    const transactionId = originalTransaction.id;
     context.database
       .insert(importBatches)
       .values({
@@ -2295,8 +2141,8 @@ describe('debt maintenance', () => {
     const preview = service.getDebt({ id: created.id }).permanentDeletionPreview;
     expect(preview).toMatchObject({
       debtTerms: 1,
-      transactions: 1,
-      allocations: 2,
+      transactions: 3,
+      allocations: 6,
       balanceSnapshots: 2,
       reconciliations: 1,
       importProvenance: 1,
@@ -2493,300 +2339,6 @@ describe('debt maintenance', () => {
       }),
     ).toThrow('Review the highlighted fields.');
     expect(service.getDebt({ id: created.id }).terms).toHaveLength(1);
-  });
-
-  it('stages a generated workbook without posting imported rows to live ledger tables', () => {
-    const workbookPath = createGeneratedWorkbook();
-    service = createDebtMaintenanceService({
-      database: context.database,
-      now: () => '2026-07-28T10:00:00.000Z',
-      selectWorkbookPath: () => workbookPath,
-    });
-
-    const batch = service.selectWorkbookForImport({});
-
-    expect(batch).not.toBeNull();
-    expect(batch?.sourceWorkbookName).toBe('generated-debt-schedule.xlsx');
-    expect(batch?.sheetMappings).toHaveLength(2);
-    expect(batch?.stagedRows.length).toBeGreaterThanOrEqual(4);
-    expect(batch?.controlTotals.ambiguousRows).toBeGreaterThanOrEqual(1);
-    expect(batch?.controlTotals.reconciliationExceptionRows).toBe(1);
-    expect(
-      batch?.stagedRows.some((row) => Object.keys(row.sourceFormulas).length > 0),
-    ).toBe(true);
-
-    expect(context.database.select().from(importBatches).all()).toHaveLength(1);
-    expect(context.database.select().from(importSheetMappings).all()).toHaveLength(2);
-    expect(
-      context.database.select().from(stagedImportRows).all().length,
-    ).toBeGreaterThan(0);
-    expect(context.database.select().from(debts).all()).toHaveLength(0);
-    expect(context.database.select().from(debtTransactions).all()).toHaveLength(0);
-
-    const eventTypes = context.database
-      .select({ eventType: auditEvents.eventType })
-      .from(auditEvents)
-      .all()
-      .map((event) => event.eventType);
-    expect(eventTypes).toContain('workbook_import_staged');
-  });
-
-  it('preserves source values separately from normalized row review values', () => {
-    const workbookPath = createGeneratedWorkbook();
-    service = createDebtMaintenanceService({
-      database: context.database,
-      now: () => '2026-07-28T10:00:00.000Z',
-      selectWorkbookPath: () => workbookPath,
-    });
-    const batch = service.selectWorkbookForImport({});
-    const row = batch?.stagedRows.find(
-      (candidate) => candidate.activityClassification === 'projected',
-    );
-
-    expect(batch).not.toBeNull();
-    expect(row).toBeDefined();
-
-    const updated = service.updateStagedImportRowReview({
-      batchId: batch!.id,
-      rowId: row!.id,
-      proposedRecordType: row!.proposedRecordType,
-      activityClassification: row!.activityClassification,
-      reviewStatus: 'deferred',
-      normalizedValues: {
-        ...row!.normalizedValues,
-        reviewer_note: 'Generated normalized review value.',
-      },
-      reviewNotes: 'Generated deferral for later posting design.',
-    });
-    const updatedRow = updated.stagedRows.find((candidate) => candidate.id === row!.id);
-
-    expect(updatedRow?.reviewStatus).toBe('deferred');
-    expect(updatedRow?.sourceDisplayedValues.status).toBe('Projected plan');
-    expect(updatedRow?.normalizedValues.reviewer_note).toBe(
-      'Generated normalized review value.',
-    );
-    expect(context.database.select().from(debtTransactions).all()).toHaveLength(0);
-  });
-
-  it('rejects approving an ambiguous actual-versus-projected staged row', () => {
-    const workbookPath = createGeneratedWorkbook();
-    service = createDebtMaintenanceService({
-      database: context.database,
-      now: () => '2026-07-28T10:00:00.000Z',
-      selectWorkbookPath: () => workbookPath,
-    });
-    const batch = service.selectWorkbookForImport({});
-    const ambiguous = batch?.stagedRows.find(
-      (row) => row.activityClassification === 'ambiguous',
-    );
-
-    expect(ambiguous).toBeDefined();
-    expect(() =>
-      service.updateStagedImportRowReview({
-        batchId: batch!.id,
-        rowId: ambiguous!.id,
-        proposedRecordType: ambiguous!.proposedRecordType,
-        activityClassification: 'ambiguous',
-        reviewStatus: 'approved',
-        normalizedValues: ambiguous!.normalizedValues,
-        reviewNotes: null,
-      }),
-    ).toThrow('Review the highlighted fields.');
-  });
-
-  it('updates sheet mapping review state without changing staged source rows', () => {
-    const workbookPath = createGeneratedWorkbook();
-    service = createDebtMaintenanceService({
-      database: context.database,
-      now: () => '2026-07-28T10:00:00.000Z',
-      selectWorkbookPath: () => workbookPath,
-    });
-    const batch = service.selectWorkbookForImport({});
-    const mapping = batch!.sheetMappings[0]!;
-    const sourceRowCount = batch!.stagedRows.length;
-
-    const updated = service.updateImportSheetMapping({
-      batchId: batch!.id,
-      mappingId: mapping.id,
-      proposedRecordType: mapping.proposedRecordType,
-      reviewStatus: 'approved',
-      fieldMapping: mapping.fieldMapping,
-      notes: 'Generated mapping approval.',
-    });
-
-    expect(updated.sheetMappings[0]?.reviewStatus).toBe('approved');
-    expect(updated.stagedRows).toHaveLength(sourceRowCount);
-    expect(
-      context.database
-        .select({ eventType: auditEvents.eventType })
-        .from(auditEvents)
-        .all()
-        .map((event) => event.eventType),
-    ).toContain('import_sheet_mapping_reviewed');
-  });
-
-  it('posts approved reviewed workbook rows transactionally with provenance', () => {
-    const debt = service.createDebt(validRequest('Generated Import Posting Note'));
-    const rowId = randomUUID();
-    const batchId = stageApprovedImportBatch([
-      {
-        id: rowId,
-        sheet: 'Generated Approved Transactions',
-        rowNumber: 2,
-        recordType: 'transaction',
-        normalizedValues: {
-          debt_id: debt.id,
-          transaction_type: 'payment',
-          effective_date: '2026-04-15',
-          posting_date: '2026-04-15',
-          amount: '-125.00',
-          description: 'Generated approved import payment.',
-          allocation_type: 'principal',
-        },
-      },
-    ]);
-
-    const preview = service.previewImportBatchPosting({ batchId });
-    expect(preview).toMatchObject({
-      postableRows: 1,
-      exceptionRows: 0,
-      alreadyPosted: false,
-    });
-
-    const result = service.postImportBatch({ batchId, confirmed: true });
-    expect(result.createdRecordCount).toBe(2);
-    expect(
-      result.rowResults[0]?.createdRecords.map((record) => record.entityType),
-    ).toEqual(['debt_transaction', 'transaction_allocation']);
-
-    const transaction = context.database
-      .select()
-      .from(debtTransactions)
-      .where(eq(debtTransactions.sourceReference, `import:${batchId}:${rowId}`))
-      .get();
-    expect(transaction).toMatchObject({
-      debtId: debt.id,
-      sourceType: 'import',
-      totalAmountCents: -12_500,
-    });
-    expect(context.database.select().from(importPostings).all()).toHaveLength(2);
-    expect(context.database.select().from(importBatches).get()).toMatchObject({
-      status: 'closed',
-    });
-    expect(
-      context.database
-        .select({ eventType: auditEvents.eventType })
-        .from(auditEvents)
-        .all()
-        .map((event) => event.eventType),
-    ).toContain('workbook_import_posted');
-  });
-
-  it('safely retries a completed import batch without duplicate posting', () => {
-    const debt = service.createDebt(validRequest('Generated Retry Import Note'));
-    const batchId = stageApprovedImportBatch([
-      {
-        id: randomUUID(),
-        sheet: 'Generated Approved Transactions',
-        rowNumber: 2,
-        recordType: 'transaction',
-        normalizedValues: {
-          debt_id: debt.id,
-          transaction_type: 'payment',
-          effective_date: '2026-04-15',
-          posting_date: '2026-04-15',
-          amount: '-125.00',
-          description: 'Generated approved import payment.',
-          allocation_type: 'principal',
-        },
-      },
-    ]);
-
-    service.postImportBatch({ batchId, confirmed: true });
-    const retry = service.postImportBatch({ batchId, confirmed: true });
-
-    expect(retry.alreadyPosted).toBe(true);
-    expect(context.database.select().from(debtTransactions).all()).toHaveLength(1);
-    expect(context.database.select().from(importPostings).all()).toHaveLength(2);
-  });
-
-  it('rejects imported debt terms that overlap existing effective periods', () => {
-    const debt = service.createDebt(validRequest('Generated Import Term Note'));
-    const batchId = stageApprovedImportBatch([
-      {
-        id: randomUUID(),
-        sheet: 'Generated Approved Terms',
-        rowNumber: 2,
-        recordType: 'term',
-        normalizedValues: {
-          debt_id: debt.id,
-          effective_start_date: '2025-06-01',
-          interest_rate_type: 'fixed',
-          annual_interest_rate: '6.00',
-          day_count_convention: 'actual_365',
-          calculation_convention: 'simple_daily',
-          required_payment: '2500.00',
-          payment_frequency: 'monthly',
-        },
-      },
-    ]);
-
-    expect(() => service.postImportBatch({ batchId, confirmed: true })).toThrow(
-      'Import row cannot be posted.',
-    );
-    expect(context.database.select().from(debtTerms).all()).toHaveLength(1);
-    expect(context.database.select().from(importPostings).all()).toHaveLength(0);
-  });
-
-  it('rolls back all live records when an approved row fails during batch posting', () => {
-    const debt = service.createDebt(validRequest('Generated Rollback Import Note'));
-    const batchId = stageApprovedImportBatch([
-      {
-        id: randomUUID(),
-        sheet: 'Generated Approved Transactions',
-        rowNumber: 2,
-        recordType: 'transaction',
-        normalizedValues: {
-          debt_id: debt.id,
-          transaction_type: 'payment',
-          effective_date: '2026-04-15',
-          posting_date: '2026-04-15',
-          amount: '-125.00',
-          description: 'Generated approved import payment.',
-          allocation_type: 'principal',
-        },
-      },
-      {
-        id: randomUUID(),
-        sheet: 'Generated Approved Balances',
-        rowNumber: 2,
-        recordType: 'balance_snapshot',
-        normalizedValues: {
-          debt_id: debt.id,
-          statement_date: '2026-01-31',
-          ending_balance: '124500.00',
-        },
-      },
-      {
-        id: randomUUID(),
-        sheet: 'Generated Approved Balances',
-        rowNumber: 3,
-        recordType: 'balance_snapshot',
-        normalizedValues: {
-          debt_id: randomUUID(),
-          statement_date: '2026-01-31',
-          ending_balance: '124000.00',
-        },
-      },
-    ]);
-
-    expect(() => service.postImportBatch({ batchId, confirmed: true })).toThrow();
-    expect(context.database.select().from(debtTransactions).all()).toHaveLength(0);
-    expect(context.database.select().from(importPostings).all()).toHaveLength(0);
-    expect(context.database.select().from(balanceSnapshots).all()).toHaveLength(0);
-    expect(context.database.select().from(importBatches).get()).toMatchObject({
-      status: 'reviewed',
-    });
   });
 
   it('creates and validates a manual SQLite backup outside the repository', async () => {

@@ -24,6 +24,10 @@ import {
   auditEvents,
   debtTerms,
   debtTransactions,
+  importBatches,
+  importPostings,
+  importSheetMappings,
+  stagedImportRows,
   transactionAllocations,
 } from './schema';
 import {
@@ -199,6 +203,85 @@ describe('database migrations and isolation', () => {
         })
         .run(),
     ).toThrow();
+  });
+
+  it('opens an existing database containing dormant legacy import tables', () => {
+    const batchId = randomUUID();
+    const mappingId = randomUUID();
+    const rowId = randomUUID();
+    const postingId = randomUUID();
+    const legacyLiveEntityId = randomUUID();
+
+    context.database
+      .insert(importBatches)
+      .values({
+        id: batchId,
+        sourceWorkbookName: 'generated-legacy-source.xlsx',
+        sourceWorkbookFingerprint: 'generated-legacy-fingerprint',
+        sourceWorkbookModifiedAtUtc: FIXED_TIMESTAMP,
+        status: 'closed',
+        importedAtUtc: FIXED_TIMESTAMP,
+        createdAtUtc: FIXED_TIMESTAMP,
+        updatedAtUtc: FIXED_TIMESTAMP,
+      })
+      .run();
+    context.database
+      .insert(importSheetMappings)
+      .values({
+        id: mappingId,
+        batchId,
+        sourceSheetName: 'Generated Legacy Rows',
+        proposedRecordType: 'transaction',
+        reviewStatus: 'approved',
+        fieldMappingJson: JSON.stringify({ amount: 'amount' }),
+        notes: null,
+        createdAtUtc: FIXED_TIMESTAMP,
+        updatedAtUtc: FIXED_TIMESTAMP,
+      })
+      .run();
+    context.database
+      .insert(stagedImportRows)
+      .values({
+        id: rowId,
+        batchId,
+        sheetMappingId: mappingId,
+        sourceSheetName: 'Generated Legacy Rows',
+        sourceRowNumber: 2,
+        sourceCellReferencesJson: JSON.stringify({ amount: 'A2' }),
+        sourceDisplayedValuesJson: JSON.stringify({ amount: '125.00' }),
+        sourceFormulasJson: JSON.stringify({}),
+        proposedRecordType: 'transaction',
+        activityClassification: 'actual',
+        normalizedValuesJson: JSON.stringify({ amount: '125.00' }),
+        validationMessagesJson: JSON.stringify([]),
+        duplicateCandidateJson: null,
+        reconciliationExceptionJson: null,
+        reviewStatus: 'approved',
+        reviewNotes: null,
+        reviewedAtUtc: FIXED_TIMESTAMP,
+        createdAtUtc: FIXED_TIMESTAMP,
+        updatedAtUtc: FIXED_TIMESTAMP,
+      })
+      .run();
+    context.database
+      .insert(importPostings)
+      .values({
+        id: postingId,
+        batchId,
+        stagedRowId: rowId,
+        liveEntityType: 'debt_transaction',
+        liveEntityId: legacyLiveEntityId,
+        postedAtUtc: FIXED_TIMESTAMP,
+        createdAtUtc: FIXED_TIMESTAMP,
+      })
+      .run();
+
+    context.close();
+    context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+
+    expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+    expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
+    expect(context.database.select().from(importPostings).all()).toHaveLength(1);
   });
 
   it('migrates a representative existing database with prior reconciliation records', () => {

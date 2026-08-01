@@ -331,52 +331,18 @@ Upcoming maturities include active debts maturing within 12 months of the
 dashboard effective date. Attention items include unreconciled, in-progress, and
 exception reconciliations for active debts.
 
-## Workbook Import Staging
+## Legacy Import Provenance
 
-Workbook import starts as a source-ingestion and review workflow. Reviewed
-posting is a separate explicit action.
+Workbook import is no longer a normal user workflow. Existing import staging and
+provenance tables remain in the database only to preserve startup, backup,
+restore, export, and permanent-deletion compatibility for databases that already
+contain historical import records.
 
-- The workbook is treated as untrusted input and is read only by the Electron
-  main process.
-- Source workbook name, sheet, row, cell references, displayed values, formulas,
-  and import timestamps are preserved for provenance.
-- Source displayed values are retained separately from normalized proposed
-  values.
-- Staged rows may be detected as likely debts, transactions, terms, balance
-  snapshots, or unknown records.
-- Actual-versus-projected classification is never silently inferred when the row
-  is ambiguous. Ambiguous rows remain flagged for review and cannot be approved
-  until classified.
-- Formula text is preserved as source metadata. Workbook formulas do not become
-  Debt Tracker accounting rules unless a future phase independently documents
-  and tests that rule.
-- Approving, rejecting, or deferring staged mappings and rows records review
-  state only. Posting requires a separate confirmed batch action.
-- Duplicate candidates, invalid values, control totals, and reconciliation
-  exceptions are review aids and do not alter the posted ledger.
-
-## Reviewed Workbook Import Posting
-
-Reviewed posting converts only approved, valid, actual staged rows with approved
-sheet mappings into live records.
-
-- No staged row posts unless it is explicitly approved.
-- Ambiguous or projected rows cannot post to actual ledger tables.
-- Rows with unresolved validation messages, duplicate candidates, or
-  reconciliation exceptions cannot post.
-- Posting a batch is all-or-nothing; a failure leaves no partial debts, terms,
-  transactions, allocations, snapshots, or provenance rows.
-- A completed batch is closed. Retrying a closed batch returns the existing
-  posting provenance and does not create duplicates.
-- Posted transaction rows use source type `import` and a source reference of
-  `import:<batch-id>:<staged-row-id>`.
-- Posted balance snapshots from workbook import use source type `import` and
-  the same source-reference pattern.
-- `import_postings` records link each created live record back to the import
-  batch and staged row. Original source displayed values and formulas remain in
-  staging and are not copied into normalized posted values.
-- Import posting does not create reconciliations. Statement reconciliations
-  remain a separate workflow.
+- Current activity entry is manual-only through debt, transaction, snapshot, and
+  reconciliation workflows.
+- Dormant legacy import tables do not authorize new ledger posting.
+- Permanent debt deletion removes related legacy import provenance rows when
+  they reference records being deleted.
 
 ## Projection and Payoff Scenarios
 

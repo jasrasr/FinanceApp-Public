@@ -41,8 +41,11 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.24.0')).toBeVisible();
+      await expect(window.getByText('Version 0.25.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
+      await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
+        0,
+      );
 
       await window.getByRole('button', { name: 'Debts' }).click();
       await expect(
@@ -89,6 +92,43 @@ test.describe('packaged Windows application', () => {
       await expect(window.getByText('Packaged Fictional Baseline Note')).toBeVisible();
       await expect(
         window.getByText('Packaged Fictional Post Backup Draw'),
+      ).not.toBeVisible();
+
+      await createGeneratedDebt(window, {
+        name: 'Packaged Fictional Delete Workflow Note',
+        principal: '15000.00',
+        payment: '350.00',
+        maturity: '2030-10-31',
+      });
+      await window.getByRole('button', { name: 'Delete debt permanently' }).click();
+      const deleteDialog = window.getByRole('dialog', {
+        name: 'Delete debt permanently?',
+      });
+      await expect(
+        deleteDialog.getByText('Packaged Fictional Delete Workflow Note'),
+      ).toBeVisible();
+      await expect(
+        deleteDialog.getByText('Related records that will be deleted'),
+      ).toBeVisible();
+      await expect(
+        deleteDialog.getByText('Required immediate backup status'),
+      ).toBeVisible();
+      await deleteDialog
+        .getByLabel('Type the debt name to confirm')
+        .fill('Packaged Fictional Delete Workflow Note');
+      await deleteDialog
+        .getByLabel(
+          'I understand this cannot be undone except by restoring the validated backup.',
+        )
+        .check();
+      await deleteDialog
+        .getByRole('button', { name: 'Delete debt permanently', exact: true })
+        .click();
+      await expect(
+        window.getByText(/Debt was permanently deleted after validated backup/),
+      ).toBeVisible();
+      await expect(
+        window.getByText('Packaged Fictional Delete Workflow Note'),
       ).not.toBeVisible();
 
       await window.getByRole('button', { name: 'Data management' }).click();

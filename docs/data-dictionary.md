@@ -269,10 +269,11 @@ non-sensitive operational audit events. Summaries avoid financial amounts; updat
 metadata identifies classifications and related record identifiers rather than
 financial values.
 
-## `import_batches`
+## Legacy `import_batches`
 
-Represents one staged workbook import. The source workbook is read as untrusted
-input; the file is not copied into the repository or posted to financial tables.
+Dormant legacy compatibility table retained for existing databases that may
+already contain import staging metadata. Current versions do not expose workbook
+selection, staging, review, or posting workflows.
 
 | Column                            | Type | Required | Rule                                  |
 | --------------------------------- | ---: | :------: | ------------------------------------- |
@@ -288,9 +289,10 @@ input; the file is not copied into the repository or posted to financial tables.
 The fingerprint is provenance for review and duplicate detection. It is not a
 posting key and does not authorize overwriting prior imports.
 
-## `import_sheet_mappings`
+## Legacy `import_sheet_mappings`
 
-Stores user-reviewable sheet-level mapping proposals for a batch.
+Dormant legacy compatibility table for previously staged sheet-level mapping
+metadata.
 
 | Column                 | Type | Required | Rule                                                  |
 | ---------------------- | ---: | :------: | ----------------------------------------------------- |
@@ -304,14 +306,13 @@ Stores user-reviewable sheet-level mapping proposals for a batch.
 | `created_at_utc`       | text |   Yes    | UTC timestamp                                         |
 | `updated_at_utc`       | text |   Yes    | UTC timestamp                                         |
 
-Sheet name is unique per batch. Approving a sheet mapping confirms the sheet can
-participate in reviewed posting. It still does not post staged rows until the
-separate batch-posting action is confirmed.
+Sheet name is unique per batch. Current versions do not expose mapping review or
+posting actions.
 
-## `staged_import_rows`
+## Legacy `staged_import_rows`
 
-Stores source-row evidence and normalized proposals separately from posted
-financial records.
+Dormant legacy compatibility table for previously staged source-row evidence and
+normalized proposals. Current versions do not create or post staged rows.
 
 | Column                          |    Type | Required | Rule                                                  |
 | ------------------------------- | ------: | :------: | ----------------------------------------------------- |
@@ -336,14 +337,13 @@ financial records.
 | `updated_at_utc`                |    text |   Yes    | UTC timestamp                                         |
 
 Batch, sheet, and row number are unique. Staged rows are not ledger rows, debt
-rows, term rows, balance snapshots, or reconciliations. Reviewed posting
-explicitly creates live records from approved actual staged rows and preserves
-the staged source values separately from the normalized posted values.
+rows, term rows, balance snapshots, or reconciliations.
 
-## `import_postings`
+## Legacy `import_postings`
 
-Maps each live record created by reviewed workbook posting back to its source
-batch and staged row.
+Dormant legacy provenance table for live records that may have been created by a
+previous import workflow. Current versions preserve the rows for readability,
+backup, restore, export, and permanent-deletion cleanup.
 
 | Column             | Type | Required | Rule                                                                   |
 | ------------------ | ---: | :------: | ---------------------------------------------------------------------- |
@@ -356,10 +356,7 @@ batch and staged row.
 | `created_at_utc`   | text |   Yes    | UTC timestamp                                                          |
 
 `live_entity_type, live_entity_id` is unique so a live record can have only one
-workbook-import provenance row. Indexes support batch and staged-row lookup.
-Completed posting closes the import batch. Re-running a closed batch returns the
-existing posting provenance rather than inserting duplicate debts, terms,
-transactions, allocations, or snapshots.
+legacy import provenance row. Indexes support batch and staged-row lookup.
 
 ## `payoff_scenarios`
 
