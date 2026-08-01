@@ -486,9 +486,10 @@ payoff/new-principal exchange. Legacy separate-debt refinance links remain
 readable but no longer generate normal combined financing-chain trend rows.
 
 Interest analysis is separate from debt balance trends. Monthly interest expense
-charts omit zero-only periods when they add no analytical value and default to a
-recent readable chronological view. A comparison view groups January through
-December and separates each year so the same month can be compared across years.
+charts use the full selected report date range and preserve zero months when
+needed to keep the chronological timeline continuous. A comparison view groups
+January through December and separates each year represented by interest
+activity in the selected range so the same month can be compared across years.
 Annual interest comparisons omit zero years when they add no analytical value and
 state the omission. Monthly and annual interest displays use positive
 user-facing amounts and must reconcile to the accessible tabular detail.

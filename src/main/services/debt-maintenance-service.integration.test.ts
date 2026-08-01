@@ -1535,6 +1535,95 @@ describe('debt maintenance', () => {
     expect(reports.reconciliationAndDataQuality.rows).toEqual([]);
   });
 
+  it('uses the selected report date range consistently for monthly and annual interest', () => {
+    const request = validRequest('Generated Long-Range Mortgage');
+    request.debt.debtType = 'mortgage';
+    request.debt.originationDate = '2019-01-01';
+    request.initialTerm.effectiveStartDate = '2019-01-01';
+    const created = service.createDebt(request);
+    const interestByDate = new Map<string, string>([
+      ['2019-01-15', '125.00'],
+      ['2020-04-15', '150.00'],
+      ['2021-07-15', '175.00'],
+      ['2022-10-15', '200.00'],
+      ['2023-05-15', '225.00'],
+      ['2024-02-15', '250.00'],
+      ['2025-08-15', '275.00'],
+      ['2026-03-15', '300.00'],
+    ]);
+
+    for (const [effectiveDate, interest] of interestByDate) {
+      const payment = validTransactionRequest(created.id);
+      payment.transaction.effectiveDate = effectiveDate;
+      payment.transaction.postingDate = effectiveDate;
+      payment.transaction.totalAmount = (Number(interest) + 1).toFixed(2);
+      payment.transaction.allocations.principal = '1.00';
+      payment.transaction.allocations.interest = interest;
+      service.createDebtTransaction(payment);
+    }
+
+    const reports = service.getDebtReports({
+      startDate: '2019-01-01',
+      endDate: '2026-03-31',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(reports.activityTrends.rows[0]?.period).toBe('2019-01');
+    expect(reports.activityTrends.rows.at(-1)?.period).toBe('2026-03');
+    expect(reports.activityTrends.rows).toHaveLength(87);
+    expect(
+      reports.activityTrends.rows.find((row) => row.period === '2023-05'),
+    ).toMatchObject({ interestActivity: '225.00' });
+    expect(
+      reports.activityTrends.rows.find((row) => row.period === '2023-06'),
+    ).toMatchObject({ interestActivity: '0.00' });
+    expect(reports.activityTrends.annualInterestByDebt.map((row) => row.year)).toEqual([
+      '2019',
+      '2020',
+      '2021',
+      '2022',
+      '2023',
+      '2024',
+      '2025',
+      '2026',
+    ]);
+
+    const monthlyTotals = new Map<string, number>();
+    for (const row of reports.activityTrends.rows) {
+      const year = row.period.slice(0, 4);
+      monthlyTotals.set(
+        year,
+        (monthlyTotals.get(year) ?? 0) + Number(row.interestActivity),
+      );
+    }
+    for (const annual of reports.activityTrends.annualInterestByDebt) {
+      expect(Number(annual.interestExpense)).toBe(monthlyTotals.get(annual.year));
+    }
+
+    const customReports = service.getDebtReports({
+      startDate: '2021-07-01',
+      endDate: '2023-05-31',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(customReports.activityTrends.rows[0]?.period).toBe('2021-07');
+    expect(customReports.activityTrends.rows.at(-1)?.period).toBe('2023-05');
+    expect(
+      customReports.activityTrends.annualInterestByDebt.map((row) => row.year),
+    ).toEqual(['2021', '2022', '2023']);
+    expect(customReports.annualRollforward.rows.map((row) => row.period)).toEqual([
+      '2021',
+      '2022',
+      '2023',
+    ]);
+  });
+
   it('classifies principal rollforward activity without escrow or opening-principal offsets', () => {
     const mortgageRequest = validRequest('Generated Rollforward Mortgage');
     mortgageRequest.debt.debtType = 'mortgage';

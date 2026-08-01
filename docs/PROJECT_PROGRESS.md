@@ -1621,3 +1621,50 @@ completed.
   - Continue generated-data acceptance testing around in-place refinance review,
     reconciliation evidence, and backup-assisted deletion of legacy test
     replacement debts.
+
+## Phase 33: Monthly Interest Report Range Correction
+
+- Completion date: 2026-08-01
+- Application version: 0.26.1
+- Features implemented:
+  - Fixed Interest expense analysis so the chronological monthly trend uses all
+    monthly report rows in the selected date range instead of the latest 24
+    nonzero rows.
+  - Fixed month-by-month comparison so it includes every year represented by
+    interest activity in the selected report range.
+  - Preserved zero-interest months in the chronological monthly trend so long
+    selected ranges remain continuous and reset zoom restores the whole range.
+- Material architecture and accounting decisions:
+  - The service already generated monthly and annual interest rows from the same
+    selected report date range. The fix removes renderer-only truncation and
+    keeps chart zoom/pan as presentation state only.
+  - Annual interest totals remain the reconciliation basis for monthly interest
+    totals by year.
+- Database schema or migration changes:
+  - None.
+- New or changed IPC operations:
+  - None.
+- New UI screens or workflows:
+  - No new screens. Existing monthly interest views now show the full selected
+    report range with adaptive ticks, zoom, pan, and reset controls.
+- Validation and smoke-test results:
+  - Focused validation was added for 2019-forward monthly interest rows,
+    2019-2023 comparison-year inclusion, yearly monthly-to-annual
+    reconciliation, custom date filtering, and zoom reset behavior.
+  - Focused renderer/preload tests passed: 2 files and 35 tests.
+  - Focused integration tests passed: 2 files and 64 tests.
+  - `npm run format` passed.
+  - `npm run check` passed under escalation after fixing lint/typecheck issues
+    in the new regression tests. The final gate completed with 10 Vitest files
+    and 136 tests passing, database integrity passing, production build passing,
+    and the active Electron E2E workflow passing; packaged source specs were
+    skipped in that suite.
+  - `npm run package:smoke` passed packaged launch/export and
+    upgrade-preservation tests. The runner reported the existing Node `fs.R_OK`
+    deprecation warning and a temporary installed-app cleanup warning.
+- Known limitations and technical debt:
+  - Long selected ranges rely on sparse labels and zoom/pan for readability;
+    no persistent chart preferences are stored.
+- Recommended next phase:
+  - Continue generated-data acceptance testing around long-range reporting and
+    chart accessibility.

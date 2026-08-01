@@ -356,11 +356,12 @@ Electron user-data directory that it removes after the workflow.
   balance-trend reporting. Rollforwards show only the net refinance principal
   adjustment, not the full refinanced principal as a new borrowing.
 - Interest analysis separates monthly interest expense trends from annual
-  interest comparisons. Monthly charts default to a recent readable period and
-  support month-by-month comparison across years, bounded zoom, wheel zoom, and
-  horizontal pan. Annual interest uses debt-source stacked bars with toggles.
-  Interest expense is displayed as a positive amount and reconciles to the
-  underlying report table.
+  interest comparisons. Monthly views use the full selected report range,
+  preserve zero months for continuous timelines, support month-by-month
+  comparison across every represented year, and use bounded zoom, wheel zoom,
+  horizontal pan, and adaptive labels for readability. Annual interest uses
+  debt-source stacked bars with toggles. Interest expense is displayed as a
+  positive amount and reconciles to the underlying report table.
 - Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
   engine and inherit its unsupported-term warnings.
 - Actual-versus-plan variance uses saved payoff scenarios. Because saved

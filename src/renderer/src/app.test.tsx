@@ -24,7 +24,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 22,
   appMetadata: {
-    version: '0.26.0',
+    version: '0.26.1',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -530,6 +530,56 @@ const unsupportedPayoffScenario: PayoffScenarioDto = {
       },
     ],
   },
+};
+
+const longRangeInterestReports = (): DebtReportsDto => {
+  const rows: DebtReportsDto['activityTrends']['rows'] = [];
+  const annualTotals = new Map<string, number>();
+  const interestByPeriod = new Map<string, number>([
+    ['2019-01', 125],
+    ['2020-04', 150],
+    ['2021-07', 175],
+    ['2022-10', 200],
+    ['2023-05', 225],
+    ['2024-02', 250],
+    ['2025-08', 275],
+    ['2026-03', 300],
+  ]);
+
+  for (let year = 2019; year <= 2026; year += 1) {
+    for (let month = 1; month <= 12; month += 1) {
+      if (year === 2026 && month > 3) break;
+      const period = `${year}-${String(month).padStart(2, '0')}`;
+      const interest = interestByPeriod.get(period) ?? 0;
+      annualTotals.set(String(year), (annualTotals.get(String(year)) ?? 0) + interest);
+      rows.push({
+        period,
+        principalReduction: '0.00',
+        interestActivity: interest.toFixed(2),
+        borrowings: '0.00',
+        payments: interest === 0 ? '0.00' : interest.toFixed(2),
+      });
+    }
+  }
+
+  return {
+    ...sampleReports,
+    activityTrends: {
+      basis: {
+        ...sampleReportBasis,
+        dateRange: '2019-01-01 through 2026-03-31',
+      },
+      rows,
+      annualInterestByDebt: [...annualTotals.entries()]
+        .filter(([, total]) => total !== 0)
+        .map(([year, total]) => ({
+          year,
+          debtId: '00000000-0000-4000-8000-000000000001',
+          debtName: 'Generated Home Mortgage',
+          interestExpense: total.toFixed(2),
+        })),
+    },
+  };
 };
 
 const sampleDebtDetail: DebtDetailDto = {
@@ -1557,7 +1607,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.26.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.26.1')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1827,6 +1877,77 @@ describe('debt maintenance application', () => {
       debtType: null,
       status: null,
     });
+  });
+
+  it('keeps monthly interest analysis on the full selected report date range', async () => {
+    const bridge = createBridge();
+    bridge.getDebtReports = vi.fn(async () => ({
+      ok: true as const,
+      value: longRangeInterestReports(),
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reports' }));
+    fireEvent.click(await screen.findByText('Interest expense analysis'));
+
+    const monthlyChart = screen.getByTestId('monthly-interest-chart');
+    expect(within(monthlyChart).getByText(/Visible range:/)).toHaveTextContent(
+      'Visible range: 2019-01 through 2026-03',
+    );
+    expect(
+      screen
+        .getAllByTestId('monthly-interest-tooltip')
+        .some((tooltip) => /2019-01\s+\$125.00/.test(tooltip.textContent ?? '')),
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByTestId('monthly-interest-tooltip')
+        .some((tooltip) => /2023-05\s+\$225.00/.test(tooltip.textContent ?? '')),
+    ).toBe(true);
+    expect(screen.getAllByTestId('monthly-interest-tooltip')).toHaveLength(
+      longRangeInterestReports().activityTrends.rows.length,
+    );
+
+    const beforeZoom = within(monthlyChart).getByText(/Visible range:/).textContent;
+    monthlyChart.dispatchEvent(
+      new WheelEvent('wheel', { cancelable: true, deltaY: -100 }),
+    );
+    await waitFor(() =>
+      expect(within(monthlyChart).getByText(/Visible range:/).textContent).not.toBe(
+        beforeZoom,
+      ),
+    );
+    expect(
+      longRangeInterestReports().activityTrends.rows.some(
+        (row) => row.period === '2019-01',
+      ),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset monthly zoom' }));
+    expect(within(monthlyChart).getByText(/Visible range:/)).toHaveTextContent(
+      'Visible range: 2019-01 through 2026-03',
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Compare months across years' }));
+    for (const year of ['2019', '2020', '2021', '2022', '2023']) {
+      expect(screen.getByTestId(`interest-year-treatment-${year}`)).toBeVisible();
+    }
+    expect(
+      screen
+        .getAllByTestId('interest-comparison-tooltip')
+        .some((tooltip) => /May 2023\s+\$225.00/.test(tooltip.textContent ?? '')),
+    ).toBe(true);
+
+    const monthlyTotals = new Map<string, number>();
+    for (const row of longRangeInterestReports().activityTrends.rows) {
+      const year = row.period.slice(0, 4);
+      monthlyTotals.set(
+        year,
+        (monthlyTotals.get(year) ?? 0) + Number(row.interestActivity),
+      );
+    }
+    for (const row of longRangeInterestReports().activityTrends.annualInterestByDebt) {
+      expect(Number(row.interestExpense)).toBe(monthlyTotals.get(row.year));
+    }
   });
 
   it('keeps monthly interest ticks readable across range sizes and year treatments distinct', () => {

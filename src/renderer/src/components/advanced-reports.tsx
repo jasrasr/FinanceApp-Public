@@ -241,28 +241,25 @@ const monthName = (monthIndex: number): string =>
 type ActivityTrendRow = DebtReportsDto['activityTrends']['rows'][number];
 
 const interestRowsWithActivity = (
-  rows: DebtReportsDto['activityTrends']['rows'],
+  rows: readonly ActivityTrendRow[],
 ): readonly ActivityTrendRow[] =>
   rows.filter((row) => Number(row.interestActivity) !== 0);
 
-const recentInterestRows = (
-  rows: DebtReportsDto['activityTrends']['rows'],
-): readonly ActivityTrendRow[] => {
-  const activeRows = interestRowsWithActivity(rows);
-  return activeRows.slice(Math.max(0, activeRows.length - 24));
-};
+const hasInterestActivity = (rows: readonly ActivityTrendRow[]): boolean =>
+  interestRowsWithActivity(rows).length > 0;
 
 const InterestComparisonChart = ({
   rows,
 }: {
   readonly rows: readonly ActivityTrendRow[];
 }): React.JSX.Element | null => {
-  if (rows.length === 0) return null;
+  const activeRows = interestRowsWithActivity(rows);
+  if (activeRows.length === 0) return null;
   const width = 720;
   const height = 240;
   const chartTop = 20;
   const chartBottom = 180;
-  const years = [...new Set(rows.map((row) => row.period.slice(0, 4)))].sort();
+  const years = [...new Set(activeRows.map((row) => row.period.slice(0, 4)))].sort();
   const valuesByYearMonth = new Map(
     rows.map((row) => [
       `${row.period.slice(0, 4)}-${row.period.slice(5, 7)}`,
@@ -1467,22 +1464,46 @@ const ReportInterestAnalysis = ({
       (annualTotals.get(row.year) ?? 0) + Number(row.interestExpense),
     );
   }
-  const monthlyRows = recentInterestRows(reports.activityTrends.rows);
-  const [monthlyWindow, setMonthlyWindow] = useState({
-    start: Math.max(0, monthlyRows.length - 12),
+  const monthlyRows = reports.activityTrends.rows;
+  const monthlyFullStart = 0;
+  const monthlyFullEnd = Math.max(0, monthlyRows.length - 1);
+  const monthlyRangeKey = `${monthlyRows[0]?.period ?? 'none'}-${monthlyRows.at(-1)?.period ?? 'none'}-${monthlyRows.length}`;
+  const [monthlyWindowState, setMonthlyWindow] = useState({
+    rangeKey: monthlyRangeKey,
+    start: 0,
     end: Math.max(0, monthlyRows.length - 1),
   });
+  const monthlyWindow =
+    monthlyWindowState.rangeKey === monthlyRangeKey
+      ? monthlyWindowState
+      : {
+          rangeKey: monthlyRangeKey,
+          start: monthlyFullStart,
+          end: monthlyFullEnd,
+        };
   const monthlyChartRef = useRef<HTMLDivElement | null>(null);
   const monthlyDragRef = useRef<{ originX: number; start: number } | null>(null);
   const [monthlyDragging, setMonthlyDragging] = useState(false);
   const panMonthly = (delta: number): void =>
-    setMonthlyWindow((current) => {
+    setMonthlyWindow((currentState) => {
+      const current =
+        currentState.rangeKey === monthlyRangeKey
+          ? currentState
+          : {
+              rangeKey: monthlyRangeKey,
+              start: monthlyFullStart,
+              end: monthlyFullEnd,
+            };
       const width = current.end - current.start + 1;
       const start = Math.max(
         0,
         Math.min(current.start + delta, monthlyRows.length - width),
       );
-      return { start, end: Math.max(start, start + width - 1) };
+      return {
+        rangeKey: monthlyRangeKey,
+        start,
+        end: Math.max(start, start + width - 1),
+      };
     });
   const monthlyVisibleRows = monthlyRows.slice(
     monthlyWindow.start,
@@ -1494,20 +1515,28 @@ const ReportInterestAnalysis = ({
     const zoomChart = (event: WheelEvent): void => {
       event.preventDefault();
       const delta = event.deltaY < 0 ? -1 : 1;
-      setMonthlyWindow((current) => {
+      setMonthlyWindow((currentState) => {
+        const current =
+          currentState.rangeKey === monthlyRangeKey
+            ? currentState
+            : {
+                rangeKey: monthlyRangeKey,
+                start: monthlyFullStart,
+                end: monthlyFullEnd,
+              };
         const width = current.end - current.start + 1;
         const nextWidth = Math.max(2, Math.min(monthlyRows.length, width + delta * 2));
         const start = Math.max(
           0,
           Math.min(current.start, monthlyRows.length - nextWidth),
         );
-        return { start, end: start + nextWidth - 1 };
+        return { rangeKey: monthlyRangeKey, start, end: start + nextWidth - 1 };
       });
     };
     chart.addEventListener('wheel', zoomChart, { passive: false });
     return () => chart.removeEventListener('wheel', zoomChart);
-  }, [monthlyRows.length]);
-  const comparisonRows = interestRowsWithActivity(reports.activityTrends.rows);
+  }, [monthlyFullEnd, monthlyRangeKey, monthlyRows.length]);
+  const hasMonthlyInterestActivity = hasInterestActivity(monthlyRows);
   const annualRows = [...annualTotals.entries()]
     .filter(([, total]) => total !== 0)
     .map(([year, total], index, rows) => {
@@ -1626,7 +1655,11 @@ const ReportInterestAnalysis = ({
             <button
               className="rounded-md border border-slate-300 px-2 py-1 text-xs"
               onClick={() =>
-                setMonthlyWindow({ start: 0, end: Math.max(0, monthlyRows.length - 1) })
+                setMonthlyWindow({
+                  rangeKey: monthlyRangeKey,
+                  start: monthlyFullStart,
+                  end: monthlyFullEnd,
+                })
               }
               type="button"
             >
@@ -1635,13 +1668,24 @@ const ReportInterestAnalysis = ({
             <button
               className="rounded-md border border-slate-300 px-2 py-1 text-xs"
               onClick={() =>
-                setMonthlyWindow((current) => ({
-                  start: Math.max(
-                    0,
-                    monthlyRows.length - (current.end - current.start + 1),
-                  ),
-                  end: Math.max(0, monthlyRows.length - 1),
-                }))
+                setMonthlyWindow((currentState) => {
+                  const current =
+                    currentState.rangeKey === monthlyRangeKey
+                      ? currentState
+                      : {
+                          rangeKey: monthlyRangeKey,
+                          start: monthlyFullStart,
+                          end: monthlyFullEnd,
+                        };
+                  return {
+                    rangeKey: monthlyRangeKey,
+                    start: Math.max(
+                      0,
+                      monthlyRows.length - (current.end - current.start + 1),
+                    ),
+                    end: monthlyFullEnd,
+                  };
+                })
               }
               type="button"
             >
@@ -1658,7 +1702,7 @@ const ReportInterestAnalysis = ({
               : 'Month-by-month comparison across years'}
           </h4>
           {interestView === 'trend' ? (
-            monthlyRows.length === 0 ? (
+            !hasMonthlyInterestActivity ? (
               <p className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
                 No interest activity exists in the selected report range.
               </p>
@@ -1673,12 +1717,12 @@ const ReportInterestAnalysis = ({
                 }))}
               />
             )
-          ) : comparisonRows.length === 0 ? (
+          ) : !hasMonthlyInterestActivity ? (
             <p className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
               No interest activity exists for month-by-month comparison.
             </p>
           ) : (
-            <InterestComparisonChart rows={monthlyVisibleRows} />
+            <InterestComparisonChart rows={monthlyRows} />
           )}
         </div>
         <div className="rounded-lg border border-slate-200 p-4">
