@@ -21,7 +21,7 @@ export const USER_SELECTABLE_DEBT_TYPES = [
   'other',
 ] as const;
 
-export const DEBT_STATUSES = ['active', 'paid_off', 'closed'] as const;
+export const DEBT_STATUSES = ['active', 'paid_off', 'refinanced', 'closed'] as const;
 
 export const PAYMENT_FREQUENCIES = [
   'weekly',

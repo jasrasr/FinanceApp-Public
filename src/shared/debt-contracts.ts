@@ -24,6 +24,7 @@ const uuidSchema = z.uuid();
 const utcTimestampSchema = z.iso.datetime({ offset: false });
 const moneyInputSchema = z.string().trim().min(1).max(100);
 const optionalMoneyInputSchema = z.string().trim().max(100).nullable().optional();
+const optionalUuidInputSchema = uuidSchema.nullable().optional();
 
 const transactionAllocationInputSchema = z
   .object({
@@ -66,7 +67,7 @@ export const debtTermInputSchema = z
   })
   .strict();
 
-export const debtCoreInputSchema = z
+const debtCoreInputBaseSchema = z
   .object({
     name: requiredTextSchema,
     creditor: requiredTextSchema,
@@ -83,9 +84,38 @@ export const debtCoreInputSchema = z
     collateralDescription: optionalTextSchema,
     taxCategory: z.enum(TAX_CATEGORIES),
     deductiblePercentage: requiredTextSchema,
+    financingChainName: optionalTextSchema,
+    refinancedFromDebtId: optionalUuidInputSchema,
+    refinancedIntoDebtId: optionalUuidInputSchema,
+    refinanceDate: financialDateInputSchema.nullable().optional(),
     notes: optionalTextSchema,
   })
   .strict();
+
+const preventSelfRefinanceLinks = <
+  T extends {
+    refinancedFromDebtId?: string | null;
+    refinancedIntoDebtId?: string | null;
+  },
+>(
+  value: T,
+  context: z.RefinementCtx,
+): void => {
+  if (
+    value.refinancedFromDebtId &&
+    value.refinancedFromDebtId === value.refinancedIntoDebtId
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Prior and replacement refinance debts must be different.',
+      path: ['refinancedIntoDebtId'],
+    });
+  }
+};
+
+export const debtCoreInputSchema = debtCoreInputBaseSchema.superRefine(
+  preventSelfRefinanceLinks,
+);
 
 export const createDebtRequestSchema = z
   .object({
@@ -98,7 +128,7 @@ export const updateDebtRequestSchema = z
   .object({
     id: uuidSchema,
     expectedUpdatedAtUtc: utcTimestampSchema,
-    changes: debtCoreInputSchema
+    changes: debtCoreInputBaseSchema
       .pick({
         name: true,
         creditor: true,
@@ -111,9 +141,14 @@ export const updateDebtRequestSchema = z
         collateralDescription: true,
         taxCategory: true,
         deductiblePercentage: true,
+        financingChainName: true,
+        refinancedFromDebtId: true,
+        refinancedIntoDebtId: true,
+        refinanceDate: true,
         notes: true,
       })
-      .strict(),
+      .strict()
+      .superRefine(preventSelfRefinanceLinks),
   })
   .strict();
 
@@ -365,6 +400,16 @@ export const archiveDebtRequestSchema = z
 
 export const restoreDebtRequestSchema = archiveDebtRequestSchema;
 
+export const deleteDebtPermanentlyRequestSchema = z
+  .object({
+    id: uuidSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+    typedDebtName: z.string().trim().min(1).max(500),
+    confirmed: z.literal(true),
+    secondConfirmed: z.literal(true),
+  })
+  .strict();
+
 export const debtTermDtoSchema = z
   .object({
     id: uuidSchema,
@@ -480,6 +525,26 @@ export const debtSummaryDtoSchema = z
     initialTerm: debtTermDtoSchema,
     currentTerm: debtTermDtoSchema,
     archivedAtUtc: utcTimestampSchema.nullable(),
+    financingChainName: z.string().nullable(),
+    refinancedFromDebtId: uuidSchema.nullable(),
+    refinancedFromDebtName: z.string().nullable(),
+    refinancedIntoDebtId: uuidSchema.nullable(),
+    refinancedIntoDebtName: z.string().nullable(),
+    refinanceDate: financialDateInputSchema.nullable(),
+  })
+  .strict();
+
+const permanentDebtDeletionPreviewDtoSchema = z
+  .object({
+    debtTerms: z.number().int().nonnegative(),
+    transactions: z.number().int().nonnegative(),
+    allocations: z.number().int().nonnegative(),
+    balanceSnapshots: z.number().int().nonnegative(),
+    reconciliations: z.number().int().nonnegative(),
+    auditEvents: z.number().int().nonnegative(),
+    importProvenance: z.number().int().nonnegative(),
+    payoffScenarioReferences: z.number().int().nonnegative(),
+    otherRelatedRecords: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -496,6 +561,7 @@ export const debtDetailDtoSchema = debtSummaryDtoSchema
     notes: z.string().nullable(),
     currentTerm: debtTermDtoSchema,
     terms: z.array(debtTermDtoSchema).min(1),
+    permanentDeletionPreview: permanentDebtDeletionPreviewDtoSchema,
     transactions: z.array(debtTransactionDtoSchema),
     balanceSnapshots: z.array(balanceSnapshotDtoSchema),
     balanceReconciliations: z.array(balanceReconciliationDtoSchema),
@@ -676,6 +742,7 @@ const balanceTrendRowDtoSchema = z
     period: z.string(),
     periodEndDate: financialDateInputSchema,
     grouping: z.string(),
+    refinanceDate: financialDateInputSchema.nullable(),
     endingBalance: z.string(),
     changeFromPriorPeriod: z.string().nullable(),
   })
@@ -990,6 +1057,16 @@ export const applicationResultSchema = <T extends z.ZodType>(valueSchema: T) =>
 export const debtSummaryListSchema = z.array(debtSummaryDtoSchema);
 export const debtListResultSchema = applicationResultSchema(debtSummaryListSchema);
 export const debtDetailResultSchema = applicationResultSchema(debtDetailDtoSchema);
+export const permanentDebtDeletionDtoSchema = z
+  .object({
+    deletedDebtId: uuidSchema,
+    deletedDebtName: z.string(),
+    backupId: z.string(),
+  })
+  .strict();
+export const permanentDebtDeletionResultSchema = applicationResultSchema(
+  permanentDebtDeletionDtoSchema,
+);
 export const dashboardResultSchema = applicationResultSchema(dashboardDtoSchema);
 export const dataManagementStatusResultSchema = applicationResultSchema(
   dataManagementStatusDtoSchema,
@@ -1083,6 +1160,9 @@ export type UpdateStagedImportRowReviewRequest = z.infer<
 export type GetDebtRequest = z.infer<typeof getDebtRequestSchema>;
 export type ArchiveDebtRequest = z.infer<typeof archiveDebtRequestSchema>;
 export type RestoreDebtRequest = z.infer<typeof restoreDebtRequestSchema>;
+export type DeleteDebtPermanentlyRequest = z.infer<
+  typeof deleteDebtPermanentlyRequestSchema
+>;
 export type DebtTermDto = z.infer<typeof debtTermDtoSchema>;
 export type TransactionAllocationDto = z.infer<typeof transactionAllocationDtoSchema>;
 export type DebtTransactionDto = z.infer<typeof debtTransactionDtoSchema>;
@@ -1090,6 +1170,7 @@ export type BalanceSnapshotDto = z.infer<typeof balanceSnapshotDtoSchema>;
 export type BalanceReconciliationDto = z.infer<typeof balanceReconciliationDtoSchema>;
 export type DebtSummaryDto = z.infer<typeof debtSummaryDtoSchema>;
 export type DebtDetailDto = z.infer<typeof debtDetailDtoSchema>;
+export type PermanentDebtDeletionDto = z.infer<typeof permanentDebtDeletionDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
 export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSchema>;
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;

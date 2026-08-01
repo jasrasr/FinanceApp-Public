@@ -15,6 +15,7 @@ import {
   dataExportDtoSchema,
   dataManagementStatusDtoSchema,
   deleteBackupRequestSchema,
+  deleteDebtPermanentlyRequestSchema,
   debtReportsDtoSchema,
   debtDetailDtoSchema,
   debtSummaryListSchema,
@@ -33,6 +34,7 @@ import {
   listDebtsRequestSchema,
   listPayoffScenariosRequestSchema,
   payoffScenarioDtoSchema,
+  permanentDebtDeletionDtoSchema,
   postImportBatchRequestSchema,
   previewImportBatchPostingRequestSchema,
   reverseDebtTransactionRequestSchema,
@@ -174,6 +176,25 @@ export const registerDebtIpcHandlers = (
   dataManagementService: DataManagementService,
   isTrustedSender: TrustedSenderValidator,
 ): void => {
+  let databaseOperationActive = false;
+  const runExclusiveDatabaseOperation = async <T>(
+    operation: () => Promise<T> | T,
+  ): Promise<T> => {
+    if (databaseOperationActive) {
+      throw new ApplicationServiceError(
+        'conflict',
+        'Another database operation is already in progress. Try again after it finishes.',
+      );
+    }
+
+    databaseOperationActive = true;
+    try {
+      return await operation();
+    } finally {
+      databaseOperationActive = false;
+    }
+  };
+
   registerHandler(
     ipcMain,
     DEBT_IPC_CHANNELS.list,
@@ -204,7 +225,10 @@ export const registerDebtIpcHandlers = (
     createManualBackupRequestSchema,
     dataManagementStatusDtoSchema,
     isTrustedSender,
-    (request) => dataManagementService.createManualBackup(request),
+    (request) =>
+      runExclusiveDatabaseOperation(() =>
+        dataManagementService.createManualBackup(request),
+      ),
   );
   registerAsyncHandler(
     ipcMain,
@@ -212,7 +236,8 @@ export const registerDebtIpcHandlers = (
     restoreBackupRequestSchema,
     dataManagementStatusDtoSchema,
     isTrustedSender,
-    (request) => dataManagementService.restoreBackup(request),
+    (request) =>
+      runExclusiveDatabaseOperation(() => dataManagementService.restoreBackup(request)),
   );
   registerAsyncHandler(
     ipcMain,
@@ -276,7 +301,20 @@ export const registerDebtIpcHandlers = (
     postImportBatchRequestSchema,
     importPostingResultDtoSchema,
     isTrustedSender,
-    (request) => service.postImportBatch(request),
+    (request) => {
+      if (databaseOperationActive) {
+        throw new ApplicationServiceError(
+          'conflict',
+          'Another database operation is already in progress. Try again after it finishes.',
+        );
+      }
+      databaseOperationActive = true;
+      try {
+        return service.postImportBatch(request);
+      } finally {
+        databaseOperationActive = false;
+      }
+    },
   );
   registerHandler(
     ipcMain,
@@ -437,6 +475,26 @@ export const registerDebtIpcHandlers = (
     debtDetailDtoSchema,
     isTrustedSender,
     (request) => service.restoreDebt(request),
+  );
+  registerAsyncHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.deletePermanently,
+    deleteDebtPermanentlyRequestSchema,
+    permanentDebtDeletionDtoSchema,
+    isTrustedSender,
+    async (request) => {
+      return runExclusiveDatabaseOperation(async () => {
+        const backup = await dataManagementService.createManualBackup({});
+        const backupId = backup.lastBackup.backup?.id;
+        if (!backupId) {
+          throw new ApplicationServiceError(
+            'internal',
+            'A validated backup could not be confirmed before deletion.',
+          );
+        }
+        return service.deleteDebtPermanently(request, backupId);
+      });
+    },
   );
 };
 

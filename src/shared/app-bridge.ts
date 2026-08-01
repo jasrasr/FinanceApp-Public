@@ -16,6 +16,7 @@ import type {
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
+  DeleteDebtPermanentlyRequest,
   ExportDataRequest,
   GetDashboardRequest,
   GetDataManagementStatusRequest,
@@ -33,6 +34,7 @@ import type {
   RerunPayoffScenarioRequest,
   ArchivePayoffScenarioRequest,
   PayoffScenarioDto,
+  PermanentDebtDeletionDto,
   PostImportBatchRequest,
   PreviewImportBatchPostingRequest,
   ReverseDebtTransactionRequest,
@@ -128,10 +130,13 @@ export interface DebtBridge {
   ): Promise<ApplicationResult<DebtDetailDto>>;
   archiveDebt(request: ArchiveDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   restoreDebt(request: RestoreDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
+  deleteDebtPermanently(
+    request: DeleteDebtPermanentlyRequest,
+  ): Promise<ApplicationResult<PermanentDebtDeletionDto>>;
 }
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 19;
+  readonly bridgeVersion: 20;
   readonly appMetadata: AppMetadataDto;
 }

@@ -37,6 +37,7 @@ export interface DebtDetailProps {
   readonly onAddTerm: () => void;
   readonly onArchiveOrRestore: () => void;
   readonly onBack: () => void;
+  readonly onDeletePermanently: () => void;
   readonly onEdit: () => void;
   readonly onRecordReconciliation: () => void;
   readonly onCorrectReconciliation: (reconciliation: BalanceReconciliationDto) => void;
@@ -53,6 +54,7 @@ export interface DebtDetailProps {
     expectedUpdatedAtUtc: string,
     defaultVoidDate: string,
   ) => void;
+  readonly busy: boolean;
 }
 
 const transactionHistoryLabel = (transaction: DebtTransactionDto): string => {
@@ -68,11 +70,27 @@ const transactionHistoryLabel = (transaction: DebtTransactionDto): string => {
   return 'Current';
 };
 
+const permanentDeletionCountLabels: Record<
+  keyof DebtDetailDto['permanentDeletionPreview'],
+  string
+> = {
+  debtTerms: 'Debt terms',
+  transactions: 'Transactions',
+  allocations: 'Allocations',
+  balanceSnapshots: 'Balance snapshots',
+  reconciliations: 'Reconciliations',
+  auditEvents: 'Audit events',
+  importProvenance: 'Import provenance',
+  payoffScenarioReferences: 'Payoff-scenario references',
+  otherRelatedRecords: 'Other related records',
+};
+
 export const DebtDetail = ({
   debt,
   onAddTerm,
   onArchiveOrRestore,
   onBack,
+  onDeletePermanently,
   onEdit,
   onRecordReconciliation,
   onCorrectReconciliation,
@@ -81,6 +99,7 @@ export const DebtDetail = ({
   onEditTransaction,
   onReverseTransaction,
   onVoidTransaction,
+  busy,
 }: DebtDetailProps): React.JSX.Element => (
   <section aria-labelledby="debt-detail-heading">
     <button
@@ -195,6 +214,21 @@ export const DebtDetail = ({
             />
           ) : null}
           <Definition label="Status" value={labelFromValue(debt.status)} />
+          {debt.financingChainName ? (
+            <Definition label="Financing chain" value={debt.financingChainName} />
+          ) : null}
+          <Definition
+            label="Refinanced from"
+            value={debt.refinancedFromDebtName ?? 'Not linked'}
+          />
+          <Definition
+            label="Refinanced into"
+            value={debt.refinancedIntoDebtName ?? 'Not linked'}
+          />
+          <Definition
+            label="Refinance date"
+            value={debt.refinanceDate ?? 'Not applicable'}
+          />
           {debt.archivedAtUtc ? (
             <Definition label="Archived" value={formatTimestamp(debt.archivedAtUtc)} />
           ) : null}
@@ -643,6 +677,40 @@ export const DebtDetail = ({
           </table>
         </div>
       )}
+    </section>
+
+    <section
+      aria-labelledby="danger-zone-heading"
+      className="mt-6 rounded-xl border border-red-300 bg-red-50 p-6 shadow-sm"
+    >
+      <h3 className="text-lg font-semibold text-red-950" id="danger-zone-heading">
+        Danger zone
+      </h3>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-red-900">
+        Permanent deletion is for reconstructing an entire debt and its history. Debt
+        Tracker creates a validated backup immediately before deletion. Recovery
+        requires restoring a backup.
+      </p>
+      <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        {Object.entries(debt.permanentDeletionPreview).map(([key, value]) => (
+          <div key={key}>
+            <dt className="text-xs font-semibold text-red-800 uppercase">
+              {permanentDeletionCountLabels[
+                key as keyof DebtDetailDto['permanentDeletionPreview']
+              ] ?? labelFromValue(key)}
+            </dt>
+            <dd className="mt-1 font-mono text-red-950">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <button
+        className="mt-5 rounded-md bg-red-700 px-3 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:bg-red-300"
+        disabled={busy}
+        onClick={onDeletePermanently}
+        type="button"
+      >
+        Delete debt permanently
+      </button>
     </section>
   </section>
 );

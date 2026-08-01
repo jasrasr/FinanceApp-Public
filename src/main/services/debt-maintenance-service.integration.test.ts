@@ -34,6 +34,7 @@ import {
   createTemporaryDatabaseLocation,
   type TemporaryDatabaseLocation,
 } from '../database/temporary-database';
+import { deleteDebtPermanentlyRecord } from '../database/debt-maintenance-repository';
 import { ApplicationServiceError } from './application-error';
 import { createDataManagementService } from './data-management-service';
 import {
@@ -65,6 +66,10 @@ const validRequest = (name = 'Fictional Equipment Note'): CreateDebtRequest => (
     collateralDescription: 'Generated equipment description',
     taxCategory: 'business',
     deductiblePercentage: '37.25%',
+    financingChainName: null,
+    refinancedFromDebtId: null,
+    refinancedIntoDebtId: null,
+    refinanceDate: null,
     notes: 'Fictional integration-test record.',
   },
   initialTerm: {
@@ -1871,6 +1876,131 @@ describe('debt maintenance', () => {
     });
   });
 
+  it('reports refinance-chain obligations separately with a continuous combined balance trend', () => {
+    const priorRequest = validRequest('Generated Original Mortgage');
+    priorRequest.debt.debtType = 'mortgage';
+    priorRequest.debt.financingChainName = 'Home Mortgage - Primary Residence';
+    priorRequest.debt.originationDate = '2025-01-01';
+    priorRequest.initialTerm.effectiveStartDate = '2025-01-01';
+    const prior = service.createDebt(priorRequest);
+    service.createDebtTransaction(validTransactionRequest(prior.id));
+    const priorAfterPayoff = service.createDebtTransaction({
+      debtId: prior.id,
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2026-03-01',
+        postingDate: '2026-03-01',
+        status: 'posted',
+        totalAmount: '124600.13',
+        description: 'Generated refinance payoff.',
+        sourceType: 'manual',
+        sourceReference: 'REFI-PAYOFF',
+        allocations: {
+          principal: '124600.13',
+          interest: null,
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    const replacementRequest = validRequest('Generated Replacement Mortgage');
+    replacementRequest.debt.debtType = 'mortgage';
+    replacementRequest.debt.originalPrincipal = '120000.00';
+    replacementRequest.debt.minimumPayment = '2100.00';
+    replacementRequest.debt.financingChainName = 'Home Mortgage - Primary Residence';
+    replacementRequest.debt.refinancedFromDebtId = prior.id;
+    replacementRequest.debt.refinanceDate = '2026-03-01';
+    replacementRequest.debt.originationDate = '2026-03-01';
+    replacementRequest.initialTerm.effectiveStartDate = '2026-03-01';
+    replacementRequest.initialTerm.requiredPayment = '2100.00';
+    const replacement = service.createDebt(replacementRequest);
+    const updatedPrior = service.updateDebt({
+      id: prior.id,
+      expectedUpdatedAtUtc: priorAfterPayoff.updatedAtUtc,
+      changes: {
+        name: prior.name,
+        creditor: prior.creditor,
+        ownerEntity: prior.ownerEntity,
+        debtType: prior.debtType,
+        purpose: prior.purpose,
+        status: 'refinanced',
+        maturityDate: prior.maturityDate,
+        creditLimit: prior.creditLimit,
+        collateralDescription: prior.collateralDescription,
+        taxCategory: prior.taxCategory,
+        deductiblePercentage: prior.deductiblePercentage,
+        financingChainName: prior.financingChainName,
+        refinancedFromDebtId: null,
+        refinancedIntoDebtId: replacement.id,
+        refinanceDate: '2026-03-01',
+        notes: prior.notes,
+      },
+    });
+
+    const detail = service.getDebt({ id: replacement.id });
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-04-30',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+
+    expect(updatedPrior.status).toBe('refinanced');
+    expect(detail.refinancedFromDebtId).toBe(prior.id);
+    expect(detail.refinancedFromDebtName).toBe(prior.name);
+    expect(detail.refinanceDate).toBe('2026-03-01');
+    expect(reports.balanceHistory.rows.map((row) => row.debtName)).toContain(
+      prior.name,
+    );
+    expect(reports.balanceHistory.rows.map((row) => row.debtName)).toContain(
+      replacement.name,
+    );
+    expect(
+      reports.monthlyRollforward.rows.find((row) => row.period === '2026-03'),
+    ).toMatchObject({
+      borrowings: '120000.00',
+      payments: '124600.13',
+      principalReduction: '124600.13',
+      endingBalance: '120000.00',
+    });
+    expect(
+      reports.balanceTrends.rows
+        .filter((row) => row.grouping === 'Home Mortgage - Primary Residence')
+        .map((row) => ({
+          period: row.period,
+          endingBalance: row.endingBalance,
+          refinanceDate: row.refinanceDate,
+        })),
+    ).toEqual([
+      {
+        period: '2026-01',
+        endingBalance: '124600.13',
+        refinanceDate: '2026-03-01',
+      },
+      {
+        period: '2026-02',
+        endingBalance: '124600.13',
+        refinanceDate: '2026-03-01',
+      },
+      {
+        period: '2026-03',
+        endingBalance: '120000.00',
+        refinanceDate: '2026-03-01',
+      },
+      {
+        period: '2026-04',
+        endingBalance: '120000.00',
+        refinanceDate: '2026-03-01',
+      },
+    ]);
+  });
+
   it('clamps advanced report activity to the configured reporting history start date', () => {
     const request = validRequest('Fictional Pre-History Loan');
     request.debt.originationDate = '2018-01-01';
@@ -2042,6 +2172,240 @@ describe('debt maintenance', () => {
     expect(eventTypes).toContain('debt_restored');
   });
 
+  it('requires backup context and exact debt-name confirmation before permanent deletion', () => {
+    const created = service.createDebt(validRequest('Generated Deletion Guard Note'));
+
+    expect(() =>
+      service.deleteDebtPermanently(
+        {
+          id: created.id,
+          expectedUpdatedAtUtc: created.updatedAtUtc,
+          typedDebtName: created.name,
+          confirmed: true,
+          secondConfirmed: true,
+        },
+        '',
+      ),
+    ).toThrow('A validated backup is required');
+
+    expect(() =>
+      service.deleteDebtPermanently(
+        {
+          id: created.id,
+          expectedUpdatedAtUtc: created.updatedAtUtc,
+          typedDebtName: 'Generated deletion guard note',
+          confirmed: true,
+          secondConfirmed: true,
+        },
+        'manual-generated-backup.sqlite3',
+      ),
+    ).toThrow('Type the debt name exactly');
+
+    expect(service.getDebt({ id: created.id }).name).toBe(created.name);
+  });
+
+  it('permanently deletes a debt and dependent records atomically after backup confirmation', () => {
+    const created = service.createDebt(
+      validRequest('Generated Permanent Deletion Note'),
+    );
+    const afterTransaction = service.createDebtTransaction(
+      validTransactionRequest(created.id),
+    );
+    service.createBalanceSnapshot(validSnapshotRequest(created.id));
+    service.createBalanceReconciliation(validReconciliationRequest(created.id));
+    service.createPayoffScenario({
+      name: 'Generated deletion scenario',
+      scenarioStartDate: '2026-07-28',
+      strategy: 'avalanche',
+      extraMonthlyPayment: '250.00',
+      customPriority: [created.id],
+      variableRateOverrides: {},
+      maxProjectionMonths: 360,
+    });
+
+    const batchId = randomUUID();
+    const mappingId = randomUUID();
+    const rowId = randomUUID();
+    const postingId = randomUUID();
+    const transactionId = afterTransaction.transactions[0]!.id;
+    context.database
+      .insert(importBatches)
+      .values({
+        id: batchId,
+        sourceWorkbookName: 'generated-delete-source.xlsx',
+        sourceWorkbookFingerprint: randomUUID(),
+        sourceWorkbookModifiedAtUtc: '2026-07-27T12:00:00.000Z',
+        status: 'closed',
+        importedAtUtc: '2026-07-27T12:00:00.000Z',
+        createdAtUtc: '2026-07-27T12:00:00.000Z',
+        updatedAtUtc: '2026-07-27T12:00:00.000Z',
+      })
+      .run();
+    context.database
+      .insert(importSheetMappings)
+      .values({
+        id: mappingId,
+        batchId,
+        sourceSheetName: 'Generated Rows',
+        proposedRecordType: 'transaction',
+        reviewStatus: 'approved',
+        fieldMappingJson: '{}',
+        notes: null,
+        createdAtUtc: '2026-07-27T12:00:00.000Z',
+        updatedAtUtc: '2026-07-27T12:00:00.000Z',
+      })
+      .run();
+    context.database
+      .insert(stagedImportRows)
+      .values({
+        id: rowId,
+        batchId,
+        sheetMappingId: mappingId,
+        sourceSheetName: 'Generated Rows',
+        sourceRowNumber: 2,
+        sourceCellReferencesJson: '{}',
+        sourceDisplayedValuesJson: '{}',
+        sourceFormulasJson: '{}',
+        proposedRecordType: 'transaction',
+        activityClassification: 'actual',
+        normalizedValuesJson: '{}',
+        validationMessagesJson: '[]',
+        duplicateCandidateJson: null,
+        reconciliationExceptionJson: null,
+        reviewStatus: 'approved',
+        reviewNotes: null,
+        reviewedAtUtc: '2026-07-27T12:00:00.000Z',
+        createdAtUtc: '2026-07-27T12:00:00.000Z',
+        updatedAtUtc: '2026-07-27T12:00:00.000Z',
+      })
+      .run();
+    context.database
+      .insert(importPostings)
+      .values({
+        id: postingId,
+        batchId,
+        stagedRowId: rowId,
+        liveEntityType: 'debt_transaction',
+        liveEntityId: transactionId,
+        postedAtUtc: '2026-07-27T12:00:00.000Z',
+        createdAtUtc: '2026-07-27T12:00:00.000Z',
+      })
+      .run();
+
+    const preview = service.getDebt({ id: created.id }).permanentDeletionPreview;
+    expect(preview).toMatchObject({
+      debtTerms: 1,
+      transactions: 1,
+      allocations: 2,
+      balanceSnapshots: 2,
+      reconciliations: 1,
+      importProvenance: 1,
+      payoffScenarioReferences: 1,
+    });
+
+    const deleted = service.deleteDebtPermanently(
+      {
+        id: created.id,
+        expectedUpdatedAtUtc: created.updatedAtUtc,
+        typedDebtName: created.name,
+        confirmed: true,
+        secondConfirmed: true,
+      },
+      'manual-generated-backup.sqlite3',
+    );
+
+    expect(deleted).toEqual({
+      deletedDebtId: created.id,
+      deletedDebtName: created.name,
+      backupId: 'manual-generated-backup.sqlite3',
+    });
+    expect(
+      context.database.select().from(debts).where(eq(debts.id, created.id)).all(),
+    ).toHaveLength(0);
+    expect(
+      context.database
+        .select()
+        .from(debtTransactions)
+        .where(eq(debtTransactions.debtId, created.id))
+        .all(),
+    ).toHaveLength(0);
+    expect(
+      context.database
+        .select()
+        .from(transactionAllocations)
+        .where(eq(transactionAllocations.transactionId, transactionId))
+        .all(),
+    ).toHaveLength(0);
+    expect(
+      context.database
+        .select()
+        .from(balanceSnapshots)
+        .where(eq(balanceSnapshots.debtId, created.id))
+        .all(),
+    ).toHaveLength(0);
+    expect(
+      context.database
+        .select()
+        .from(balanceReconciliations)
+        .where(eq(balanceReconciliations.debtId, created.id))
+        .all(),
+    ).toHaveLength(0);
+    expect(
+      context.database
+        .select()
+        .from(importPostings)
+        .where(eq(importPostings.liveEntityId, transactionId))
+        .all(),
+    ).toHaveLength(0);
+    expect(context.database.select().from(payoffScenarios).all()).toHaveLength(0);
+    expect(
+      context.database
+        .select()
+        .from(auditEvents)
+        .where(eq(auditEvents.eventType, 'debt_permanently_deleted'))
+        .all(),
+    ).toHaveLength(1);
+  });
+
+  it('rolls back permanent deletion when a dependent delete fails', () => {
+    const created = service.createDebt(validRequest('Generated Rollback Delete Note'));
+    const afterTransaction = service.createDebtTransaction(
+      validTransactionRequest(created.id),
+    );
+    const transactionId = afterTransaction.transactions[0]!.id;
+
+    expect(() =>
+      deleteDebtPermanentlyRecord(context.database, {
+        debtId: created.id,
+        expectedUpdatedAtUtc: created.updatedAtUtc,
+        simulateFailure: true,
+        audit: {
+          id: randomUUID(),
+          eventType: 'debt_permanently_deleted',
+          entityType: 'application',
+          entityId: 'permanent-debt-deletion',
+          action: 'delete',
+          occurredAtUtc: new Date(clock).toISOString(),
+          source: 'user',
+          summary: 'Generated rollback test deletion.',
+          beforeMetadataJson: null,
+          afterMetadataJson: JSON.stringify({ backupId: 'rollback-backup.sqlite3' }),
+        },
+      }),
+    ).toThrow('Simulated permanent deletion failure.');
+
+    expect(
+      context.database.select().from(debts).where(eq(debts.id, created.id)).all(),
+    ).toHaveLength(1);
+    expect(
+      context.database
+        .select()
+        .from(debtTransactions)
+        .where(eq(debtTransactions.id, transactionId))
+        .all(),
+    ).toHaveLength(1);
+  });
+
   it('updates descriptive fields without overwriting historical terms', () => {
     const created = service.createDebt(validRequest());
     const originalTerm = created.terms[0];
@@ -2060,6 +2424,10 @@ describe('debt maintenance', () => {
         collateralDescription: created.collateralDescription,
         taxCategory: created.taxCategory,
         deductiblePercentage: created.deductiblePercentage,
+        financingChainName: created.financingChainName,
+        refinancedFromDebtId: created.refinancedFromDebtId,
+        refinancedIntoDebtId: created.refinancedIntoDebtId,
+        refinanceDate: created.refinanceDate,
         notes: created.notes,
       },
     });

@@ -24,9 +24,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 19,
+  bridgeVersion: 20,
   appMetadata: {
-    version: '0.23.0',
+    version: '0.24.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -127,6 +127,14 @@ const createBridge = (): AppBridge => ({
   voidBalanceReconciliation: vi.fn(),
   archiveDebt: vi.fn(),
   restoreDebt: vi.fn(),
+  deleteDebtPermanently: vi.fn(async () => ({
+    ok: true as const,
+    value: {
+      deletedDebtId: sampleDebtDetail.id,
+      deletedDebtName: sampleDebtDetail.name,
+      backupId: sampleDataManagementStatus.availableBackups[0]!.id,
+    },
+  })),
 });
 
 const sampleDashboard: DashboardDto = {
@@ -355,6 +363,7 @@ const sampleReports: DebtReportsDto = {
         period: '2026-01',
         periodEndDate: '2026-01-31',
         grouping: 'Total debt',
+        refinanceDate: null,
         endingBalance: '124500.13',
         changeFromPriorPeriod: null,
       },
@@ -632,6 +641,12 @@ const sampleDebtDetail: DebtDetailDto = {
   collateralDescription: 'Generated equipment description',
   taxCategory: 'business',
   deductiblePercentage: '37.25',
+  financingChainName: null,
+  refinancedFromDebtId: null,
+  refinancedFromDebtName: null,
+  refinancedIntoDebtId: null,
+  refinancedIntoDebtName: null,
+  refinanceDate: null,
   notes: 'Fictional detail record.',
   currentTerm: {
     id: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c012',
@@ -749,6 +764,17 @@ const sampleDebtDetail: DebtDetailDto = {
     },
   ],
   calculatedEscrowBalance: '0.00',
+  permanentDeletionPreview: {
+    debtTerms: 2,
+    transactions: 1,
+    allocations: 1,
+    balanceSnapshots: 1,
+    reconciliations: 1,
+    auditEvents: 5,
+    importProvenance: 0,
+    payoffScenarioReferences: 0,
+    otherRelatedRecords: 0,
+  },
   archivedAtUtc: null,
   createdAtUtc: '2026-07-27T13:00:00.000Z',
   updatedAtUtc: '2026-07-27T13:00:00.000Z',
@@ -769,6 +795,12 @@ const sampleDebtSummary: DebtSummaryDto = {
   maturityDate: sampleDebtDetail.maturityDate,
   initialTerm: sampleDebtDetail.terms[0]!,
   currentTerm: sampleDebtDetail.currentTerm,
+  financingChainName: sampleDebtDetail.financingChainName,
+  refinancedFromDebtId: sampleDebtDetail.refinancedFromDebtId,
+  refinancedFromDebtName: sampleDebtDetail.refinancedFromDebtName,
+  refinancedIntoDebtId: sampleDebtDetail.refinancedIntoDebtId,
+  refinancedIntoDebtName: sampleDebtDetail.refinancedIntoDebtName,
+  refinanceDate: sampleDebtDetail.refinanceDate,
   archivedAtUtc: sampleDebtDetail.archivedAtUtc,
 };
 
@@ -875,6 +907,95 @@ describe('debt maintenance application', () => {
     expect(screen.getByRole('button', { name: 'Record transaction' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Record snapshot' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Reconcile balance' })).toBeVisible();
+  });
+
+  it('blocks permanent debt deletion when typed confirmation does not match', async () => {
+    const bridge = createBridge();
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [sampleDebtSummary],
+    }));
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: sampleDebtDetail,
+    }));
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Wrong debt name');
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Open Fictional Equipment Note — Harbor Ridge Cooperative/,
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete debt permanently' }),
+    );
+
+    expect(
+      await screen.findByText('Debt name confirmation did not match.'),
+    ).toBeVisible();
+    expect(promptSpy).toHaveBeenCalledWith(
+      'Type "Fictional Equipment Note" to permanently delete this debt and its history.',
+    );
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(bridge.deleteDebtPermanently).not.toHaveBeenCalled();
+  });
+
+  it('permanently deletes debt after confirmations and refreshes summaries', async () => {
+    const bridge = createBridge();
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [sampleDebtSummary],
+    }));
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: sampleDebtDetail,
+    }));
+    const promptSpy = vi
+      .spyOn(window, 'prompt')
+      .mockReturnValue('Fictional Equipment Note');
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Debts' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Open Fictional Equipment Note — Harbor Ridge Cooperative/,
+      }),
+    );
+    expect(await screen.findByRole('heading', { name: 'Danger zone' })).toBeVisible();
+    expect(screen.getByText('Debt terms')).toBeVisible();
+    const listCallsBeforeDelete = vi.mocked(bridge.listDebts).mock.calls.length;
+    const dashboardCallsBeforeDelete = vi.mocked(bridge.getDashboard).mock.calls.length;
+    const reportCallsBeforeDelete = vi.mocked(bridge.getDebtReports).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Delete debt permanently' }));
+
+    await waitFor(() => expect(bridge.deleteDebtPermanently).toHaveBeenCalledTimes(1));
+    expect(promptSpy).toHaveBeenCalled();
+    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    expect(bridge.deleteDebtPermanently).toHaveBeenCalledWith({
+      id: sampleDebtDetail.id,
+      expectedUpdatedAtUtc: sampleDebtDetail.updatedAtUtc,
+      typedDebtName: sampleDebtDetail.name,
+      confirmed: true,
+      secondConfirmed: true,
+    });
+    expect(vi.mocked(bridge.listDebts).mock.calls.length).toBeGreaterThanOrEqual(
+      listCallsBeforeDelete + 1,
+    );
+    expect(vi.mocked(bridge.getDashboard).mock.calls.length).toBeGreaterThanOrEqual(
+      dashboardCallsBeforeDelete + 1,
+    );
+    expect(vi.mocked(bridge.getDebtReports).mock.calls.length).toBeGreaterThanOrEqual(
+      reportCallsBeforeDelete + 1,
+    );
+    expect(
+      await screen.findByText(/Debt was permanently deleted after validated backup/),
+    ).toBeVisible();
   });
 
   it('shows only current effective transaction rows while audit history keeps the full chain', async () => {
@@ -1425,7 +1546,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.23.0')).toBeVisible();
+    expect(await screen.findByText('Version 0.24.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,

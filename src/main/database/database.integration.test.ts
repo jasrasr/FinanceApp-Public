@@ -16,7 +16,6 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type DatabaseContext, openMigratedDatabase } from './connection';
 import {
-  insertDebt,
   insertDebtTerm,
   insertPostedTransaction,
   reversePostedTransaction,
@@ -52,28 +51,53 @@ let temporary: TemporaryDatabaseLocation;
 const createFictionalDebt = () => {
   const debtId = randomUUID();
 
-  insertDebt(context.database, {
-    id: debtId,
-    name: 'Fictional Vehicle Note',
-    creditor: 'Northstar Community Bank',
-    ownerEntity: 'Sample Household',
-    debtType: 'auto',
-    purpose: 'Generated integration-test obligation',
-    status: 'active',
-    originalPrincipalCents: 2_500_000,
-    originationDate: '2025-01-15',
-    maturityDate: '2030-01-15',
-    minimumPaymentCents: 48_500,
-    paymentFrequency: 'monthly',
-    creditLimitCents: null,
-    collateralDescription: 'Generated vehicle description',
-    taxCategory: 'personal_nondeductible',
-    deductiblePercentageBps: 0,
-    notes: 'Fictional test record only.',
-    createdAtUtc: FIXED_TIMESTAMP,
-    updatedAtUtc: FIXED_TIMESTAMP,
-    archivedAtUtc: null,
-  });
+  context.sqlite
+    .prepare(
+      `INSERT INTO debts (
+        id,
+        name,
+        creditor,
+        owner_entity,
+        debt_type,
+        purpose,
+        status,
+        original_principal_cents,
+        origination_date,
+        maturity_date,
+        minimum_payment_cents,
+        payment_frequency,
+        credit_limit_cents,
+        collateral_description,
+        tax_category,
+        deductible_percentage_bps,
+        notes,
+        created_at_utc,
+        updated_at_utc,
+        archived_at_utc
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      debtId,
+      'Fictional Vehicle Note',
+      'Northstar Community Bank',
+      'Sample Household',
+      'auto',
+      'Generated integration-test obligation',
+      'active',
+      2_500_000,
+      '2025-01-15',
+      '2030-01-15',
+      48_500,
+      'monthly',
+      null,
+      'Generated vehicle description',
+      'personal_nondeductible',
+      0,
+      'Fictional test record only.',
+      FIXED_TIMESTAMP,
+      FIXED_TIMESTAMP,
+      null,
+    );
 
   return debtId;
 };
@@ -605,7 +629,7 @@ describe('database migrations and isolation', () => {
       { status: 'superseded', count: 1 },
     ]);
     expect(temporaryRebuildTable).toBeUndefined();
-    expect(migrationCount.count).toBe(7);
+    expect(migrationCount.count).toBe(8);
     expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
     expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
 

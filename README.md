@@ -197,6 +197,10 @@ Electron user-data directory that it removes after the workflow.
 - A new term is appended after the latest term; an open prior term is closed on
   the day before the new effective date.
 - Archive and restore preserve every term and create audit events.
+- Permanent debt deletion is available only from a separated debt-detail Danger
+  zone. It requires an immediately validated backup, exact debt-name entry, and a
+  second irreversible-action confirmation before deleting the debt and dependent
+  records atomically.
 - Debt names and creditors are retained as separate internal fields but are
   presented together in primary navigation displays, for example
   `Generated Mortgage — Fictional Credit Union`.
@@ -238,6 +242,10 @@ Electron user-data directory that it removes after the workflow.
   principal. Escrow deposits and disbursements are tracked separately and do not
   change mortgage principal.
 - Reversal transactions preserve the original posted row and its allocations.
+- Refinance links preserve separate debts as separate legal obligations. A prior
+  debt can be marked paid off or refinanced, linked to a replacement debt, and
+  paid off through its own posted payment while the replacement debt keeps its
+  own origination, principal, terms, rate, payment, and maturity.
 - Malformed historical reversals whose allocations do not fully offset the
   original transaction are shown as data-integrity exceptions. The application
   warns that affected debt, escrow, and YTD amounts require review; it does not
@@ -346,6 +354,10 @@ Electron user-data directory that it removes after the workflow.
   chart-only mouse-wheel zoom, thresholded drag-to-pan without text selection,
   dynamic date ticks, and an accessible disclosure for chart data that is not
   displayed by default.
+- Linked refinance debts can also appear under a shared financing-chain name in
+  balance-trend reporting, while loan-level activity and balances remain
+  separate. The refinance date is identified and rollforwards avoid
+  double-counting payoff proceeds and replacement principal.
 - Interest analysis separates monthly interest expense trends from annual
   interest comparisons. Monthly charts default to a recent readable period and
   support month-by-month comparison across years, bounded zoom, wheel zoom, and

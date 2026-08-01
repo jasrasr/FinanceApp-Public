@@ -1448,3 +1448,61 @@ completed.
   - Chart state remains session-local SVG presentation state.
 - Recommended next phase:
   - Continue backup/restore acceptance testing with generated packaged-app data.
+
+## Phase 30: Controlled Debt Deletion and Refinance Chains
+
+- Completion date: 2026-08-01
+- Application version: 0.24.0
+- Features implemented:
+  - Added a debt-detail Danger zone for permanent debt deletion with dependent
+    record counts, exact debt-name entry, two confirmations, and an immediately
+    validated pre-delete backup.
+  - Added atomic main-process deletion of debts and dependent terms,
+    transactions, allocations, snapshots, reconciliations, import provenance,
+    debt-chain audit events, and payoff-scenario references.
+  - Added refinance-chain fields so separate obligations can link to prior and
+    replacement debts, show a shared financing-chain name, and identify the
+    refinance date.
+  - Added combined financing-chain balance trend rows while retaining separate
+    loan-level history and activity.
+- Material architecture and accounting decisions:
+  - Permanent deletion remains a narrow IPC operation; no renderer filesystem,
+    database, or SQL access was added.
+  - Deletion is guarded against overlapping backup, restore, import posting, or
+    permanent deletion operations at the IPC layer.
+  - Refinance links preserve separate legal obligations and do not merge terms,
+    ledgers, snapshots, or reconciliations.
+- Database schema or migration changes:
+  - Added migration `0007_bumpy_patriot.sql` to add nullable refinance-chain
+    columns, self-referential foreign keys, validation checks, and supporting
+    indexes to `debts`.
+  - Added `refinanced` as a debt status.
+- New or changed IPC operations:
+  - Added `debt:delete-permanently`.
+  - Increased the typed preload bridge version to 20.
+- New UI screens or workflows:
+  - Debt create/edit forms can link refinance relationships and financing-chain
+    names.
+  - Debt detail displays refinanced-from, refinanced-into, refinance date, and
+    permanent-deletion controls.
+- Validation and smoke-test results:
+  - Focused service integration tests passed: 62 tests.
+  - Focused renderer, preload, and IPC tests passed: 46 tests.
+  - Focused database migration tests passed: 7 tests.
+  - `npm run format` passed.
+  - `npm run check` passed under escalation after an initial sandbox
+    access-denied failure in the Electron build. The gate completed with 10
+    Vitest files and 142 tests passing, database integrity passing, production
+    build passing, and the active Electron E2E workflow passing; packaged source
+    specs were skipped in that suite.
+  - `npm run package:smoke` passed packaged launch and upgrade-preservation
+    tests. The runner reported the existing Node `fs.R_OK` deprecation warning
+    and a temporary installed-app cleanup warning.
+- Known limitations and technical debt:
+  - Permanent deletion recovery is by restoring the validated backup; no
+    in-place undo is provided.
+  - Combined refinance-chain reporting is limited to balance trends; rollforward
+    rows remain loan-level aggregate report rows.
+- Recommended next phase:
+  - Continue generated-data acceptance testing around administrative recovery
+    and refinance-chain report review.

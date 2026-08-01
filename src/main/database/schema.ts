@@ -80,6 +80,16 @@ export const debts = sqliteTable(
     collateralDescription: text('collateral_description'),
     taxCategory: text('tax_category', { enum: TAX_CATEGORIES }).notNull(),
     deductiblePercentageBps: integer('deductible_percentage_bps').notNull(),
+    financingChainName: text('financing_chain_name'),
+    refinancedFromDebtId: text('refinanced_from_debt_id').references(
+      (): AnySQLiteColumn => debts.id,
+      { onDelete: 'set null', onUpdate: 'cascade' },
+    ),
+    refinancedIntoDebtId: text('refinanced_into_debt_id').references(
+      (): AnySQLiteColumn => debts.id,
+      { onDelete: 'set null', onUpdate: 'cascade' },
+    ),
+    refinanceDate: text('refinance_date'),
     notes: text('notes'),
     createdAtUtc: text('created_at_utc').notNull(),
     updatedAtUtc: text('updated_at_utc').notNull(),
@@ -89,6 +99,9 @@ export const debts = sqliteTable(
     index('debts_creditor_idx').on(table.creditor),
     index('debts_owner_entity_idx').on(table.ownerEntity),
     index('debts_status_idx').on(table.status),
+    index('debts_refinanced_from_idx').on(table.refinancedFromDebtId),
+    index('debts_refinanced_into_idx').on(table.refinancedIntoDebtId),
+    index('debts_financing_chain_idx').on(table.financingChainName),
     check('debts_type_valid', sql`${table.debtType} IN (${sqlList(DEBT_TYPES)})`),
     check('debts_status_valid', sql`${table.status} IN (${sqlList(DEBT_STATUSES)})`),
     check(
@@ -114,6 +127,14 @@ export const debts = sqliteTable(
     check(
       'debts_deductible_percentage_range',
       sql`${table.deductiblePercentageBps} BETWEEN 0 AND 10000`,
+    ),
+    check(
+      'debts_refinance_not_self',
+      sql`(${table.refinancedFromDebtId} IS NULL OR ${table.refinancedFromDebtId} <> ${table.id}) AND (${table.refinancedIntoDebtId} IS NULL OR ${table.refinancedIntoDebtId} <> ${table.id})`,
+    ),
+    check(
+      'debts_refinance_date_format',
+      sql`${table.refinanceDate} IS NULL OR ${table.refinanceDate} GLOB ${FINANCIAL_DATE_GLOB_SQL}`,
     ),
     check(
       'debts_origination_date_format',

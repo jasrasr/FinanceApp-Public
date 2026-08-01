@@ -1,4 +1,15 @@
-import { and, asc, eq, gte, isNotNull, isNull, lte, ne } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  or,
+} from 'drizzle-orm';
 import type { AppDatabase } from './connection';
 import {
   auditEvents,
@@ -71,6 +82,25 @@ export interface DebtWithActivityRecord extends DebtWithTermsRecord {
   readonly balanceReconciliations: readonly BalanceReconciliationRecord[];
 }
 
+export interface PermanentDebtDeletionCounts {
+  readonly debtTerms: number;
+  readonly transactions: number;
+  readonly allocations: number;
+  readonly balanceSnapshots: number;
+  readonly reconciliations: number;
+  readonly auditEvents: number;
+  readonly importProvenance: number;
+  readonly payoffScenarioReferences: number;
+  readonly otherRelatedRecords: number;
+}
+
+export interface PermanentDebtDeletionRecordInput {
+  readonly debtId: string;
+  readonly expectedUpdatedAtUtc: string;
+  readonly audit: AuditEventInsert;
+  readonly simulateFailure?: boolean;
+}
+
 export interface ImportBatchWithRowsRecord {
   readonly batch: ImportBatchRecord;
   readonly sheetMappings: readonly ImportSheetMappingRecord[];
@@ -129,6 +159,10 @@ export interface DebtUpdateValues {
   readonly collateralDescription: string | null;
   readonly taxCategory: DebtRecord['taxCategory'];
   readonly deductiblePercentageBps: number;
+  readonly financingChainName: string | null;
+  readonly refinancedFromDebtId: string | null;
+  readonly refinancedIntoDebtId: string | null;
+  readonly refinanceDate: string | null;
   readonly notes: string | null;
   readonly updatedAtUtc: string;
 }
@@ -477,6 +511,249 @@ export const calculateEscrowBalanceThroughDate = (
   }
 
   return balance;
+};
+
+const count = (items: readonly unknown[]): number => items.length;
+
+const payoffScenariosReferencingDebt = (
+  database: AppDatabase,
+  debtId: string,
+): readonly PayoffScenarioRecord[] =>
+  database
+    .select()
+    .from(payoffScenarios)
+    .all()
+    .filter((scenario) =>
+      [scenario.customPriorityJson, scenario.assumptionsJson, scenario.resultJson].some(
+        (json) => json.includes(debtId),
+      ),
+    );
+
+const permanentDeletionRelatedIds = (
+  database: AppDatabase,
+  debtId: string,
+): {
+  readonly transactionIds: readonly string[];
+  readonly allocationIds: readonly string[];
+  readonly snapshotIds: readonly string[];
+  readonly reconciliationIds: readonly string[];
+  readonly termIds: readonly string[];
+  readonly payoffScenarioIds: readonly string[];
+} => {
+  const record = getDebtActivityRecord(database, debtId);
+  if (!record) throw new RepositoryNotFoundError('Debt was not found.');
+  const transactionIds = record.transactions.map(({ transaction }) => transaction.id);
+  return {
+    transactionIds,
+    allocationIds: record.transactions.flatMap(({ allocations }) =>
+      allocations.map((allocation) => allocation.id),
+    ),
+    snapshotIds: record.balanceSnapshots.map((snapshot) => snapshot.id),
+    reconciliationIds: record.balanceReconciliations.map(
+      (reconciliation) => reconciliation.id,
+    ),
+    termIds: record.terms.map((term) => term.id),
+    payoffScenarioIds: payoffScenariosReferencingDebt(database, debtId).map(
+      (scenario) => scenario.id,
+    ),
+  };
+};
+
+const permanentDeletionImportPostingIds = (
+  database: AppDatabase,
+  debtId: string,
+  related: ReturnType<typeof permanentDeletionRelatedIds>,
+): readonly string[] => {
+  const importEntityPairs = [
+    ['debt', debtId],
+    ...related.termIds.map((id) => ['debt_term', id]),
+    ...related.transactionIds.map((id) => ['debt_transaction', id]),
+    ...related.allocationIds.map((id) => ['transaction_allocation', id]),
+    ...related.snapshotIds.map((id) => ['balance_snapshot', id]),
+  ] as const;
+
+  return database
+    .select()
+    .from(importPostings)
+    .all()
+    .filter((posting) =>
+      importEntityPairs.some(
+        ([entityType, entityId]) =>
+          posting.liveEntityType === entityType && posting.liveEntityId === entityId,
+      ),
+    )
+    .map((posting) => posting.id);
+};
+
+export const previewPermanentDebtDeletion = (
+  database: AppDatabase,
+  debtId: string,
+): PermanentDebtDeletionCounts => {
+  const record = getDebtActivityRecord(database, debtId);
+  if (!record) throw new RepositoryNotFoundError('Debt was not found.');
+  const related = permanentDeletionRelatedIds(database, debtId);
+  const relatedEntityPairs = [
+    ['debt', debtId],
+    ...related.termIds.map((id) => ['debt_term', id]),
+    ...related.transactionIds.map((id) => ['debt_transaction', id]),
+    ...related.allocationIds.map((id) => ['transaction_allocation', id]),
+    ...related.snapshotIds.map((id) => ['balance_snapshot', id]),
+    ...related.reconciliationIds.map((id) => ['balance_reconciliation', id]),
+    ...related.payoffScenarioIds.map((id) => ['payoff_scenario', id]),
+  ] as const;
+  const auditEventCount = database
+    .select()
+    .from(auditEvents)
+    .all()
+    .filter((event) =>
+      relatedEntityPairs.some(
+        ([entityType, entityId]) =>
+          event.entityType === entityType && event.entityId === entityId,
+      ),
+    ).length;
+  const importProvenanceCount = permanentDeletionImportPostingIds(
+    database,
+    debtId,
+    related,
+  ).length;
+  const otherRelatedRecords = database
+    .select()
+    .from(debts)
+    .where(
+      or(
+        eq(debts.refinancedFromDebtId, debtId),
+        eq(debts.refinancedIntoDebtId, debtId),
+      ),
+    )
+    .all().length;
+
+  return {
+    debtTerms: count(record.terms),
+    transactions: count(record.transactions),
+    allocations: count(related.allocationIds),
+    balanceSnapshots: count(record.balanceSnapshots),
+    reconciliations: count(record.balanceReconciliations),
+    auditEvents: auditEventCount,
+    importProvenance: importProvenanceCount,
+    payoffScenarioReferences: count(related.payoffScenarioIds),
+    otherRelatedRecords,
+  };
+};
+
+export const deleteDebtPermanentlyRecord = (
+  database: AppDatabase,
+  input: PermanentDebtDeletionRecordInput,
+): void => {
+  const audit = auditEventInsertSchema.parse(input.audit);
+  const related = permanentDeletionRelatedIds(database, input.debtId);
+  const importPostingIds = permanentDeletionImportPostingIds(
+    database,
+    input.debtId,
+    related,
+  );
+
+  database.transaction((transaction) => {
+    const existing = transaction
+      .select()
+      .from(debts)
+      .where(eq(debts.id, input.debtId))
+      .get();
+    if (!existing) throw new RepositoryNotFoundError('Debt was not found.');
+    if (existing.updatedAtUtc !== input.expectedUpdatedAtUtc) {
+      throw new RepositoryConflictError('Debt changed before deletion was confirmed.');
+    }
+
+    transaction
+      .update(debts)
+      .set({
+        refinancedFromDebtId: null,
+        refinancedIntoDebtId: null,
+        refinanceDate: null,
+      })
+      .where(
+        or(
+          eq(debts.refinancedFromDebtId, input.debtId),
+          eq(debts.refinancedIntoDebtId, input.debtId),
+        ),
+      )
+      .run();
+
+    if (importPostingIds.length > 0) {
+      transaction
+        .delete(importPostings)
+        .where(inArray(importPostings.id, importPostingIds))
+        .run();
+    }
+
+    if (input.simulateFailure) {
+      throw new RepositoryConflictError('Simulated permanent deletion failure.');
+    }
+
+    if (related.payoffScenarioIds.length > 0) {
+      transaction
+        .delete(payoffScenarios)
+        .where(inArray(payoffScenarios.id, related.payoffScenarioIds))
+        .run();
+    }
+    if (related.allocationIds.length > 0) {
+      transaction
+        .delete(transactionAllocations)
+        .where(inArray(transactionAllocations.id, related.allocationIds))
+        .run();
+    }
+    if (related.reconciliationIds.length > 0) {
+      transaction
+        .delete(balanceReconciliations)
+        .where(inArray(balanceReconciliations.id, related.reconciliationIds))
+        .run();
+    }
+    if (related.snapshotIds.length > 0) {
+      transaction
+        .delete(balanceSnapshots)
+        .where(inArray(balanceSnapshots.id, related.snapshotIds))
+        .run();
+    }
+    if (related.transactionIds.length > 0) {
+      transaction
+        .delete(debtTransactions)
+        .where(inArray(debtTransactions.id, related.transactionIds))
+        .run();
+    }
+    if (related.termIds.length > 0) {
+      transaction.delete(debtTerms).where(inArray(debtTerms.id, related.termIds)).run();
+    }
+
+    const relatedEntityPairs = [
+      ['debt', input.debtId],
+      ...related.termIds.map((id) => ['debt_term', id]),
+      ...related.transactionIds.map((id) => ['debt_transaction', id]),
+      ...related.allocationIds.map((id) => ['transaction_allocation', id]),
+      ...related.snapshotIds.map((id) => ['balance_snapshot', id]),
+      ...related.reconciliationIds.map((id) => ['balance_reconciliation', id]),
+      ...related.payoffScenarioIds.map((id) => ['payoff_scenario', id]),
+    ] as const;
+    const auditIds = transaction
+      .select()
+      .from(auditEvents)
+      .all()
+      .filter((event) =>
+        relatedEntityPairs.some(
+          ([entityType, entityId]) =>
+            event.entityType === entityType && event.entityId === entityId,
+        ),
+      )
+      .map((event) => event.id);
+    if (auditIds.length > 0) {
+      transaction.delete(auditEvents).where(inArray(auditEvents.id, auditIds)).run();
+    }
+
+    const result = transaction.delete(debts).where(eq(debts.id, input.debtId)).run();
+    if (result.changes !== 1) {
+      throw new RepositoryNotFoundError('Debt was not found.');
+    }
+
+    transaction.insert(auditEvents).values(audit).run();
+  });
 };
 
 export const createDebtAndInitialTerm = (

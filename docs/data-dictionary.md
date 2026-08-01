@@ -9,7 +9,8 @@
 - Financial dates are timezone-free `TEXT` in `YYYY-MM-DD` format.
 - System and audit timestamps are UTC ISO strings ending in `Z`.
 - Posted ledger statuses do not include projected or scenario activity.
-- Foreign keys use `ON DELETE RESTRICT` to preserve financial history.
+- Foreign keys use `ON DELETE RESTRICT` to preserve financial history unless a
+  documented relationship, such as refinance links, is explicitly nullable.
 
 ## `debts`
 
@@ -24,7 +25,7 @@ mutable current-balance field.
 | `owner_entity`              |    text |   Yes    | Compatibility field; new personal-use records default to `Personal`                                       |
 | `debt_type`                 |    text |   Yes    | Mortgage, HELOC, auto, personal, business, credit card, other; legacy student/medical/tax remain readable |
 | `purpose`                   |    text |   Yes    | Purpose of the obligation                                                                                 |
-| `status`                    |    text |   Yes    | Active, paid off, or closed                                                                               |
+| `status`                    |    text |   Yes    | Active, paid off, refinanced, or closed                                                                   |
 | `original_principal_cents`  | integer |   Yes    | Nonnegative safe-integer cents                                                                            |
 | `origination_date`          |    text |   Yes    | Financial date                                                                                            |
 | `maturity_date`             |    text |    No    | Financial date not before origination                                                                     |
@@ -34,15 +35,24 @@ mutable current-balance field.
 | `collateral_description`    |    text |    No    | Non-sensitive collateral description                                                                      |
 | `tax_category`              |    text |   Yes    | Controlled tax classification                                                                             |
 | `deductible_percentage_bps` | integer |   Yes    | From 0 through 10,000                                                                                     |
+| `financing_chain_name`      |    text |    No    | User-facing name for grouping separate refinance-chain obligations                                        |
+| `refinanced_from_debt_id`   |    text |    No    | Nullable self-reference to the prior obligation in a refinance chain                                      |
+| `refinanced_into_debt_id`   |    text |    No    | Nullable self-reference to the replacement obligation in a refinance chain                                |
+| `refinance_date`            |    text |    No    | Financial date identifying the refinance event when applicable                                            |
 | `notes`                     |    text |    No    | Supporting notes                                                                                          |
 | `created_at_utc`            |    text |   Yes    | UTC timestamp                                                                                             |
 | `updated_at_utc`            |    text |   Yes    | UTC timestamp                                                                                             |
 | `archived_at_utc`           |    text |    No    | UTC timestamp                                                                                             |
 
-Indexes cover creditor, owner/entity compatibility data, and status.
+Indexes cover creditor, owner/entity compatibility data, status, refinance
+references, and financing-chain name.
 `archived_at_utc` is independent of obligation status: a null value includes the
 debt in the default list, while a timestamp preserves the record but hides it
 unless archived records are requested.
+
+Refinance references use `ON DELETE SET NULL` because they are presentation and
+reporting links between separate legal obligations. Permanent deletion of one
+debt does not merge, overwrite, or delete the other debt in the chain.
 
 The application is single-user. Owner/entity is retained for existing database
 compatibility but is not shown in normal user-facing forms, debt cards, reports,
@@ -253,7 +263,8 @@ Indexes cover entity lookup and event time.
 Manual debt maintenance records `debt_created`, `debt_updated`,
 `debt_term_created`, `debt_archived`, and `debt_restored` events. Posted activity,
 snapshots, reconciliations, and approved reconciliation adjustments also create
-audit events. Backup, restore, failed-restore, and data-export workflows record
+audit events. Backup, restore, failed-restore, permanent debt deletion, and
+data-export workflows record
 non-sensitive operational audit events. Summaries avoid financial amounts; update
 metadata identifies classifications and related record identifiers rather than
 financial values.

@@ -11,6 +11,7 @@ import type {
   CreateDebtRequest,
   CreatePayoffScenarioRequest,
   DashboardDto,
+  DeleteDebtPermanentlyRequest,
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
@@ -48,6 +49,7 @@ import {
   editDebtTransactionRequestSchema,
   createDebtRequestSchema,
   createPayoffScenarioRequestSchema,
+  deleteDebtPermanentlyRequestSchema,
   getDashboardRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -88,9 +90,11 @@ import {
   createBalanceSnapshotRecord,
   createImportBatchRecord,
   createPostedTransactionRecord,
+  deleteDebtPermanentlyRecord,
   editPostedTransactionRecord,
   appendDebtTermRecord,
   getDebtActivityRecord,
+  getDebtRecord,
   getDebtTransactionRecord,
   getImportBatchRecord,
   getPayoffScenarioRecord,
@@ -101,6 +105,7 @@ import {
   listDebtRecords,
   listPayoffScenarioRecords,
   postImportBatchRecord,
+  previewPermanentDebtDeletion,
   RepositoryConflictError,
   RepositoryNotFoundError,
   setDebtArchivedState,
@@ -203,6 +208,14 @@ export interface DebtMaintenanceService {
   voidBalanceReconciliation(request: VoidBalanceReconciliationRequest): DebtDetailDto;
   archiveDebt(request: ArchiveDebtRequest): DebtDetailDto;
   restoreDebt(request: RestoreDebtRequest): DebtDetailDto;
+  deleteDebtPermanently(
+    request: DeleteDebtPermanentlyRequest,
+    backupId: string,
+  ): {
+    readonly deletedDebtId: string;
+    readonly deletedDebtName: string;
+    readonly backupId: string;
+  };
 }
 
 export interface DebtMaintenanceServiceDependencies {
@@ -327,6 +340,47 @@ const validateCreditLimit = (
   }
 
   return normalized ? convertMoney('debt.creditLimit', normalized) : null;
+};
+
+const validateRefinanceLinks = (
+  database: AppDatabase,
+  debtId: string,
+  fieldPrefix: string,
+  refinancedFromDebtId: string | null,
+  refinancedIntoDebtId: string | null,
+): void => {
+  if (refinancedFromDebtId === debtId || refinancedIntoDebtId === debtId) {
+    throw new ApplicationServiceError('validation', 'Review the highlighted fields.', {
+      [`${fieldPrefix}.refinancedFromDebtId`]: [
+        'A debt cannot refinance from or into itself.',
+      ],
+    });
+  }
+  if (
+    refinancedFromDebtId &&
+    refinancedIntoDebtId &&
+    refinancedFromDebtId === refinancedIntoDebtId
+  ) {
+    throw new ApplicationServiceError('validation', 'Review the highlighted fields.', {
+      [`${fieldPrefix}.refinancedIntoDebtId`]: [
+        'Prior and replacement refinance debts must be different.',
+      ],
+    });
+  }
+  for (const [field, linkedDebtId] of [
+    ['refinancedFromDebtId', refinancedFromDebtId],
+    ['refinancedIntoDebtId', refinancedIntoDebtId],
+  ] as const) {
+    if (linkedDebtId && !getDebtRecord(database, linkedDebtId)) {
+      throw new ApplicationServiceError(
+        'validation',
+        'Review the highlighted fields.',
+        {
+          [`${fieldPrefix}.${field}`]: ['Linked refinance debt was not found.'],
+        },
+      );
+    }
+  }
 };
 
 const createAudit = (
@@ -944,6 +998,8 @@ const mapSummary = (
   effectiveDate: string,
 ): DebtSummaryDto => {
   const debt = record.debt;
+  const debtName = (id: string | null): string | null =>
+    id ? (getDebtRecord(database, id)?.debt.name ?? null) : null;
 
   return {
     id: debt.id,
@@ -965,6 +1021,12 @@ const mapSummary = (
     initialTerm: mapTerm(requireInitialTerm(record)),
     currentTerm: mapTerm(currentTermForDate(record.terms, effectiveDate)),
     archivedAtUtc: debt.archivedAtUtc,
+    financingChainName: debt.financingChainName,
+    refinancedFromDebtId: debt.refinancedFromDebtId,
+    refinancedFromDebtName: debtName(debt.refinancedFromDebtId),
+    refinancedIntoDebtId: debt.refinancedIntoDebtId,
+    refinancedIntoDebtName: debtName(debt.refinancedIntoDebtId),
+    refinanceDate: debt.refinanceDate,
   };
 };
 
@@ -974,6 +1036,8 @@ const mapDetail = (
   effectiveDate: string,
 ): DebtDetailDto => {
   const debt = record.debt;
+  const debtName = (id: string | null): string | null =>
+    id ? (getDebtRecord(database, id)?.debt.name ?? null) : null;
 
   requireInitialTerm(record);
   const currentTerm = currentTermForDate(record.terms, effectiveDate);
@@ -1001,8 +1065,15 @@ const mapDetail = (
     taxCategory: debt.taxCategory,
     deductiblePercentage: basisPointsToPercentString(debt.deductiblePercentageBps),
     notes: debt.notes,
+    financingChainName: debt.financingChainName,
+    refinancedFromDebtId: debt.refinancedFromDebtId,
+    refinancedFromDebtName: debtName(debt.refinancedFromDebtId),
+    refinancedIntoDebtId: debt.refinancedIntoDebtId,
+    refinancedIntoDebtName: debtName(debt.refinancedIntoDebtId),
+    refinanceDate: debt.refinanceDate,
     currentTerm: mapTerm(currentTerm),
     terms: record.terms.map(mapTerm),
+    permanentDeletionPreview: previewPermanentDebtDeletion(database, debt.id),
     transactions: record.transactions.map(mapTransaction),
     balanceSnapshots: record.balanceSnapshots.map(mapBalanceSnapshot),
     balanceReconciliations: record.balanceReconciliations.map(mapBalanceReconciliation),
@@ -1624,13 +1695,14 @@ const createRollforward = (
   });
 
 const createBalanceTrendRows = (
+  records: readonly DebtWithActivityRecord[],
   monthlyRows: DebtReportsDto['monthlyRollforward']['rows'],
   annualRows: DebtReportsDto['annualRollforward']['rows'],
 ): DebtReportsDto['balanceTrends']['rows'] => {
   const rows = monthlyRows.length > 36 ? annualRows : monthlyRows;
   let priorEndingBalance: number | null = null;
 
-  return rows.map((row) => {
+  const totalRows = rows.map((row) => {
     const endingBalance = Number(row.endingBalance);
     const change =
       priorEndingBalance === null ? null : endingBalance - priorEndingBalance;
@@ -1642,11 +1714,57 @@ const createBalanceTrendRows = (
         ? `${row.period}-12-31`
         : periodEnd(row.period, 'monthly'),
       grouping: 'Total debt',
+      refinanceDate: null,
       endingBalance: row.endingBalance,
       changeFromPriorPeriod:
         change === null ? null : centsToDollars(Math.round(change * 100)),
     };
   });
+
+  const recordsByChain = new Map<string, DebtWithActivityRecord[]>();
+  for (const record of records) {
+    if (!record.debt.financingChainName) continue;
+    recordsByChain.set(record.debt.financingChainName, [
+      ...(recordsByChain.get(record.debt.financingChainName) ?? []),
+      record,
+    ]);
+  }
+
+  const chainRows = [...recordsByChain.entries()].flatMap(
+    ([chainName, chainRecords]) => {
+      if (chainRecords.length < 2) return [];
+      let priorChainBalance: number | null = null;
+      const refinanceDate =
+        chainRecords
+          .map((record) => record.debt.refinanceDate)
+          .filter((date): date is string => date !== null)
+          .sort()[0] ?? null;
+      return rows.map((row) => {
+        const isAnnual = /^\d{4}$/.test(row.period);
+        const periodEndDate = isAnnual
+          ? `${row.period}-12-31`
+          : periodEnd(row.period, 'monthly');
+        const endingBalanceCents = chainRecords.reduce(
+          (total, record) =>
+            total + calculateReportPrincipalBalanceThroughDate(record, periodEndDate),
+          0,
+        );
+        const change =
+          priorChainBalance === null ? null : endingBalanceCents - priorChainBalance;
+        priorChainBalance = endingBalanceCents;
+        return {
+          period: row.period,
+          periodEndDate,
+          grouping: chainName,
+          refinanceDate,
+          endingBalance: centsToDollars(endingBalanceCents),
+          changeFromPriorPeriod: change === null ? null : centsToDollars(change),
+        };
+      });
+    },
+  );
+
+  return [...totalRows, ...chainRows];
 };
 
 const monthsBetweenDates = (
@@ -2054,7 +2172,7 @@ const createDebtReports = (
         ...baseAssumptions,
         'Trend rows show application-calculated ending principal balance at period end.',
       ]),
-      rows: createBalanceTrendRows(monthlyRows, annualRows),
+      rows: createBalanceTrendRows(records, monthlyRows, annualRows),
     },
     maturitySchedule: {
       basis: reportBasis(
@@ -3498,6 +3616,19 @@ export const createDebtMaintenanceService = ({
         const maturityDate = parsed.debt.maturityDate
           ? ensureCalendarDate('debt.maturityDate', parsed.debt.maturityDate)
           : null;
+        const refinanceDate = parsed.debt.refinanceDate
+          ? ensureCalendarDate('debt.refinanceDate', parsed.debt.refinanceDate)
+          : null;
+        const financingChainName = nullableText(parsed.debt.financingChainName);
+        const refinancedFromDebtId = parsed.debt.refinancedFromDebtId ?? null;
+        const refinancedIntoDebtId = parsed.debt.refinancedIntoDebtId ?? null;
+        validateRefinanceLinks(
+          database,
+          debtId,
+          'debt',
+          refinancedFromDebtId,
+          refinancedIntoDebtId,
+        );
         const termStart = ensureCalendarDate(
           'initialTerm.effectiveStartDate',
           parsed.initialTerm.effectiveStartDate,
@@ -3556,6 +3687,10 @@ export const createDebtMaintenanceService = ({
             'debt.deductiblePercentage',
             parsed.debt.deductiblePercentage,
           ),
+          financingChainName,
+          refinancedFromDebtId,
+          refinancedIntoDebtId,
+          refinanceDate,
           notes: nullableText(parsed.debt.notes),
           createdAtUtc: timestamp,
           updatedAtUtc: timestamp,
@@ -3641,6 +3776,19 @@ export const createDebtMaintenanceService = ({
         const maturityDate = parsed.changes.maturityDate
           ? ensureCalendarDate('changes.maturityDate', parsed.changes.maturityDate)
           : null;
+        const refinanceDate = parsed.changes.refinanceDate
+          ? ensureCalendarDate('changes.refinanceDate', parsed.changes.refinanceDate)
+          : null;
+        const financingChainName = nullableText(parsed.changes.financingChainName);
+        const refinancedFromDebtId = parsed.changes.refinancedFromDebtId ?? null;
+        const refinancedIntoDebtId = parsed.changes.refinancedIntoDebtId ?? null;
+        validateRefinanceLinks(
+          database,
+          parsed.id,
+          'changes',
+          refinancedFromDebtId,
+          refinancedIntoDebtId,
+        );
 
         if (maturityDate && maturityDate < existing.debt.originationDate) {
           throw new ApplicationServiceError(
@@ -3673,6 +3821,10 @@ export const createDebtMaintenanceService = ({
             'changes.deductiblePercentage',
             parsed.changes.deductiblePercentage,
           ),
+          financingChainName,
+          refinancedFromDebtId,
+          refinancedIntoDebtId,
+          refinanceDate,
           notes: nullableText(parsed.changes.notes),
           updatedAtUtc: timestamp,
         };
@@ -4730,6 +4882,55 @@ export const createDebtMaintenanceService = ({
           getRecordOrThrow(parsed.id),
           currentFinancialDate(now),
         );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    deleteDebtPermanently: (request, backupId) => {
+      try {
+        if (backupId.trim() === '') {
+          throw new ApplicationServiceError(
+            'conflict',
+            'A validated backup is required before permanently deleting a debt.',
+          );
+        }
+
+        const parsed = deleteDebtPermanentlyRequestSchema.parse(request);
+        const existing = getRecordOrThrow(parsed.id);
+        if (parsed.typedDebtName !== existing.debt.name) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Type the debt name exactly to confirm permanent deletion.',
+            {
+              typedDebtName: ['Debt name confirmation did not match.'],
+            },
+          );
+        }
+        const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
+        deleteDebtPermanentlyRecord(database, {
+          debtId: parsed.id,
+          expectedUpdatedAtUtc: parsed.expectedUpdatedAtUtc,
+          audit: {
+            id: createId(),
+            eventType: 'debt_permanently_deleted',
+            entityType: 'application',
+            entityId: 'permanent-debt-deletion',
+            action: 'delete',
+            occurredAtUtc: timestamp,
+            source: 'user',
+            summary:
+              'A debt and its dependent records were permanently deleted after a validated backup.',
+            beforeMetadataJson: null,
+            afterMetadataJson: JSON.stringify({ backupId }),
+          },
+        });
+
+        return {
+          deletedDebtId: parsed.id,
+          deletedDebtName: existing.debt.name,
+          backupId,
+        };
       } catch (error) {
         return normalizeError(error);
       }

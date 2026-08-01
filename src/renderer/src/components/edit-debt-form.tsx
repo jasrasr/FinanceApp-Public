@@ -1,4 +1,8 @@
-import type { DebtDetailDto, UpdateDebtRequest } from '../../../shared/debt-contracts';
+import type {
+  DebtDetailDto,
+  DebtSummaryDto,
+  UpdateDebtRequest,
+} from '../../../shared/debt-contracts';
 import {
   DEBT_STATUSES,
   TAX_CATEGORIES,
@@ -10,6 +14,7 @@ import { inputClassName, labelFromValue } from './form-utils';
 export interface EditDebtFormProps {
   readonly busy: boolean;
   readonly debt: DebtDetailDto;
+  readonly debts: readonly DebtSummaryDto[];
   readonly fieldErrors?: Readonly<Record<string, readonly string[]>>;
   readonly onCancel: () => void;
   readonly onSubmit: (request: UpdateDebtRequest) => void;
@@ -25,6 +30,7 @@ const nullableValue = (data: FormData, name: string): string | null => {
 export const EditDebtForm = ({
   busy,
   debt,
+  debts,
   fieldErrors,
   onCancel,
   onSubmit,
@@ -54,6 +60,10 @@ export const EditDebtForm = ({
           'changes.taxCategory',
         ) as UpdateDebtRequest['changes']['taxCategory'],
         deductiblePercentage: value(data, 'changes.deductiblePercentage'),
+        financingChainName: nullableValue(data, 'changes.financingChainName'),
+        refinancedFromDebtId: nullableValue(data, 'changes.refinancedFromDebtId'),
+        refinancedIntoDebtId: nullableValue(data, 'changes.refinancedIntoDebtId'),
+        refinanceDate: nullableValue(data, 'changes.refinanceDate'),
         notes: nullableValue(data, 'changes.notes'),
       },
     });
@@ -208,6 +218,79 @@ export const EditDebtForm = ({
             defaultValue={debt.collateralDescription ?? ''}
             id="changes.collateralDescription"
             name="changes.collateralDescription"
+          />
+        </Field>
+        <div className="lg:col-span-2">
+          <Field
+            error={fieldErrors?.['changes.financingChainName']}
+            label="Financing-chain name"
+            name="changes.financingChainName"
+            optional
+          >
+            <input
+              className={inputClassName}
+              defaultValue={debt.financingChainName ?? ''}
+              id="changes.financingChainName"
+              name="changes.financingChainName"
+            />
+          </Field>
+        </div>
+        <Field
+          error={fieldErrors?.['changes.refinancedFromDebtId']}
+          label="Refinanced from"
+          name="changes.refinancedFromDebtId"
+          optional
+        >
+          <select
+            className={inputClassName}
+            defaultValue={debt.refinancedFromDebtId ?? ''}
+            id="changes.refinancedFromDebtId"
+            name="changes.refinancedFromDebtId"
+          >
+            <option value="">Not linked</option>
+            {debts
+              .filter((candidate) => candidate.id !== debt.id)
+              .map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+          </select>
+        </Field>
+        <Field
+          error={fieldErrors?.['changes.refinancedIntoDebtId']}
+          label="Refinanced into"
+          name="changes.refinancedIntoDebtId"
+          optional
+        >
+          <select
+            className={inputClassName}
+            defaultValue={debt.refinancedIntoDebtId ?? ''}
+            id="changes.refinancedIntoDebtId"
+            name="changes.refinancedIntoDebtId"
+          >
+            <option value="">Not linked</option>
+            {debts
+              .filter((candidate) => candidate.id !== debt.id)
+              .map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+          </select>
+        </Field>
+        <Field
+          error={fieldErrors?.['changes.refinanceDate']}
+          label="Refinance date"
+          name="changes.refinanceDate"
+          optional
+        >
+          <input
+            className={inputClassName}
+            defaultValue={debt.refinanceDate ?? ''}
+            id="changes.refinanceDate"
+            name="changes.refinanceDate"
+            type="date"
           />
         </Field>
         <div className="lg:col-span-2">

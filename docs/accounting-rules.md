@@ -186,6 +186,33 @@ new manual debts.
 - Archive and restore affect only `archived_at_utc`; they do not delete the debt,
   terms, or related records.
 - Debt status and archival state remain separate concepts.
+- Permanent debt deletion is a separate administrative workflow for rebuilding
+  an entire obligation and its history. It requires an immediately validated
+  backup, exact debt-name confirmation, and a second irreversible-action
+  confirmation before deleting the debt, terms, transactions, allocations,
+  snapshots, reconciliations, import provenance, related debt-level audit events,
+  and payoff-scenario references in one transaction.
+- If permanent deletion fails, the transaction rolls back and no partial delete
+  is retained. The application records only a non-sensitive application-level
+  audit event after a successful deletion so the deleted debt chain is not needed
+  to preserve evidence that the administrative action occurred.
+
+## Refinance Chains
+
+Refinancing preserves separate legal obligations. The prior debt remains its own
+ledger, terms, transactions, snapshots, and reconciliations. The replacement debt
+is created as a separate obligation with its own origination date, original
+principal, effective-dated terms, rate, required payment, and maturity.
+
+- `refinanced_from_debt_id` links a replacement debt to the prior debt.
+- `refinanced_into_debt_id` links a prior debt to its replacement debt.
+- `financing_chain_name` provides a shared user-facing grouping label.
+- `refinance_date` identifies the refinance event in detail and reports.
+- Prior debts may be marked `paid_off` or `refinanced`.
+- The payoff of the prior loan is recorded as a posted payment on the prior debt.
+- The replacement borrowing is represented by the replacement debt's original
+  principal and any separately posted borrowing/draw activity.
+- Historical terms are not merged or overwritten during refinance linking.
 
 ## Manual Posted Activity and Snapshots
 
@@ -454,6 +481,15 @@ zooms only the visible date domain and must not scroll the page. Chart ticks are
 calculated from the visible date range rather than rendering every monthly
 period. Period-end balances and period-over-period changes are available through
 an accessible chart-data disclosure that is closed by default.
+
+When two or more visible debts share a financing-chain name, balance-trend
+reporting also provides an optional combined financing-chain row. The combined
+row sums the separate obligations' application-calculated balances at each
+period end and carries the refinance date as event context. Loan-level history
+remains visible separately. Rollforwards treat the original loan payoff as
+principal reduction on the prior debt and the replacement loan principal as a
+new borrowing only once, so payoff proceeds and replacement principal are not
+double-counted.
 
 Interest analysis is separate from debt balance trends. Monthly interest expense
 charts omit zero-only periods when they add no analytical value and default to a

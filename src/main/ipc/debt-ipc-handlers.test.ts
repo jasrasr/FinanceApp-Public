@@ -37,6 +37,7 @@ const createService = (): DebtMaintenanceService => ({
   voidBalanceReconciliation: vi.fn(),
   archiveDebt: vi.fn(),
   restoreDebt: vi.fn(),
+  deleteDebtPermanently: vi.fn(),
 });
 
 const createDataManagementService = (): DataManagementService => ({
@@ -320,5 +321,118 @@ describe('debt IPC handlers', () => {
       error: { code: 'validation' },
     });
     expect(service.getDebtReports).not.toHaveBeenCalled();
+  });
+
+  it('creates a validated backup before permanently deleting debt', async () => {
+    const service = createService();
+    const dataManagementService = createDataManagementService();
+    vi.mocked(dataManagementService.createManualBackup).mockResolvedValue({
+      backupDirectoryDisplayPath: 'Generated backup directory',
+      lastSuccessfulBackupAtUtc: '2026-08-01T12:00:00.000Z',
+      availableBackups: [],
+      lastBackup: {
+        status: 'succeeded',
+        message: 'Backup completed and passed SQLite integrity checks.',
+        completedAtUtc: '2026-08-01T12:00:00.000Z',
+        backup: {
+          id: 'manual-2026-08-01T120000-000Z.sqlite3',
+          fileName: 'manual-2026-08-01T120000-000Z.sqlite3',
+          kind: 'manual',
+          createdAtUtc: '2026-08-01T12:00:00.000Z',
+          sizeBytes: 131072,
+          integrityStatus: 'valid',
+        },
+      },
+      lastRestore: {
+        status: 'not_run',
+        message: 'No operation has been run in this session.',
+        completedAtUtc: null,
+        backup: null,
+      },
+    });
+    vi.mocked(service.deleteDebtPermanently).mockReturnValue({
+      deletedDebtId: '11111111-1111-4111-8111-111111111111',
+      deletedDebtName: 'Generated Deletion Note',
+      backupId: 'manual-2026-08-01T120000-000Z.sqlite3',
+    });
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(registrar, service, dataManagementService, () => true);
+
+    const result = await handlers.get(DEBT_IPC_CHANNELS.deletePermanently)?.(event, {
+      id: '11111111-1111-4111-8111-111111111111',
+      expectedUpdatedAtUtc: '2026-08-01T11:59:00.000Z',
+      typedDebtName: 'Generated Deletion Note',
+      confirmed: true,
+      secondConfirmed: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        deletedDebtId: '11111111-1111-4111-8111-111111111111',
+        deletedDebtName: 'Generated Deletion Note',
+        backupId: 'manual-2026-08-01T120000-000Z.sqlite3',
+      },
+    });
+    expect(dataManagementService.createManualBackup).toHaveBeenCalledWith({});
+    expect(service.deleteDebtPermanently).toHaveBeenCalledWith(
+      expect.objectContaining({ typedDebtName: 'Generated Deletion Note' }),
+      'manual-2026-08-01T120000-000Z.sqlite3',
+    );
+  });
+
+  it('blocks permanent deletion while another guarded database operation is active', async () => {
+    const service = createService();
+    const dataManagementService = createDataManagementService();
+    let finishBackup: (
+      value: Awaited<ReturnType<DataManagementService['createManualBackup']>>,
+    ) => void = () => undefined;
+    vi.mocked(dataManagementService.createManualBackup).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishBackup = resolve;
+        }),
+    );
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(registrar, service, dataManagementService, () => true);
+
+    const pendingBackup = handlers.get(DEBT_IPC_CHANNELS.createManualBackup)?.(
+      event,
+      {},
+    ) as Promise<unknown>;
+    const blockedDeletion = await handlers.get(DEBT_IPC_CHANNELS.deletePermanently)?.(
+      event,
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        expectedUpdatedAtUtc: '2026-08-01T11:59:00.000Z',
+        typedDebtName: 'Generated Deletion Note',
+        confirmed: true,
+        secondConfirmed: true,
+      },
+    );
+    finishBackup({
+      backupDirectoryDisplayPath: 'Generated backup directory',
+      lastSuccessfulBackupAtUtc: null,
+      availableBackups: [],
+      lastBackup: {
+        status: 'not_run',
+        message: 'No operation has been run in this session.',
+        completedAtUtc: null,
+        backup: null,
+      },
+      lastRestore: {
+        status: 'not_run',
+        message: 'No operation has been run in this session.',
+        completedAtUtc: null,
+        backup: null,
+      },
+    });
+    await pendingBackup;
+
+    expect(blockedDeletion).toMatchObject({
+      ok: false,
+      error: { code: 'conflict' },
+    });
+    expect(service.deleteDebtPermanently).not.toHaveBeenCalled();
   });
 });

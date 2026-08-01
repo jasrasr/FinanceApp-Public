@@ -772,6 +772,59 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
+  const deleteDebtPermanently = async (): Promise<void> => {
+    if (!selectedDebt || saving) return;
+    const typedDebtName = window.prompt(
+      `Type "${selectedDebt.name}" to permanently delete this debt and its history.`,
+    );
+    if (typedDebtName === null) return;
+    if (typedDebtName.trim() !== selectedDebt.name) {
+      setError({
+        code: 'validation',
+        message: 'Debt name confirmation did not match.',
+      });
+      return;
+    }
+    const confirmed = window.confirm(
+      'Debt Tracker will create a validated backup immediately before deletion. Continue?',
+    );
+    if (!confirmed) return;
+    const secondConfirmed = window.confirm(
+      'This action cannot be undone except by restoring a backup. Permanently delete this debt?',
+    );
+    if (!secondConfirmed) return;
+
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() =>
+      bridge.deleteDebtPermanently({
+        id: selectedDebt.id,
+        expectedUpdatedAtUtc: selectedDebt.updatedAtUtc,
+        typedDebtName: typedDebtName.trim(),
+        confirmed: true,
+        secondConfirmed: true,
+      }),
+    );
+
+    if (result.ok) {
+      setSelectedDebt(null);
+      setSuccessMessage(
+        `Debt was permanently deleted after validated backup ${result.value.backupId}.`,
+      );
+      setView('list');
+      setDetailPanel('overview');
+      await loadDebts();
+      await loadDashboard();
+      await loadReports();
+      await loadEscrowDetail();
+    } else {
+      handleFailure(result.error);
+    }
+
+    setSaving(false);
+  };
+
   const addDebtTerm = async (request: AddDebtTermRequest): Promise<void> => {
     setSaving(true);
     setError(null);
@@ -1338,6 +1391,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               <div className="mt-8">
                 <CreateDebtForm
                   busy={saving}
+                  debts={debts}
                   fieldErrors={fieldErrors}
                   onCancel={showList}
                   onSubmit={(request) => void createDebt(request)}
@@ -1448,6 +1502,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               ) : null}
 
               <DebtDetail
+                busy={saving}
                 debt={selectedDebt}
                 onAddTerm={() => {
                   setError(null);
@@ -1460,6 +1515,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 }
                 onBack={showList}
                 onCorrectReconciliation={requestCorrectReconciliation}
+                onDeletePermanently={() => void deleteDebtPermanently()}
                 onEdit={() => {
                   setError(null);
                   setFieldErrors(undefined);
@@ -1512,6 +1568,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 <EditDebtForm
                   busy={saving}
                   debt={selectedDebt}
+                  debts={debts}
                   fieldErrors={fieldErrors}
                   onCancel={() => setView('detail')}
                   onSubmit={(request) => void updateDebt(request)}

@@ -75,6 +75,10 @@ export const debtInsertSchema = z
     collateralDescription: optionalText,
     taxCategory: z.enum(TAX_CATEGORIES),
     deductiblePercentageBps: z.number().int().min(0).max(10_000),
+    financingChainName: optionalText,
+    refinancedFromDebtId: idSchema.nullable().optional(),
+    refinancedIntoDebtId: idSchema.nullable().optional(),
+    refinanceDate: financialDateSchema.nullable().optional(),
     notes: optionalText,
     createdAtUtc: utcTimestampSchema,
     updatedAtUtc: utcTimestampSchema,
@@ -86,6 +90,16 @@ export const debtInsertSchema = z
         code: 'custom',
         message: 'Maturity date cannot precede origination date.',
         path: ['maturityDate'],
+      });
+    }
+    if (
+      value.refinancedFromDebtId &&
+      value.refinancedFromDebtId === value.refinancedIntoDebtId
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Prior and replacement refinance debts must be different.',
+        path: ['refinancedIntoDebtId'],
       });
     }
   });
