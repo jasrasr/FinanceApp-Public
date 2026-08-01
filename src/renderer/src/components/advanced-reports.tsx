@@ -4,12 +4,7 @@ import type {
   GetDebtReportsRequest,
 } from '../../../shared/debt-contracts';
 import { REPORTING_HISTORY_START_DATE } from '../../../shared/reporting-constants';
-import {
-  buildChartScale,
-  interestYearTreatment,
-  monthlyInterestTickIndexes,
-  monthlyInterestTickLabel,
-} from './chart-helpers';
+import { buildChartScale, interestYearTreatment } from './chart-helpers';
 import { formatDollarString } from './display-format';
 
 export interface AdvancedReportsProps {
@@ -105,133 +100,6 @@ const periodLabel = (period: string): string => {
   );
 };
 
-const InterestMiniChart = ({
-  chartType,
-  label,
-  rows,
-}: {
-  readonly chartType: 'bar' | 'line';
-  readonly label: string;
-  readonly rows: readonly {
-    readonly label: string;
-    readonly period?: string;
-    readonly value: string;
-  }[];
-}): React.JSX.Element | null => {
-  if (rows.length === 0) return null;
-  const width = 520;
-  const height = 180;
-  const chartTop = 20;
-  const chartBottom = 132;
-  const chartHeight = chartBottom - chartTop;
-  const scale = buildChartScale({
-    values: rows.map((row) => Number(row.value)),
-    chartHeight,
-    includeZero: true,
-    formatLabel: (value) => formatDollarString(value.toFixed(2)),
-  });
-  const xFor = (index: number): number =>
-    rows.length === 1 ? 64 : 64 + (index * (width - 108)) / (rows.length - 1);
-  const yFor = (value: string): number =>
-    chartBottom -
-    ((Number(value) - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
-  const points = rows
-    .map((row, index) => `${xFor(index)},${yFor(row.value)}`)
-    .join(' ');
-  const barWidth = Math.max(10, Math.min(26, (width - 120) / rows.length / 2));
-  const tickIndexes = monthlyInterestTickIndexes(rows.length, width);
-
-  return (
-    <div className="mt-3" role="img" aria-label={`${label}. Tabular detail follows.`}>
-      <svg
-        aria-hidden="true"
-        className="h-auto w-full"
-        focusable="false"
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        width={width}
-      >
-        <title>{label}</title>
-        <line
-          stroke="#cbd5e1"
-          strokeWidth="1"
-          x1="64"
-          x2={width - 20}
-          y1={chartBottom}
-          y2={chartBottom}
-        />
-        <line
-          stroke="#cbd5e1"
-          strokeWidth="1"
-          x1="64"
-          x2="64"
-          y1={chartTop}
-          y2={chartBottom}
-        />
-        <text fill="#475569" fontSize="11" x="4" y="16">
-          Dollars
-        </text>
-        {scale.tickValues.map((tick, index) => {
-          const y =
-            chartBottom -
-            ((tick - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
-          return (
-            <g key={tick}>
-              <line stroke="#e2e8f0" x1="64" x2={width - 20} y1={y} y2={y} />
-              <text
-                data-testid="monthly-interest-y-tick"
-                fill="#475569"
-                fontSize="10"
-                textAnchor="end"
-                x="58"
-                y={y + 4}
-              >
-                {scale.formattedLabels[index]}
-              </text>
-            </g>
-          );
-        })}
-        {chartType === 'line' ? (
-          <polyline fill="none" points={points} stroke="#b45309" strokeWidth="3" />
-        ) : null}
-        {rows.map((row, index) => {
-          const x = xFor(index);
-          const y = yFor(row.value);
-          return (
-            <g key={row.label} tabIndex={0}>
-              <title data-testid="monthly-interest-tooltip">{`${row.period ?? row.label}\n${formatDollarString(Math.abs(Number(row.value)).toFixed(2))}`}</title>
-              {chartType === 'bar' ? (
-                <rect
-                  fill="#fef3c7"
-                  height={chartBottom - y}
-                  stroke="#b45309"
-                  width={barWidth}
-                  x={x - barWidth / 2}
-                  y={y}
-                />
-              ) : null}
-              {tickIndexes.includes(index) ? (
-                <text
-                  data-testid="monthly-interest-x-tick"
-                  fill="#475569"
-                  fontSize="10"
-                  textAnchor="middle"
-                  x={x}
-                  y="152"
-                >
-                  {row.period
-                    ? monthlyInterestTickLabel(row.period, rows.length)
-                    : row.label}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-};
-
 const monthName = (monthIndex: number): string =>
   new Date(Date.UTC(2026, monthIndex, 1)).toLocaleDateString(undefined, {
     month: 'short',
@@ -259,6 +127,8 @@ const InterestComparisonChart = ({
   const height = 240;
   const chartTop = 20;
   const chartBottom = 180;
+  const chartLeft = 64;
+  const chartRight = width - 16;
   const years = [...new Set(activeRows.map((row) => row.period.slice(0, 4)))].sort();
   const valuesByYearMonth = new Map(
     rows.map((row) => [
@@ -266,9 +136,19 @@ const InterestComparisonChart = ({
       Number(row.interestActivity),
     ]),
   );
-  const monthSlot = (width - 96) / 12;
-  const barWidth = Math.max(4, Math.min(12, monthSlot / Math.max(years.length, 1) - 2));
-  const tickIndexes = monthlyInterestTickIndexes(12, width);
+  const monthSlot = (chartRight - chartLeft) / 12;
+  const groupGap = Math.max(8, Math.min(14, monthSlot * 0.18));
+  const availableGroupWidth = monthSlot - groupGap;
+  const barGap = years.length > 1 ? 1.5 : 0;
+  const barWidth = Math.max(
+    3,
+    Math.min(
+      10,
+      (availableGroupWidth - barGap * Math.max(0, years.length - 1)) /
+        Math.max(years.length, 1),
+    ),
+  );
+  const groupWidth = years.length * barWidth + Math.max(0, years.length - 1) * barGap;
   const chartHeight = chartBottom - chartTop;
   const scale = buildChartScale({
     values: [...valuesByYearMonth.values()],
@@ -315,7 +195,7 @@ const InterestComparisonChart = ({
         <line
           stroke="#cbd5e1"
           x1="64"
-          x2={width - 16}
+          x2={chartRight}
           y1={chartBottom}
           y2={chartBottom}
         />
@@ -329,7 +209,7 @@ const InterestComparisonChart = ({
             ((tick - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
           return (
             <g key={tick}>
-              <line stroke="#e2e8f0" x1="64" x2={width - 16} y1={y} y2={y} />
+              <line stroke="#e2e8f0" x1="64" x2={chartRight} y1={y} y2={y} />
               <text
                 data-testid="interest-comparison-y-tick"
                 fill="#475569"
@@ -345,14 +225,13 @@ const InterestComparisonChart = ({
         })}
         {Array.from({ length: 12 }).map((_, monthIndex) => {
           const month = `${monthIndex + 1}`.padStart(2, '0');
-          const baseX = 64 + monthIndex * monthSlot + monthSlot / 2;
+          const baseX = chartLeft + monthIndex * monthSlot + monthSlot / 2;
           return (
-            <g key={month}>
+            <g data-testid="interest-month-group" key={month}>
               {years.map((year, yearIndex) => {
                 const value = valuesByYearMonth.get(`${year}-${month}`) ?? 0;
                 const y = yFor(value);
-                const x =
-                  baseX - (years.length * barWidth) / 2 + yearIndex * (barWidth + 2);
+                const x = baseX - groupWidth / 2 + yearIndex * (barWidth + barGap);
                 return (
                   <g key={year}>
                     <title data-testid="interest-comparison-tooltip">{`${monthName(monthIndex)} ${year}\n${formatDollarString(Math.abs(value).toFixed(2))}`}</title>
@@ -368,18 +247,16 @@ const InterestComparisonChart = ({
                   </g>
                 );
               })}
-              {tickIndexes.includes(monthIndex) ? (
-                <text
-                  data-testid="monthly-interest-x-tick"
-                  fill="#475569"
-                  fontSize="10"
-                  textAnchor="middle"
-                  x={baseX}
-                  y="204"
-                >
-                  {monthName(monthIndex)}
-                </text>
-              ) : null}
+              <text
+                data-testid="interest-comparison-month-label"
+                fill="#475569"
+                fontSize="10"
+                textAnchor="middle"
+                x={baseX}
+                y="204"
+              >
+                {monthName(monthIndex)}
+              </text>
             </g>
           );
         })}
@@ -1456,7 +1333,6 @@ const ReportInterestAnalysis = ({
 }: {
   readonly reports: DebtReportsDto;
 }): React.JSX.Element => {
-  const [interestView, setInterestView] = useState<'trend' | 'comparison'>('trend');
   const annualTotals = new Map<string, number>();
   for (const row of reports.activityTrends.annualInterestByDebt) {
     annualTotals.set(
@@ -1465,77 +1341,6 @@ const ReportInterestAnalysis = ({
     );
   }
   const monthlyRows = reports.activityTrends.rows;
-  const monthlyFullStart = 0;
-  const monthlyFullEnd = Math.max(0, monthlyRows.length - 1);
-  const monthlyRangeKey = `${monthlyRows[0]?.period ?? 'none'}-${monthlyRows.at(-1)?.period ?? 'none'}-${monthlyRows.length}`;
-  const [monthlyWindowState, setMonthlyWindow] = useState({
-    rangeKey: monthlyRangeKey,
-    start: 0,
-    end: Math.max(0, monthlyRows.length - 1),
-  });
-  const monthlyWindow =
-    monthlyWindowState.rangeKey === monthlyRangeKey
-      ? monthlyWindowState
-      : {
-          rangeKey: monthlyRangeKey,
-          start: monthlyFullStart,
-          end: monthlyFullEnd,
-        };
-  const monthlyChartRef = useRef<HTMLDivElement | null>(null);
-  const monthlyDragRef = useRef<{ originX: number; start: number } | null>(null);
-  const [monthlyDragging, setMonthlyDragging] = useState(false);
-  const panMonthly = (delta: number): void =>
-    setMonthlyWindow((currentState) => {
-      const current =
-        currentState.rangeKey === monthlyRangeKey
-          ? currentState
-          : {
-              rangeKey: monthlyRangeKey,
-              start: monthlyFullStart,
-              end: monthlyFullEnd,
-            };
-      const width = current.end - current.start + 1;
-      const start = Math.max(
-        0,
-        Math.min(current.start + delta, monthlyRows.length - width),
-      );
-      return {
-        rangeKey: monthlyRangeKey,
-        start,
-        end: Math.max(start, start + width - 1),
-      };
-    });
-  const monthlyVisibleRows = monthlyRows.slice(
-    monthlyWindow.start,
-    monthlyWindow.end + 1,
-  );
-  useEffect(() => {
-    const chart = monthlyChartRef.current;
-    if (!chart) return undefined;
-    const zoomChart = (event: WheelEvent): void => {
-      event.preventDefault();
-      const delta = event.deltaY < 0 ? -1 : 1;
-      setMonthlyWindow((currentState) => {
-        const current =
-          currentState.rangeKey === monthlyRangeKey
-            ? currentState
-            : {
-                rangeKey: monthlyRangeKey,
-                start: monthlyFullStart,
-                end: monthlyFullEnd,
-              };
-        const width = current.end - current.start + 1;
-        const nextWidth = Math.max(2, Math.min(monthlyRows.length, width + delta * 2));
-        const start = Math.max(
-          0,
-          Math.min(current.start, monthlyRows.length - nextWidth),
-        );
-        return { rangeKey: monthlyRangeKey, start, end: start + nextWidth - 1 };
-      });
-    };
-    chart.addEventListener('wheel', zoomChart, { passive: false });
-    return () => chart.removeEventListener('wheel', zoomChart);
-  }, [monthlyFullEnd, monthlyRangeKey, monthlyRows.length]);
   const hasMonthlyInterestActivity = hasInterestActivity(monthlyRows);
   const annualRows = [...annualTotals.entries()]
     .filter(([, total]) => total !== 0)
@@ -1553,171 +1358,13 @@ const ReportInterestAnalysis = ({
     <ReportShell basis={reports.activityTrends.basis} title="Interest expense analysis">
       <div className="space-y-5">
         <div
-          className={`rounded-lg border border-slate-200 p-4 ${monthlyDragging ? 'select-none cursor-grabbing' : 'cursor-grab'}`}
+          className="rounded-lg border border-slate-200 p-4"
           data-testid="monthly-interest-chart"
-          ref={monthlyChartRef}
-          onPointerDown={(event) => {
-            monthlyDragRef.current = {
-              originX: event.clientX,
-              start: monthlyWindow.start,
-            };
-            event.currentTarget.setPointerCapture?.(event.pointerId);
-          }}
-          onPointerMove={(event) => {
-            const drag = monthlyDragRef.current;
-            if (!drag) return;
-            const delta = drag.originX - event.clientX;
-            if (Math.abs(delta) < 4) return;
-            document.body.style.userSelect = 'none';
-            setMonthlyDragging(true);
-            panMonthly(Math.round(delta / 80));
-            monthlyDragRef.current = {
-              originX: event.clientX,
-              start: monthlyWindow.start,
-            };
-            event.preventDefault();
-          }}
-          onPointerUp={(event) => {
-            if (event.currentTarget.hasPointerCapture?.(event.pointerId))
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            monthlyDragRef.current = null;
-            setMonthlyDragging(false);
-            document.body.style.userSelect = '';
-          }}
-          onPointerCancel={() => {
-            monthlyDragRef.current = null;
-            setMonthlyDragging(false);
-            document.body.style.userSelect = '';
-          }}
         >
-          <fieldset className="flex flex-wrap gap-3 text-sm">
-            <legend className="px-1 text-xs font-semibold text-slate-600">
-              Monthly view
-            </legend>
-            <button
-              aria-checked={interestView === 'trend'}
-              aria-label="Chronological trend"
-              className="inline-flex items-center gap-2 rounded px-1 py-1 focus:ring-2 focus:ring-blue-200 focus:outline-none"
-              onMouseDown={() => setInterestView('trend')}
-              onPointerUp={() => setInterestView('trend')}
-              onClick={() => setInterestView('trend')}
-              role="radio"
-              type="button"
-            >
-              <span
-                aria-hidden="true"
-                className="relative h-4 w-4 rounded-full border-2 border-slate-500"
-              >
-                {interestView === 'trend' ? (
-                  <span className="absolute inset-1 rounded-full bg-slate-700" />
-                ) : null}
-              </span>
-              Chronological trend
-            </button>
-            <button
-              aria-checked={interestView === 'comparison'}
-              aria-label="Compare months across years"
-              className="inline-flex items-center gap-2 rounded px-1 py-1 focus:ring-2 focus:ring-blue-200 focus:outline-none"
-              onMouseDown={() => setInterestView('comparison')}
-              onPointerUp={() => setInterestView('comparison')}
-              onClick={() => setInterestView('comparison')}
-              role="radio"
-              type="button"
-            >
-              <span
-                aria-hidden="true"
-                className="relative h-4 w-4 rounded-full border-2 border-slate-500"
-              >
-                {interestView === 'comparison' ? (
-                  <span className="absolute inset-1 rounded-full bg-slate-700" />
-                ) : null}
-              </span>
-              Compare months across years
-            </button>
-          </fieldset>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <button
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-              disabled={monthlyWindow.start === 0}
-              onClick={() => panMonthly(-1)}
-              type="button"
-            >
-              Previous month
-            </button>
-            <button
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-              disabled={monthlyWindow.end >= monthlyRows.length - 1}
-              onClick={() => panMonthly(1)}
-              type="button"
-            >
-              Next month
-            </button>
-            <button
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-              onClick={() =>
-                setMonthlyWindow({
-                  rangeKey: monthlyRangeKey,
-                  start: monthlyFullStart,
-                  end: monthlyFullEnd,
-                })
-              }
-              type="button"
-            >
-              Reset monthly zoom
-            </button>
-            <button
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-              onClick={() =>
-                setMonthlyWindow((currentState) => {
-                  const current =
-                    currentState.rangeKey === monthlyRangeKey
-                      ? currentState
-                      : {
-                          rangeKey: monthlyRangeKey,
-                          start: monthlyFullStart,
-                          end: monthlyFullEnd,
-                        };
-                  return {
-                    rangeKey: monthlyRangeKey,
-                    start: Math.max(
-                      0,
-                      monthlyRows.length - (current.end - current.start + 1),
-                    ),
-                    end: monthlyFullEnd,
-                  };
-                })
-              }
-              type="button"
-            >
-              Return to latest months
-            </button>
-            <span className="text-xs text-slate-500">
-              Visible range: {monthlyVisibleRows[0]?.period ?? 'none'} through{' '}
-              {monthlyVisibleRows.at(-1)?.period ?? 'none'}
-            </span>
-          </div>
           <h4 className="text-sm font-semibold text-slate-900">
-            {interestView === 'trend'
-              ? 'Monthly interest expense trend'
-              : 'Month-by-month comparison across years'}
+            Monthly interest expense by month and year
           </h4>
-          {interestView === 'trend' ? (
-            !hasMonthlyInterestActivity ? (
-              <p className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-                No interest activity exists in the selected report range.
-              </p>
-            ) : (
-              <InterestMiniChart
-                chartType="line"
-                label="Line chart of monthly interest expense"
-                rows={monthlyVisibleRows.map((row) => ({
-                  label: periodLabel(row.period),
-                  period: row.period,
-                  value: Math.abs(Number(row.interestActivity)).toFixed(2),
-                }))}
-              />
-            )
-          ) : !hasMonthlyInterestActivity ? (
+          {!hasMonthlyInterestActivity ? (
             <p className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
               No interest activity exists for month-by-month comparison.
             </p>

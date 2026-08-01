@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.26.1')).toBeVisible();
+    await expect(window.getByText('Version 0.26.2')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
       0,
@@ -387,15 +387,22 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Reset zoom' }).click();
     await window.getByText('Interest expense analysis').click();
     await expect(
-      window.getByRole('img', { name: /Line chart of monthly interest expense/i }),
+      window.getByText('Monthly interest expense by month and year'),
+    ).toBeVisible();
+    await expect(
+      window.getByRole('radio', { name: 'Chronological trend' }),
+    ).toHaveCount(0);
+    await expect(
+      window.getByRole('img', {
+        name: /Grouped bar chart comparing monthly interest expense across years/i,
+      }),
     ).toBeVisible();
     await expect(
       window.getByRole('img', { name: /Bar chart of annual interest expense/i }),
     ).toBeVisible();
-    await window.getByRole('radio', { name: 'Compare months across years' }).click();
     await expect(
       window.getByRole('radio', { name: 'Compare months across years' }),
-    ).toHaveAttribute('aria-checked', 'true');
+    ).toHaveCount(0);
 
     await window.getByRole('button', { name: 'Data management' }).click();
     await expect(

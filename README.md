@@ -33,10 +33,9 @@ for maintaining debts and supporting future debt-paydown analysis.
 - Advanced read-only debt reports for rollforwards, balance history, activity
   trends, maturity and required-payment schedules, sensitivity analysis,
   actual-versus-plan variance, and reconciliation/data-quality exceptions.
-- Debt-history and interest charts provide bounded wheel zoom and drag pan,
-  readable date and dynamic currency ticks, accessible series controls,
-  immediate compact hover details, and reconciled annual debt-source interest
-  totals.
+- Debt-history charts provide bounded wheel zoom and drag pan. Interest charts
+  provide readable month/year labels, dynamic currency ticks, immediate compact
+  hover details, and reconciled annual debt-source interest totals.
 - Data management screen for validated SQLite backups, manual backup deletion
   with confirmation, restore from validated local backups with pre-restore
   safety backup, automatic daily startup backups, five-calendar-day automatic
@@ -355,13 +354,12 @@ Electron user-data directory that it removes after the workflow.
 - In-place refinance events remain on the same debt line and can be marked in
   balance-trend reporting. Rollforwards show only the net refinance principal
   adjustment, not the full refinanced principal as a new borrowing.
-- Interest analysis separates monthly interest expense trends from annual
-  interest comparisons. Monthly views use the full selected report range,
-  preserve zero months for continuous timelines, support month-by-month
-  comparison across every represented year, and use bounded zoom, wheel zoom,
-  horizontal pan, and adaptive labels for readability. Annual interest uses
-  debt-source stacked bars with toggles. Interest expense is displayed as a
-  positive amount and reconciles to the underlying report table.
+- Interest analysis shows monthly interest expense by month and year, plus
+  annual interest comparisons. The monthly chart uses the full selected report
+  range, groups yearly bars under all twelve month labels, and keeps year colors
+  stable and distinct. Annual interest uses debt-source stacked bars with
+  toggles. Interest expense is displayed as a positive amount and reconciles to
+  the underlying report table.
 - Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
   engine and inherit its unsupported-term warnings.
 - Actual-versus-plan variance uses saved payoff scenarios. Because saved

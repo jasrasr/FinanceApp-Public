@@ -11,11 +11,7 @@ import type {
   PayoffScenarioDto,
 } from '../../shared/debt-contracts';
 import { App } from './app';
-import {
-  buildChartScale,
-  interestYearTreatment,
-  monthlyInterestTickIndexes,
-} from './components/chart-helpers';
+import { buildChartScale, interestYearTreatment } from './components/chart-helpers';
 import { formatLastChanged } from './components/display-format';
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
@@ -24,7 +20,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 22,
   appMetadata: {
-    version: '0.26.1',
+    version: '0.26.2',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -1607,7 +1603,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.26.1')).toBeVisible();
+    expect(await screen.findByText('Version 0.26.2')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1791,43 +1787,27 @@ describe('debt maintenance application', () => {
     fireEvent.click(screen.getAllByText('View chart data')[0]!);
     expect(screen.getAllByText('$371,800.13').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByText('Interest expense analysis'));
-    expect(screen.getByText('Monthly interest expense trend')).toBeVisible();
-    expect(screen.getAllByTestId('monthly-interest-tooltip')[0]).toHaveTextContent(
-      /2026-01\s+\$100.00/,
-    );
-    expect(screen.getAllByTestId('monthly-interest-y-tick')[0]).toHaveTextContent(
-      '$0.00',
-    );
-    expect(screen.getAllByText(/Date range:/).length).toBeGreaterThan(0);
     expect(
-      screen.getByRole('img', {
-        name: /Line chart of monthly interest expense/i,
-      }),
+      screen.getByText('Monthly interest expense by month and year'),
     ).toBeVisible();
-    expect(screen.getByTestId('monthly-interest-chart')).toBeVisible();
-    const monthlyChart = screen.getByTestId('monthly-interest-chart');
-    const monthlyStatus = within(monthlyChart).getByText(/Visible range:/).textContent;
-    const monthlyWheel = new WheelEvent('wheel', { cancelable: true, deltaY: -100 });
-    monthlyChart.dispatchEvent(monthlyWheel);
-    expect(monthlyWheel.defaultPrevented).toBe(true);
-    await waitFor(() =>
-      expect(within(monthlyChart).getByText(/Visible range:/).textContent).not.toBe(
-        monthlyStatus,
-      ),
-    );
-    const trendRadio = screen.getByRole('radio', { name: 'Chronological trend' });
-    expect(trendRadio.querySelector('span > span')).toBeTruthy();
-    fireEvent.click(screen.getByRole('radio', { name: 'Compare months across years' }));
+    expect(screen.queryByRole('radio', { name: 'Chronological trend' })).toBeNull();
     expect(
-      screen
-        .getByRole('radio', { name: 'Chronological trend' })
-        .querySelector('span > span'),
+      screen.queryByRole('radio', { name: 'Compare months across years' }),
     ).toBeNull();
+    for (const control of [
+      'Previous month',
+      'Next month',
+      'Reset monthly zoom',
+      'Return to latest months',
+    ]) {
+      expect(screen.queryByRole('button', { name: control })).toBeNull();
+    }
     expect(
-      screen
-        .getByRole('radio', { name: 'Compare months across years' })
-        .querySelector('span > span'),
-    ).toBeTruthy();
+      within(screen.getByTestId('monthly-interest-chart')).queryByText(
+        /Visible range:/,
+      ),
+    ).toBeNull();
+    expect(screen.getAllByText(/Date range:/).length).toBeGreaterThan(0);
     expect(
       screen.getByRole('img', {
         name: /Bar chart of annual interest expense/i,
@@ -1840,8 +1820,6 @@ describe('debt maintenance application', () => {
     expect(annualSegment).not.toHaveTextContent(/annual total/);
     expect(annualSegment).toHaveTextContent(/% of annual interest/);
     expect(annualSegment.parentElement).not.toHaveAttribute('stroke-dasharray');
-    fireEvent.click(screen.getByRole('radio', { name: 'Compare months across years' }));
-    expect(screen.getByText('Month-by-month comparison across years')).toBeVisible();
     expect(
       screen.getByRole('img', {
         name: /Grouped bar chart comparing monthly interest expense across years/i,
@@ -1860,6 +1838,24 @@ describe('debt maintenance application', () => {
           (bar) => !bar.hasAttribute('stroke') && !bar.hasAttribute('stroke-dasharray'),
         ),
     ).toBe(true);
+    expect(
+      screen
+        .getAllByTestId('interest-comparison-month-label')
+        .map((label) => label.textContent),
+    ).toEqual([
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ]);
     expect(screen.getAllByText('Interest expense').length).toBeGreaterThan(0);
     fireEvent.change(screen.getByLabelText('Date preset'), {
       target: { value: 'all_activity' },
@@ -1879,7 +1875,7 @@ describe('debt maintenance application', () => {
     });
   });
 
-  it('keeps monthly interest analysis on the full selected report date range', async () => {
+  it('renders monthly interest comparison across all years without obsolete trend controls', async () => {
     const bridge = createBridge();
     bridge.getDebtReports = vi.fn(async () => ({
       ok: true as const,
@@ -1891,51 +1887,105 @@ describe('debt maintenance application', () => {
     fireEvent.click(await screen.findByText('Interest expense analysis'));
 
     const monthlyChart = screen.getByTestId('monthly-interest-chart');
-    expect(within(monthlyChart).getByText(/Visible range:/)).toHaveTextContent(
-      'Visible range: 2019-01 through 2026-03',
-    );
     expect(
-      screen
-        .getAllByTestId('monthly-interest-tooltip')
-        .some((tooltip) => /2019-01\s+\$125.00/.test(tooltip.textContent ?? '')),
+      screen.getByText('Monthly interest expense by month and year'),
+    ).toBeVisible();
+    expect(screen.queryByText('Monthly interest expense trend')).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Chronological trend' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset monthly zoom' })).toBeNull();
+    expect(within(monthlyChart).queryByText(/Visible range:/)).toBeNull();
+    expect(
+      within(monthlyChart).getByRole('img', {
+        name: /Grouped bar chart comparing monthly interest expense across years/i,
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('img', { name: /Line chart of monthly interest/i }),
+    ).toBeNull();
+    expect(
+      screen.getAllByTestId('interest-comparison-month-label').map((label) => ({
+        text: label.textContent,
+        x: Number(label.getAttribute('x')),
+      })),
+    ).toMatchObject([
+      { text: 'Jan' },
+      { text: 'Feb' },
+      { text: 'Mar' },
+      { text: 'Apr' },
+      { text: 'May' },
+      { text: 'Jun' },
+      { text: 'Jul' },
+      { text: 'Aug' },
+      { text: 'Sep' },
+      { text: 'Oct' },
+      { text: 'Nov' },
+      { text: 'Dec' },
+    ]);
+    const monthLabelXs = screen
+      .getAllByTestId('interest-comparison-month-label')
+      .map((label) => Number(label.getAttribute('x')));
+    expect(
+      monthLabelXs.every((x, index) => index === 0 || x > monthLabelXs[index - 1]!),
     ).toBe(true);
     expect(
       screen
-        .getAllByTestId('monthly-interest-tooltip')
-        .some((tooltip) => /2023-05\s+\$225.00/.test(tooltip.textContent ?? '')),
-    ).toBe(true);
-    expect(screen.getAllByTestId('monthly-interest-tooltip')).toHaveLength(
-      longRangeInterestReports().activityTrends.rows.length,
-    );
-
-    const beforeZoom = within(monthlyChart).getByText(/Visible range:/).textContent;
-    monthlyChart.dispatchEvent(
-      new WheelEvent('wheel', { cancelable: true, deltaY: -100 }),
-    );
-    await waitFor(() =>
-      expect(within(monthlyChart).getByText(/Visible range:/).textContent).not.toBe(
-        beforeZoom,
-      ),
+        .getAllByTestId('interest-month-group')
+        .map((group) =>
+          group
+            .querySelector('[data-testid="interest-comparison-month-label"]')
+            ?.getAttribute('x'),
+        ),
+    ).toEqual(
+      screen
+        .getAllByTestId('interest-comparison-month-label')
+        .map((label) => label.getAttribute('x')),
     );
     expect(
-      longRangeInterestReports().activityTrends.rows.some(
-        (row) => row.period === '2019-01',
-      ),
+      screen
+        .getAllByTestId('interest-comparison-tooltip')
+        .some((tooltip) => /Jan 2019\s+\$125.00/.test(tooltip.textContent ?? '')),
     ).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Reset monthly zoom' }));
-    expect(within(monthlyChart).getByText(/Visible range:/)).toHaveTextContent(
-      'Visible range: 2019-01 through 2026-03',
-    );
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Compare months across years' }));
-    for (const year of ['2019', '2020', '2021', '2022', '2023']) {
-      expect(screen.getByTestId(`interest-year-treatment-${year}`)).toBeVisible();
-    }
     expect(
       screen
         .getAllByTestId('interest-comparison-tooltip')
         .some((tooltip) => /May 2023\s+\$225.00/.test(tooltip.textContent ?? '')),
     ).toBe(true);
+    for (const year of [
+      '2019',
+      '2020',
+      '2021',
+      '2022',
+      '2023',
+      '2024',
+      '2025',
+      '2026',
+    ]) {
+      expect(screen.getByTestId(`interest-year-treatment-${year}`)).toBeVisible();
+    }
+    const yearColors = [
+      '2019',
+      '2020',
+      '2021',
+      '2022',
+      '2023',
+      '2024',
+      '2025',
+      '2026',
+    ].map((year) =>
+      screen
+        .getByTestId(`interest-year-treatment-${year}`)
+        .querySelector('span')
+        ?.getAttribute('style'),
+    );
+    expect(new Set(yearColors)).toHaveProperty('size', 8);
+    expect(
+      screen
+        .getAllByTestId('interest-comparison-bar')
+        .every(
+          (bar) => !bar.hasAttribute('stroke') && !bar.hasAttribute('stroke-dasharray'),
+        ),
+    ).toBe(true);
+    expect(screen.queryByRole('table', { name: /Interest expense/i })).toBeNull();
 
     const monthlyTotals = new Map<string, number>();
     for (const row of longRangeInterestReports().activityTrends.rows) {
@@ -1950,13 +2000,14 @@ describe('debt maintenance application', () => {
     }
   });
 
-  it('keeps monthly interest ticks readable across range sizes and year treatments distinct', () => {
-    expect(monthlyInterestTickIndexes(48, 720).length).toBeLessThan(48);
-    expect(monthlyInterestTickIndexes(18, 720).length).toBeLessThan(18);
-    expect(monthlyInterestTickIndexes(6, 720).length).toBe(6);
-    expect(interestYearTreatment(0).fill).not.toBe(interestYearTreatment(1).fill);
-    expect(interestYearTreatment(1).dash).not.toBe(interestYearTreatment(2).dash);
-    expect(interestYearTreatment(0).stroke).not.toBe(interestYearTreatment(2).stroke);
+  it('keeps year treatments solid and distinct before repeating', () => {
+    const fills = Array.from(
+      { length: 10 },
+      (_, index) => interestYearTreatment(index).fill,
+    );
+    expect(new Set(fills)).toHaveProperty('size', 10);
+    expect(interestYearTreatment(10).fill).toBe(interestYearTreatment(0).fill);
+    expect(interestYearTreatment(0).stroke).not.toBe(interestYearTreatment(1).stroke);
   });
 
   it('builds readable chart scales with nice major units for short and long ranges', () => {

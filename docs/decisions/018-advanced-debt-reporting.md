@@ -57,15 +57,13 @@ period with one line per debt and one total-debt line. Renderer-only chart state
 supports session-scoped line visibility toggles and X-axis zoom; it does not
 write report preferences or financial data. The chart remains paired with a
 period-end balance and change table. Interest analysis is a separate report
-section with monthly interest expense trends, month-by-month cross-year
-comparison, and annual interest comparison charts. Monthly interest views use
-the same selected report date range as annual interest comparisons. The
-chronological monthly trend preserves zero months to keep the timeline
-continuous. The month-by-month comparison includes each year represented by
-interest activity in the selected range rather than limiting the chart to recent
-years. Interest charts use readable month-year or year labels and display
-interest as a positive user-facing expense that must reconcile to the tabular
-report detail.
+section with monthly interest expense by month and year plus annual interest
+comparison charts. The monthly chart uses the same selected report date range as
+annual interest comparisons, groups January through December on the X-axis, and
+includes each year represented by interest activity in the selected range rather
+than limiting the chart to recent years. Interest charts use readable month-year
+or year labels and display interest as a positive user-facing expense that must
+reconcile to the tabular report detail.
 
 Interest-rate sensitivity is framed around variable-rate decision analysis and
 includes only debts where rate sensitivity is meaningful. Extra-payment

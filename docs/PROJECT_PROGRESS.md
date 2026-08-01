@@ -1668,3 +1668,52 @@ completed.
 - Recommended next phase:
   - Continue generated-data acceptance testing around long-range reporting and
     chart accessibility.
+
+## Phase 34: Monthly Interest Analysis Simplification
+
+- Completion date: 2026-08-01
+- Application version: 0.26.2
+- Features implemented:
+  - Removed the chronological monthly interest trend from Interest expense
+    analysis.
+  - Removed the monthly trend radio controls, line chart, zoom/pan controls,
+    previous/next controls, reset zoom, return-to-latest, and related renderer
+    state.
+  - Kept a single monthly section titled `Monthly interest expense by month and
+year`.
+  - Improved the month-by-month comparison chart so all twelve month labels are
+    shown and centered under their grouped yearly bars.
+  - Expanded monthly comparison year colors to ten distinct solid fills before
+    reuse.
+- Material architecture and accounting decisions:
+  - This is a renderer/reporting presentation simplification only. The
+    main-process report date-range and annual reconciliation basis are unchanged.
+  - Monthly bars remain borderless solid fills; dynamic Y-axis scaling continues
+    to use the shared chart-scale helper.
+- Database schema or migration changes:
+  - None.
+- New or changed IPC operations:
+  - None.
+- New UI screens or workflows:
+  - No new screens. Interest expense analysis now has one monthly comparison
+    chart followed by the existing annual interest comparison.
+- Validation and smoke-test results:
+  - Focused tests were updated for removal of chronological controls and chart,
+    all twelve month labels, grouped-label alignment, unique 2019-2026 colors,
+    borderless bars, tooltips, annual reconciliation, and collapsed chart data.
+  - Focused renderer/preload tests passed: 2 files and 35 tests.
+  - `npm run format` passed.
+  - `npm run check` passed under escalation. The gate completed with 10 Vitest
+    files and 136 tests passing, database integrity passing, production build
+    passing, and the active Electron E2E workflow passing; packaged source specs
+    were skipped in that suite.
+  - `npm run package:smoke` passed packaged launch/export and
+    upgrade-preservation tests. The runner reported the existing Node `fs.R_OK`
+    deprecation warning.
+- Known limitations and technical debt:
+  - The monthly comparison legend remains informational only; year-series
+    toggles were not added because the previous monthly comparison chart did not
+    already support them.
+- Recommended next phase:
+  - Continue generated-data acceptance testing around long-range interest
+    analysis readability.
