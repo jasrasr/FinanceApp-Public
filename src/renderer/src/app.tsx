@@ -25,6 +25,8 @@ import type {
   ReverseDebtTransactionRequest,
   VoidBalanceReconciliationRequest,
   VoidDebtTransactionRequest,
+  ConfirmScheduledPaymentRequest,
+  RemoveScheduledPaymentConfirmationRequest,
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
 import { AdvancedReports } from './components/advanced-reports';
@@ -174,6 +176,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [permanentDeletionConfirmation, setPermanentDeletionConfirmation] =
     useState<PermanentDeletionConfirmation>(null);
   const detailFocusRequestRef = useRef<string | null>(null);
+  const suppressNavigationPushRef = useRef(false);
 
   useEffect(() => {
     if (view !== 'detail' || !selectedDebt) return;
@@ -360,6 +363,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   }, [bridge]);
 
   const showDashboard = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'dashboard',
+        },
+        '',
+        '#dashboard',
+      );
+    }
     setView('dashboard');
     setSelectedDebt(null);
     setDetailPanel('overview');
@@ -382,6 +396,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showList = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'list',
+        },
+        '',
+        '#debts',
+      );
+    }
     setView('list');
     setSelectedDebt(null);
     setDetailPanel('overview');
@@ -393,6 +418,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showPayoffScenarios = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'payoff',
+        },
+        '',
+        '#payoff',
+      );
+    }
     setView('payoff');
     setSelectedDebt(null);
     setDetailPanel('overview');
@@ -411,6 +447,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showReports = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'reports',
+        },
+        '',
+        '#reports',
+      );
+    }
     setView('reports');
     setSelectedDebt(null);
     setDetailPanel('overview');
@@ -589,6 +636,18 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     if (result.ok) {
       setSelectedDebt(result.value);
       setView('detail');
+      if (!suppressNavigationPushRef.current) {
+        window.history.pushState(
+          {
+            app: 'debt-tracker',
+            index: (window.history.state?.index ?? 0) + 1,
+            view: 'detail',
+            debtId: id,
+          },
+          '',
+          '#detail',
+        );
+      }
       setDetailPanel('overview');
       setReverseTarget(null);
       setDashboard(null);
@@ -597,6 +656,111 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     }
 
     setLoading(false);
+  };
+
+  useEffect(() => {
+    const onPopState = (event: PopStateEvent): void => {
+      const state = event.state as {
+        app?: string;
+        index?: number;
+        view?: View;
+        debtId?: string;
+      } | null;
+      suppressNavigationPushRef.current = true;
+      if (state?.app !== 'debt-tracker') {
+        window.history.replaceState(
+          { app: 'debt-tracker', index: 0, view: 'dashboard' },
+          '',
+          '#dashboard',
+        );
+        setSelectedDebt(null);
+        setDetailPanel('overview');
+        setView('dashboard');
+        void loadDashboard();
+        suppressNavigationPushRef.current = false;
+        return;
+      }
+      if (state?.view === 'detail' && state.debtId) {
+        void selectDebt(state.debtId).finally(() => {
+          suppressNavigationPushRef.current = false;
+        });
+        return;
+      }
+      const nextView = state?.view ?? 'dashboard';
+      setSelectedDebt(null);
+      setDetailPanel('overview');
+      setView(nextView);
+      if (nextView === 'dashboard') void loadDashboard();
+      if (nextView === 'list') void loadDebts();
+      if (nextView === 'reports' && !reports) void loadReports();
+      suppressNavigationPushRef.current = false;
+    };
+    if (window.history.state?.app !== 'debt-tracker') {
+      window.history.replaceState(
+        { app: 'debt-tracker', index: 0, view: 'dashboard' },
+        '',
+        '#dashboard',
+      );
+    }
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+    // The navigation listener intentionally captures the current data loaders;
+    // route changes recreate it without changing application behavior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bridge, reports]);
+
+  const navigateBack = (): void => {
+    if (
+      window.history.state?.app === 'debt-tracker' &&
+      (window.history.state?.index ?? 0) > 0
+    ) {
+      window.history.back();
+      return;
+    }
+
+    suppressNavigationPushRef.current = true;
+    showList();
+    suppressNavigationPushRef.current = false;
+  };
+
+  const confirmScheduledPayment = async (): Promise<void> => {
+    if (!selectedDebt?.paymentSchedule.dueDate) return;
+    const reason = window.prompt(
+      'Enter one reason: historical_payment_not_entered, lender_treated_prior_payment_as_satisfying, starting_schedule_after_historical_data, or other.',
+    );
+    if (!reason) return;
+    const result = await invokeBridge(() =>
+      bridge.confirmScheduledPayment({
+        debtId: selectedDebt.id,
+        dueDate: selectedDebt.paymentSchedule.dueDate!,
+        reason: reason as ConfirmScheduledPaymentRequest['reason'],
+        confirmed: true,
+      }),
+    );
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Due date was confirmed for scheduling only.');
+      await loadDashboard();
+    } else handleFailure(result.error);
+  };
+
+  const removeScheduledPaymentConfirmation = async (): Promise<void> => {
+    const confirmation = selectedDebt?.paymentSchedule.manualConfirmation;
+    if (!selectedDebt || !confirmation) return;
+    if (!window.confirm('Remove this manual scheduling confirmation?')) return;
+    const request: RemoveScheduledPaymentConfirmationRequest = {
+      debtId: selectedDebt.id,
+      dueDate: confirmation.dueDate,
+      confirmed: true,
+    };
+    const result = await invokeBridge(() =>
+      bridge.removeScheduledPaymentConfirmation(request),
+    );
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Scheduling confirmation was removed.');
+      await loadDashboard();
+    } else handleFailure(result.error);
   };
 
   const handleFailure = (applicationError: ApplicationError): void => {
@@ -1408,8 +1572,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 onArchiveOrRestore={() =>
                   setConfirmation(selectedDebt.archivedAtUtc ? 'restore' : 'archive')
                 }
-                onBack={showList}
+                onBack={navigateBack}
                 onCorrectReconciliation={requestCorrectReconciliation}
+                onConfirmScheduledPayment={() => void confirmScheduledPayment()}
                 onDeletePermanently={() => {
                   setError(null);
                   setFieldErrors(undefined);
@@ -1432,6 +1597,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   setSuccessMessage(null);
                   setDetailPanel('refinance');
                 }}
+                onRemoveScheduledPaymentConfirmation={() =>
+                  void removeScheduledPaymentConfirmation()
+                }
                 onRecordReconciliation={() => {
                   setError(null);
                   setFieldErrors(undefined);

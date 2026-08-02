@@ -12,6 +12,8 @@ import type {
   CreatePayoffScenarioRequest,
   DashboardDto,
   DeleteDebtPermanentlyRequest,
+  ConfirmScheduledPaymentRequest,
+  RemoveScheduledPaymentConfirmationRequest,
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
@@ -41,6 +43,8 @@ import {
   createDebtRequestSchema,
   createPayoffScenarioRequestSchema,
   deleteDebtPermanentlyRequestSchema,
+  confirmScheduledPaymentRequestSchema,
+  removeScheduledPaymentConfirmationRequestSchema,
   getDashboardRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -66,6 +70,8 @@ import {
   createBalanceSnapshotRecord,
   createPostedTransactionRecord,
   deleteDebtPermanentlyRecord,
+  createPaymentScheduleOverride,
+  removePaymentScheduleOverride,
   editPostedTransactionRecord,
   appendDebtTermRecord,
   getDebtActivityRecord,
@@ -170,6 +176,10 @@ export interface DebtMaintenanceService {
     readonly deletedDebtName: string;
     readonly backupId: string;
   };
+  confirmScheduledPayment(request: ConfirmScheduledPaymentRequest): DebtDetailDto;
+  removeScheduledPaymentConfirmation(
+    request: RemoveScheduledPaymentConfirmationRequest,
+  ): DebtDetailDto;
 }
 
 export interface DebtMaintenanceServiceDependencies {
@@ -990,8 +1000,12 @@ const scheduledPaymentForRecord = (
     status: record.debt.status,
     archivedAtUtc: record.debt.archivedAtUtc,
     paymentDueDay: record.debt.paymentDueDay,
+    paymentScheduleStartDate: record.debt.paymentScheduleStartDate,
     terms: record.terms,
     payments: qualifyingScheduledPayments(record),
+    confirmedSatisfiedDueDates: record.paymentScheduleOverrides.map(
+      (override) => override.satisfiedDueDate,
+    ),
     asOfDate: effectiveDate,
     lookAheadDays: 30,
   });
@@ -1009,6 +1023,18 @@ const mapScheduledPayment = (
   status: schedule.status,
   earliestPastDueDate: schedule.earliestPastDueDate,
   reviewMessage: schedule.reviewMessage,
+  schedulingStartDate: record.debt.paymentScheduleStartDate,
+  manualConfirmation: record.paymentScheduleOverrides.at(-1)
+    ? {
+        dueDate: record.paymentScheduleOverrides.at(-1)!.satisfiedDueDate,
+        reason: record.paymentScheduleOverrides.at(-1)!.reason as
+          | 'historical_payment_not_entered'
+          | 'lender_treated_prior_payment_as_satisfying'
+          | 'starting_schedule_after_historical_data'
+          | 'other',
+        confirmedAtUtc: record.paymentScheduleOverrides.at(-1)!.confirmedAtUtc,
+      }
+    : null,
 });
 
 const mapSummary = (
@@ -1048,6 +1074,7 @@ const mapSummary = (
     initialTerm: mapTerm(requireInitialTerm(record)),
     currentTerm: mapTerm(currentTermForDate(record.terms, effectiveDate)),
     paymentDueDay: debt.paymentDueDay,
+    paymentScheduleStartDate: debt.paymentScheduleStartDate,
     nextDueDate: schedule.nextDueDate,
     archivedAtUtc: debt.archivedAtUtc,
     financingChainName: debt.financingChainName,
@@ -1097,6 +1124,7 @@ const mapDetail = (
     minimumPayment: centsToDollars(debt.minimumPaymentCents),
     paymentFrequency: debt.paymentFrequency,
     paymentDueDay: debt.paymentDueDay,
+    paymentScheduleStartDate: debt.paymentScheduleStartDate,
     nextDueDate: schedule.nextDueDate,
     creditLimit:
       debt.creditLimitCents === null ? null : centsToDollars(debt.creditLimitCents),
@@ -2422,6 +2450,21 @@ export const createDebtMaintenanceService = ({
           );
         }
 
+        if (
+          parsed.debt.paymentScheduleStartDate &&
+          parsed.debt.paymentScheduleStartDate < originationDate
+        ) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              'debt.paymentScheduleStartDate': [
+                'Scheduling start date cannot precede the debt origination date.',
+              ],
+            },
+          );
+        }
+
         if (termStart < originationDate) {
           throw new ApplicationServiceError(
             'validation',
@@ -2457,6 +2500,12 @@ export const createDebtMaintenanceService = ({
             'debt.paymentDueDay',
             parsed.debt.paymentDueDay ?? null,
           ),
+          paymentScheduleStartDate: parsed.debt.paymentScheduleStartDate
+            ? ensureCalendarDate(
+                'debt.paymentScheduleStartDate',
+                parsed.debt.paymentScheduleStartDate,
+              )
+            : null,
           creditLimitCents: validateCreditLimit(
             parsed.debt.debtType,
             parsed.debt.creditLimit,
@@ -2582,6 +2631,21 @@ export const createDebtMaintenanceService = ({
           );
         }
 
+        if (
+          parsed.changes.paymentScheduleStartDate &&
+          parsed.changes.paymentScheduleStartDate < existing.debt.originationDate
+        ) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              'changes.paymentScheduleStartDate': [
+                'Scheduling start date cannot precede the debt origination date.',
+              ],
+            },
+          );
+        }
+
         const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
         const changes = {
           name: parsed.changes.name,
@@ -2597,6 +2661,15 @@ export const createDebtMaintenanceService = ({
               ? existing.debt.paymentDueDay
               : parsed.changes.paymentDueDay,
           ),
+          paymentScheduleStartDate:
+            parsed.changes.paymentScheduleStartDate === undefined
+              ? existing.debt.paymentScheduleStartDate
+              : parsed.changes.paymentScheduleStartDate
+                ? ensureCalendarDate(
+                    'changes.paymentScheduleStartDate',
+                    parsed.changes.paymentScheduleStartDate,
+                  )
+                : null,
           creditLimitCents: validateCreditLimit(
             parsed.changes.debtType,
             parsed.changes.creditLimit,
@@ -2947,6 +3020,7 @@ export const createDebtMaintenanceService = ({
             minimumPaymentCents: requiredPayment,
             paymentFrequency: parsed.newPaymentFrequency,
             paymentDueDay,
+            paymentScheduleStartDate: existing.debt.paymentScheduleStartDate,
             updatedAtUtc: timestamp,
           },
           newTerm,
@@ -4006,6 +4080,85 @@ export const createDebtMaintenanceService = ({
         return mapDetail(
           database,
           getRecordOrThrow(parsed.id),
+          currentFinancialDate(now),
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    confirmScheduledPayment: (request) => {
+      try {
+        const parsed = confirmScheduledPaymentRequestSchema.parse(request);
+        const existing = getRecordOrThrow(parsed.debtId);
+        const schedule = scheduledPaymentForRecord(
+          existing,
+          calculateLedgerBalanceThroughDate(
+            database,
+            parsed.debtId,
+            currentFinancialDate(now),
+          ),
+          currentFinancialDate(now),
+        );
+        if (schedule.dueDate !== parsed.dueDate || schedule.satisfied) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'The calculated unpaid due date changed. Refresh the debt and review it again.',
+          );
+        }
+        const timestamp = currentUtcTimestampSchema(now());
+        createPaymentScheduleOverride(
+          database,
+          {
+            id: createId(),
+            debtId: parsed.debtId,
+            satisfiedDueDate: parsed.dueDate,
+            reason: parsed.reason,
+            confirmedAtUtc: timestamp,
+            createdAtUtc: timestamp,
+          },
+          createAudit(
+            createId(),
+            'debt',
+            parsed.debtId,
+            'scheduled_payment_confirmed',
+            'confirm_schedule',
+            timestamp,
+            'A scheduled payment due date was manually confirmed for scheduling only.',
+          ),
+        );
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.debtId),
+          currentFinancialDate(now),
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    removeScheduledPaymentConfirmation: (request) => {
+      try {
+        const parsed = removeScheduledPaymentConfirmationRequestSchema.parse(request);
+        const timestamp = currentUtcTimestampSchema(now());
+        removePaymentScheduleOverride(
+          database,
+          parsed.debtId,
+          parsed.dueDate,
+          timestamp,
+          createAudit(
+            createId(),
+            'debt',
+            parsed.debtId,
+            'scheduled_payment_confirmation_removed',
+            'remove_schedule_confirmation',
+            timestamp,
+            'A manual scheduled payment confirmation was removed.',
+          ),
+        );
+        return mapDetail(
+          database,
+          getRecordOrThrow(parsed.debtId),
           currentFinancialDate(now),
         );
       } catch (error) {

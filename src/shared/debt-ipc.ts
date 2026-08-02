@@ -26,5 +26,7 @@ export const DEBT_IPC_CHANNELS = {
   restore: 'debt:restore',
   recordRefinance: 'debt:record-refinance',
   deletePermanently: 'debt:delete-permanently',
+  confirmScheduledPayment: 'debt:confirm-scheduled-payment',
+  removeScheduledPaymentConfirmation: 'debt:remove-scheduled-payment-confirmation',
   update: 'debt:update',
 } as const;

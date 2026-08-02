@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { isNull, sql } from 'drizzle-orm';
 import {
   type AnySQLiteColumn,
   check,
@@ -83,6 +83,7 @@ export const debts = sqliteTable(
       enum: PAYMENT_FREQUENCIES,
     }).notNull(),
     paymentDueDay: integer('payment_due_day'),
+    paymentScheduleStartDate: text('payment_schedule_start_date'),
     creditLimitCents: integer('credit_limit_cents'),
     collateralDescription: text('collateral_description'),
     taxCategory: text('tax_category', { enum: TAX_CATEGORIES }).notNull(),
@@ -118,6 +119,10 @@ export const debts = sqliteTable(
     check(
       'debts_payment_due_day_range',
       sql`${table.paymentDueDay} IS NULL OR ${table.paymentDueDay} BETWEEN 1 AND 31`,
+    ),
+    check(
+      'debts_payment_schedule_start_date_format',
+      sql`${table.paymentScheduleStartDate} IS NULL OR ${table.paymentScheduleStartDate} GLOB ${FINANCIAL_DATE_GLOB_SQL}`,
     ),
     check(
       'debts_tax_category_valid',
@@ -162,6 +167,31 @@ export const debts = sqliteTable(
     check(
       'debts_timestamp_format',
       sql`${table.createdAtUtc} LIKE '%Z' AND ${table.updatedAtUtc} LIKE '%Z' AND (${table.archivedAtUtc} IS NULL OR ${table.archivedAtUtc} LIKE '%Z')`,
+    ),
+  ],
+);
+
+export const paymentScheduleOverrides = sqliteTable(
+  'payment_schedule_overrides',
+  {
+    id: text('id').primaryKey(),
+    debtId: text('debt_id')
+      .notNull()
+      .references(() => debts.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    satisfiedDueDate: text('satisfied_due_date').notNull(),
+    reason: text('reason').notNull(),
+    confirmedAtUtc: text('confirmed_at_utc').notNull(),
+    createdAtUtc: text('created_at_utc').notNull(),
+    removedAtUtc: text('removed_at_utc'),
+  },
+  (table) => [
+    uniqueIndex('payment_schedule_overrides_active_uq')
+      .on(table.debtId, table.satisfiedDueDate)
+      .where(isNull(table.removedAtUtc)),
+    index('payment_schedule_overrides_debt_idx').on(table.debtId),
+    check(
+      'payment_schedule_overrides_date_format',
+      sql`${table.satisfiedDueDate} GLOB ${FINANCIAL_DATE_GLOB_SQL} AND ${table.confirmedAtUtc} LIKE '%Z' AND ${table.createdAtUtc} LIKE '%Z' AND (${table.removedAtUtc} IS NULL OR ${table.removedAtUtc} LIKE '%Z')`,
     ),
   ],
 );
@@ -828,6 +858,7 @@ export const schema = {
   importPostings,
   importSheetMappings,
   payoffScenarios,
+  paymentScheduleOverrides,
   refinanceEvents,
   stagedImportRows,
   transactionAllocations,

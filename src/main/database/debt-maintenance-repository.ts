@@ -19,6 +19,7 @@ import {
   debtTransactions,
   debts,
   importPostings,
+  paymentScheduleOverrides,
   payoffScenarios,
   refinanceEvents,
   transactionAllocations,
@@ -54,6 +55,8 @@ export type BalanceSnapshotRecord = typeof balanceSnapshots.$inferSelect;
 export type BalanceReconciliationRecord = typeof balanceReconciliations.$inferSelect;
 export type PayoffScenarioRecord = typeof payoffScenarios.$inferSelect;
 export type RefinanceEventRecord = typeof refinanceEvents.$inferSelect;
+export type PaymentScheduleOverrideRecord =
+  typeof paymentScheduleOverrides.$inferSelect;
 
 export interface DebtWithTermsRecord {
   readonly debt: DebtRecord;
@@ -70,6 +73,7 @@ export interface DebtWithActivityRecord extends DebtWithTermsRecord {
   readonly balanceSnapshots: readonly BalanceSnapshotRecord[];
   readonly balanceReconciliations: readonly BalanceReconciliationRecord[];
   readonly refinanceEvents: readonly RefinanceEventRecord[];
+  readonly paymentScheduleOverrides: readonly PaymentScheduleOverrideRecord[];
 }
 
 export interface PermanentDebtDeletionCounts {
@@ -107,6 +111,7 @@ export interface RecordInPlaceRefinanceRecordInput {
     readonly minimumPaymentCents: number;
     readonly paymentFrequency: DebtRecord['paymentFrequency'];
     readonly paymentDueDay: number | null;
+    readonly paymentScheduleStartDate: string | null;
     readonly updatedAtUtc: string;
   };
   readonly newTerm: DebtTermInsert;
@@ -148,6 +153,7 @@ export interface DebtUpdateValues {
   readonly status: DebtRecord['status'];
   readonly maturityDate: string | null;
   readonly paymentDueDay: number | null;
+  readonly paymentScheduleStartDate: string | null;
   readonly creditLimitCents: number | null;
   readonly collateralDescription: string | null;
   readonly taxCategory: DebtRecord['taxCategory'];
@@ -158,6 +164,15 @@ export interface DebtUpdateValues {
   readonly refinanceDate: string | null;
   readonly notes: string | null;
   readonly updatedAtUtc: string;
+}
+
+export interface PaymentScheduleOverrideInput {
+  readonly id: string;
+  readonly debtId: string;
+  readonly satisfiedDueDate: string;
+  readonly reason: string;
+  readonly confirmedAtUtc: string;
+  readonly createdAtUtc: string;
 }
 
 export class RepositoryNotFoundError extends Error {}
@@ -237,6 +252,22 @@ const getRefinanceEvents = (
     .orderBy(asc(refinanceEvents.refinanceDate), asc(refinanceEvents.createdAtUtc))
     .all();
 
+const getPaymentScheduleOverrides = (
+  database: AppDatabase,
+  debtId: string,
+): readonly PaymentScheduleOverrideRecord[] =>
+  database
+    .select()
+    .from(paymentScheduleOverrides)
+    .where(
+      and(
+        eq(paymentScheduleOverrides.debtId, debtId),
+        isNull(paymentScheduleOverrides.removedAtUtc),
+      ),
+    )
+    .orderBy(asc(paymentScheduleOverrides.satisfiedDueDate))
+    .all();
+
 export const listDebtRecords = (
   database: AppDatabase,
   includeArchived: boolean,
@@ -284,6 +315,7 @@ export const getDebtActivityRecord = (
         balanceSnapshots: getBalanceSnapshots(database, debtId),
         balanceReconciliations: getBalanceReconciliations(database, debtId),
         refinanceEvents: getRefinanceEvents(database, debtId),
+        paymentScheduleOverrides: getPaymentScheduleOverrides(database, debtId),
       }
     : undefined;
 };
@@ -305,6 +337,7 @@ export const listActiveDebtActivityRecords = (
     balanceSnapshots: getBalanceSnapshots(database, debt.id),
     balanceReconciliations: getBalanceReconciliations(database, debt.id),
     refinanceEvents: getRefinanceEvents(database, debt.id),
+    paymentScheduleOverrides: getPaymentScheduleOverrides(database, debt.id),
   }));
 };
 
@@ -328,6 +361,7 @@ export const listDebtActivityRecords = (
     balanceSnapshots: getBalanceSnapshots(database, debt.id),
     balanceReconciliations: getBalanceReconciliations(database, debt.id),
     refinanceEvents: getRefinanceEvents(database, debt.id),
+    paymentScheduleOverrides: getPaymentScheduleOverrides(database, debt.id),
   }));
 };
 
@@ -845,6 +879,42 @@ export const createDebtAndInitialTerm = (
   });
 };
 
+export const createPaymentScheduleOverride = (
+  database: AppDatabase,
+  input: PaymentScheduleOverrideInput,
+  audit: AuditEventInsert,
+): void => {
+  database.transaction((transaction) => {
+    transaction.insert(paymentScheduleOverrides).values(input).run();
+    transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const removePaymentScheduleOverride = (
+  database: AppDatabase,
+  debtId: string,
+  dueDate: string,
+  removedAtUtc: string,
+  audit: AuditEventInsert,
+): void => {
+  database.transaction((transaction) => {
+    const result = transaction
+      .update(paymentScheduleOverrides)
+      .set({ removedAtUtc })
+      .where(
+        and(
+          eq(paymentScheduleOverrides.debtId, debtId),
+          eq(paymentScheduleOverrides.satisfiedDueDate, dueDate),
+          isNull(paymentScheduleOverrides.removedAtUtc),
+        ),
+      )
+      .run();
+    if (result.changes !== 1)
+      throw new RepositoryNotFoundError('Scheduling confirmation was not found.');
+    transaction.insert(auditEvents).values(audit).run();
+  });
+};
+
 export const createPostedTransactionRecord = (
   database: AppDatabase,
   transactionInput: DebtTransactionInsert,
@@ -942,6 +1012,7 @@ export const recordInPlaceRefinanceRecord = (
         minimumPaymentCents: input.debtUpdate.minimumPaymentCents,
         paymentFrequency: input.debtUpdate.paymentFrequency,
         paymentDueDay: input.debtUpdate.paymentDueDay,
+        paymentScheduleStartDate: input.debtUpdate.paymentScheduleStartDate,
         updatedAtUtc: input.debtUpdate.updatedAtUtc,
       })
       .where(

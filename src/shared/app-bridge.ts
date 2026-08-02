@@ -17,6 +17,8 @@ import type {
   DebtDetailDto,
   DebtSummaryDto,
   DeleteDebtPermanentlyRequest,
+  ConfirmScheduledPaymentRequest,
+  RemoveScheduledPaymentConfirmationRequest,
   ExportDataRequest,
   GetDashboardRequest,
   GetDataManagementStatusRequest,
@@ -108,10 +110,16 @@ export interface DebtBridge {
   deleteDebtPermanently(
     request: DeleteDebtPermanentlyRequest,
   ): Promise<ApplicationResult<PermanentDebtDeletionDto>>;
+  confirmScheduledPayment(
+    request: ConfirmScheduledPaymentRequest,
+  ): Promise<ApplicationResult<DebtDetailDto>>;
+  removeScheduledPaymentConfirmation(
+    request: RemoveScheduledPaymentConfirmationRequest,
+  ): Promise<ApplicationResult<DebtDetailDto>>;
 }
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 22;
+  readonly bridgeVersion: 23;
   readonly appMetadata: AppMetadataDto;
 }

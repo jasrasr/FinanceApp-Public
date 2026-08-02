@@ -182,6 +182,11 @@ positive application-calculated principal balance, a modeled payment frequency,
 and a configured due day. Existing debts without a due day remain valid and are
 flagged for scheduling review; the application does not invent a due date.
 
+Scheduling begins at the nullable `payment_schedule_start_date`, not
+automatically at legal origination. Existing debts without a start boundary are
+flagged for scheduling review and receive no invented historical obligations.
+The boundary preserves origination and transaction history unchanged.
+
 Monthly due dates use the configured day from 1 through 31. When a month does not
 have that day, the due date is the final calendar day of that month; later months
 return to the configured day when available. Required payment and payment
@@ -215,6 +220,10 @@ Payments satisfy obligations in chronological order:
   satisfy a future due date.
 - Later draws, interest charges, fees, escrow activity, adjustments, refinance
   events, and other balance activity do not reopen an already satisfied due date.
+- A scheduling-only confirmation may satisfy one calculated due date for
+  exceptional lender treatment or incomplete historical data. It records a
+  reason and audit event, changes no ledger transaction or accounting report,
+  and can be removed to restore calculated status.
 
 The dashboard shows unpaid past-due obligations regardless of age, obligations
 due today, and upcoming unpaid obligations due within 30 days. Unsupported

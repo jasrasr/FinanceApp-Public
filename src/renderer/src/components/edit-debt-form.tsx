@@ -52,6 +52,10 @@ export const EditDebtForm = ({
         status: value(data, 'changes.status') as UpdateDebtRequest['changes']['status'],
         maturityDate: nullableValue(data, 'changes.maturityDate'),
         paymentDueDay: nullableNumberValue(data, 'changes.paymentDueDay'),
+        paymentScheduleStartDate: nullableValue(
+          data,
+          'changes.paymentScheduleStartDate',
+        ),
         creditLimit: nullableValue(data, 'changes.creditLimit'),
         collateralDescription: nullableValue(data, 'changes.collateralDescription'),
         taxCategory: value(
@@ -249,6 +253,21 @@ export const EditDebtForm = ({
               id="changes.purpose"
               name="changes.purpose"
               required
+            />
+          </Field>
+          <Field
+            error={fieldErrors?.['changes.paymentScheduleStartDate']}
+            hint="No obligations are generated before this date. Existing transaction history is preserved."
+            label="Scheduling start date"
+            name="changes.paymentScheduleStartDate"
+            optional
+          >
+            <input
+              className={inputClassName}
+              defaultValue={debt.paymentScheduleStartDate ?? ''}
+              id="changes.paymentScheduleStartDate"
+              name="changes.paymentScheduleStartDate"
+              type="date"
             />
           </Field>
         </div>

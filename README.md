@@ -5,7 +5,7 @@ for maintaining debts and supporting future debt-paydown analysis.
 
 ## Release Status
 
-Version 1.1.1 builds on the first stable production release with scheduled
+Version 1.1.2 builds on the first stable production release with scheduled
 payment due-day tracking and occurrence-based unpaid upcoming-payment review. It is intended for
 local, single-user debt tracking with entered debts, historical activity,
 reconciliations, reports, backups, and payoff scenarios already validated through
@@ -38,6 +38,8 @@ Known non-blocking limitations:
   oldest eligible unpaid obligation. Any qualifying posted payment satisfies one
   scheduled obligation regardless of amount; required payments remain part of
   effective-dated terms and payoff calculations.
+  Scheduling begins only at an explicitly reviewed scheduling start date; existing
+  debts without that boundary are flagged for review.
 - Manual posted activity entry for payments, draws, fees, penalties, interest,
   principal adjustments, mortgage escrow activity, reversals, and user-facing
   transaction edits implemented as linked superseding corrections.

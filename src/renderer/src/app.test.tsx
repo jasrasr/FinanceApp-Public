@@ -22,9 +22,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 22,
+  bridgeVersion: 23,
   appMetadata: {
-    version: '1.1.1',
+    version: '1.1.2',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -143,6 +143,8 @@ const createBridge = (): AppBridge => ({
       backupId: sampleDataManagementStatus.availableBackups[0]!.id,
     },
   })),
+  confirmScheduledPayment: vi.fn(),
+  removeScheduledPaymentConfirmation: vi.fn(),
 });
 
 const sampleDashboard: DashboardDto = {
@@ -1787,7 +1789,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 1.1.1')).toBeVisible();
+    expect(await screen.findByText('Version 1.1.2')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,

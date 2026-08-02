@@ -74,6 +74,7 @@ const debtCoreInputBaseSchema = z
     minimumPayment: requiredTextSchema,
     paymentFrequency: z.enum(PAYMENT_FREQUENCIES),
     paymentDueDay: paymentDueDayInputSchema.optional(),
+    paymentScheduleStartDate: financialDateInputSchema.nullable().optional(),
     creditLimit: z.string().trim().max(100).nullable(),
     collateralDescription: optionalTextSchema,
     taxCategory: z.enum(TAX_CATEGORIES),
@@ -132,6 +133,7 @@ export const updateDebtRequestSchema = z
         status: true,
         maturityDate: true,
         paymentDueDay: true,
+        paymentScheduleStartDate: true,
         creditLimit: true,
         collateralDescription: true,
         taxCategory: true,
@@ -381,6 +383,30 @@ export const deleteDebtPermanentlyRequestSchema = z
   })
   .strict();
 
+export const schedulingOverrideReasonSchema = z.enum([
+  'historical_payment_not_entered',
+  'lender_treated_prior_payment_as_satisfying',
+  'starting_schedule_after_historical_data',
+  'other',
+]);
+
+export const confirmScheduledPaymentRequestSchema = z
+  .object({
+    debtId: uuidSchema,
+    dueDate: financialDateInputSchema,
+    reason: schedulingOverrideReasonSchema,
+    confirmed: z.literal(true),
+  })
+  .strict();
+
+export const removeScheduledPaymentConfirmationRequestSchema = z
+  .object({
+    debtId: uuidSchema,
+    dueDate: financialDateInputSchema,
+    confirmed: z.literal(true),
+  })
+  .strict();
+
 export const debtTermDtoSchema = z
   .object({
     id: uuidSchema,
@@ -496,6 +522,7 @@ export const debtSummaryDtoSchema = z
     initialTerm: debtTermDtoSchema,
     currentTerm: debtTermDtoSchema,
     paymentDueDay: paymentDueDayInputSchema,
+    paymentScheduleStartDate: financialDateInputSchema.nullable().optional(),
     nextDueDate: financialDateInputSchema.nullable(),
     archivedAtUtc: utcTimestampSchema.nullable(),
     financingChainName: z.string().nullable(),
@@ -527,6 +554,7 @@ export const scheduledPaymentStatusSchema = z.enum([
   'past_due',
   'satisfied',
   'missing_due_day',
+  'missing_schedule_start',
   'unsupported_frequency',
   'not_required',
 ]);
@@ -542,6 +570,20 @@ const scheduledPaymentDtoSchema = z
     status: scheduledPaymentStatusSchema,
     earliestPastDueDate: financialDateInputSchema.nullable(),
     reviewMessage: z.string().nullable(),
+    schedulingStartDate: financialDateInputSchema.nullable().optional(),
+    manualConfirmation: z
+      .object({
+        dueDate: financialDateInputSchema,
+        reason: z.enum([
+          'historical_payment_not_entered',
+          'lender_treated_prior_payment_as_satisfying',
+          'starting_schedule_after_historical_data',
+          'other',
+        ]),
+        confirmedAtUtc: utcTimestampSchema,
+      })
+      .nullable()
+      .optional(),
   })
   .strict();
 
@@ -1051,6 +1093,12 @@ export type RestoreDebtRequest = z.infer<typeof restoreDebtRequestSchema>;
 export type RecordRefinanceRequest = z.infer<typeof recordRefinanceRequestSchema>;
 export type DeleteDebtPermanentlyRequest = z.infer<
   typeof deleteDebtPermanentlyRequestSchema
+>;
+export type ConfirmScheduledPaymentRequest = z.infer<
+  typeof confirmScheduledPaymentRequestSchema
+>;
+export type RemoveScheduledPaymentConfirmationRequest = z.infer<
+  typeof removeScheduledPaymentConfirmationRequestSchema
 >;
 export type DebtTermDto = z.infer<typeof debtTermDtoSchema>;
 export type TransactionAllocationDto = z.infer<typeof transactionAllocationDtoSchema>;

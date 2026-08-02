@@ -38,6 +38,8 @@ export interface DebtDetailProps {
   readonly onArchiveOrRestore: () => void;
   readonly onBack: () => void;
   readonly onDeletePermanently: () => void;
+  readonly onConfirmScheduledPayment?: () => void;
+  readonly onRemoveScheduledPaymentConfirmation?: () => void;
   readonly onEdit: () => void;
   readonly onRecordRefinance: () => void;
   readonly onRecordReconciliation: () => void;
@@ -92,6 +94,8 @@ export const DebtDetail = ({
   onArchiveOrRestore,
   onBack,
   onDeletePermanently,
+  onConfirmScheduledPayment,
+  onRemoveScheduledPaymentConfirmation,
   onEdit,
   onRecordRefinance,
   onRecordReconciliation,
@@ -252,6 +256,37 @@ export const DebtDetail = ({
             <Definition label="Archived" value={formatTimestamp(debt.archivedAtUtc)} />
           ) : null}
         </dl>
+        {debt.paymentSchedule.dueDate && debt.paymentSchedule.status !== 'satisfied' ? (
+          <div className="mt-5 border-t border-slate-200 pt-4">
+            <p className="text-xs text-slate-600">
+              Use scheduling confirmation only for exceptional lender treatment or
+              incomplete historical data. It does not create a ledger transaction.
+            </p>
+            <button
+              className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+              onClick={onConfirmScheduledPayment}
+              type="button"
+            >
+              Confirm due date satisfied
+            </button>
+          </div>
+        ) : null}
+        {debt.paymentSchedule.manualConfirmation ? (
+          <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <p>
+              Due date {debt.paymentSchedule.manualConfirmation.dueDate} was manually
+              confirmed for scheduling on{' '}
+              {debt.paymentSchedule.manualConfirmation.confirmedAtUtc}.
+            </p>
+            <button
+              className="mt-2 font-semibold underline"
+              onClick={onRemoveScheduledPaymentConfirmation}
+              type="button"
+            >
+              Remove scheduling confirmation
+            </button>
+          </div>
+        ) : null}
         {debt.financingChainName ||
         debt.refinancedFromDebtName ||
         debt.refinancedIntoDebtName ||

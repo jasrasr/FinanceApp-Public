@@ -6,6 +6,7 @@ export type ScheduledPaymentStatus =
   | 'past_due'
   | 'satisfied'
   | 'missing_due_day'
+  | 'missing_schedule_start'
   | 'unsupported_frequency'
   | 'not_required';
 
@@ -51,6 +52,8 @@ export interface CalculateScheduledPaymentsInput {
   readonly paymentDueDay: number | null;
   readonly terms: readonly ScheduleTermInput[];
   readonly payments: readonly SchedulePaymentInput[];
+  readonly paymentScheduleStartDate?: string | null;
+  readonly confirmedSatisfiedDueDates?: readonly string[];
   readonly asOfDate: string;
   readonly lookAheadDays?: number;
 }
@@ -161,6 +164,8 @@ export const calculateScheduledPayments = ({
   currentBalanceCents,
   originationDate,
   paymentDueDay,
+  paymentScheduleStartDate = null,
+  confirmedSatisfiedDueDates = [],
   payments,
   status,
   terms,
@@ -178,7 +183,23 @@ export const calculateScheduledPayments = ({
     );
   }
 
-  const firstTerm = termForDate(terms, originationDate);
+  if (paymentScheduleStartDate === null) {
+    return emptyResult(
+      paymentDueDay,
+      'missing_schedule_start',
+      'Scheduling start date is missing; edit the debt to choose when tracking begins.',
+    );
+  }
+
+  if (paymentScheduleStartDate < originationDate) {
+    return emptyResult(
+      paymentDueDay,
+      'missing_schedule_start',
+      'Scheduling start date cannot precede the debt origination date.',
+    );
+  }
+
+  const firstTerm = termForDate(terms, paymentScheduleStartDate);
   if (!firstTerm || !SUPPORTED_FREQUENCIES.has(firstTerm.paymentFrequency)) {
     return emptyResult(
       paymentDueDay,
@@ -188,7 +209,10 @@ export const calculateScheduledPayments = ({
   }
 
   const horizon = addDays(asOfDate, lookAheadDays);
-  let dueDate = firstDueDateOnOrAfter(monthStart(originationDate), paymentDueDay);
+  let dueDate = firstDueDateOnOrAfter(
+    monthStart(paymentScheduleStartDate),
+    paymentDueDay,
+  );
   let priorDueDate: string | null = null;
   const obligations: ScheduledPaymentObligation[] = [];
 
@@ -200,7 +224,7 @@ export const calculateScheduledPayments = ({
       continue;
     }
 
-    if (term.requiredPaymentCents > 0 && dueDate >= originationDate) {
+    if (term.requiredPaymentCents > 0 && dueDate >= paymentScheduleStartDate) {
       obligations.push({
         dueDate,
         priorDueDate,
@@ -218,6 +242,11 @@ export const calculateScheduledPayments = ({
   }
 
   const mutableObligations = obligations.map((obligation) => ({ ...obligation }));
+  for (const obligation of mutableObligations) {
+    if (confirmedSatisfiedDueDates?.includes(obligation.dueDate)) {
+      obligation.satisfied = true;
+    }
+  }
   const sortedPayments = payments
     .filter((payment) => payment.effectiveDate <= asOfDate)
     .sort((left, right) => {
@@ -228,7 +257,7 @@ export const calculateScheduledPayments = ({
   for (const payment of sortedPayments) {
     for (const obligation of mutableObligations) {
       if (obligation.satisfied) continue;
-      const windowStart = obligation.priorDueDate ?? originationDate;
+      const windowStart = obligation.priorDueDate ?? paymentScheduleStartDate;
       const isAfterWindowStart = obligation.priorDueDate
         ? payment.effectiveDate > windowStart
         : payment.effectiveDate >= windowStart;

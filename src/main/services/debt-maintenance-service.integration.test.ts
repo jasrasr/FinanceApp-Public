@@ -63,6 +63,8 @@ const validRequest = (name = 'Fictional Equipment Note'): CreateDebtRequest => (
     maturityDate: '2030-01-15',
     minimumPayment: '2,450.00',
     paymentFrequency: 'monthly',
+    paymentDueDay: null,
+    paymentScheduleStartDate: null,
     creditLimit: null,
     collateralDescription: 'Generated equipment description',
     taxCategory: 'business',
@@ -1281,6 +1283,7 @@ describe('debt maintenance', () => {
     request.debt.originationDate = '2026-06-01';
     request.debt.maturityDate = '2036-06-01';
     request.debt.paymentDueDay = 15;
+    request.debt.paymentScheduleStartDate = '2026-07-01';
     request.initialTerm.effectiveStartDate = '2026-06-01';
     request.initialTerm.requiredPayment = '1000.00';
     const created = service.createDebt(request);
@@ -1322,6 +1325,7 @@ describe('debt maintenance', () => {
     const request = validRequest('Generated Boundary Schedule Loan');
     request.debt.originationDate = '2026-06-01';
     request.debt.paymentDueDay = 12;
+    request.debt.paymentScheduleStartDate = '2026-07-01';
     request.initialTerm.effectiveStartDate = '2026-06-01';
     request.initialTerm.requiredPayment = '2500.00';
     const created = service.createDebt(request);
@@ -1371,6 +1375,7 @@ describe('debt maintenance', () => {
     const request = validRequest('Generated First-Day Schedule Loan');
     request.debt.originationDate = '2026-07-01';
     request.debt.paymentDueDay = 1;
+    request.debt.paymentScheduleStartDate = '2026-07-01';
     request.initialTerm.effectiveStartDate = '2026-07-01';
     const created = service.createDebt(request);
 
@@ -1400,6 +1405,7 @@ describe('debt maintenance', () => {
     const request = validRequest('Generated Payment Chain Schedule Loan');
     request.debt.originationDate = '2026-06-01';
     request.debt.paymentDueDay = 15;
+    request.debt.paymentScheduleStartDate = '2026-07-01';
     request.initialTerm.effectiveStartDate = '2026-06-01';
     const created = service.createDebt(request);
 
@@ -1493,6 +1499,7 @@ describe('debt maintenance', () => {
     request.debt.debtType = 'credit_card';
     request.debt.originationDate = '2026-07-01';
     request.debt.paymentDueDay = 15;
+    request.debt.paymentScheduleStartDate = '2026-07-01';
     request.debt.creditLimit = '5000.00';
     request.initialTerm.effectiveStartDate = '2026-07-01';
     request.initialTerm.requiredPayment = '75.00';
@@ -1545,6 +1552,38 @@ describe('debt maintenance', () => {
     expect(detail.currentBalance).toBe('125175.13');
   });
 
+  it('records and removes a scheduling-only confirmation without changing the ledger', () => {
+    const request = validRequest('Generated Scheduling Override Loan');
+    request.debt.originationDate = '2026-07-01';
+    request.debt.paymentDueDay = 15;
+    request.debt.paymentScheduleStartDate = '2026-07-01';
+    request.initialTerm.effectiveStartDate = '2026-07-01';
+    const created = service.createDebt(request);
+    const beforeBalance = created.currentBalance;
+
+    const confirmed = service.confirmScheduledPayment({
+      debtId: created.id,
+      dueDate: '2026-07-15',
+      reason: 'starting_schedule_after_historical_data',
+      confirmed: true,
+    });
+    expect(confirmed.paymentSchedule.nextDueDate).toBe('2026-08-15');
+    expect(confirmed.currentBalance).toBe(beforeBalance);
+    expect(confirmed.paymentSchedule.manualConfirmation).toMatchObject({
+      dueDate: '2026-07-15',
+      reason: 'starting_schedule_after_historical_data',
+    });
+
+    const restored = service.removeScheduledPaymentConfirmation({
+      debtId: created.id,
+      dueDate: '2026-07-15',
+      confirmed: true,
+    });
+    expect(restored.paymentSchedule.dueDate).toBe('2026-07-15');
+    expect(restored.paymentSchedule.status).toBe('past_due');
+    expect(restored.currentBalance).toBe(beforeBalance);
+  });
+
   it('flags missing due-day debts for scheduling review without inventing a due date', () => {
     const request = validRequest('Generated Missing Schedule Loan');
     request.debt.originationDate = '2026-06-01';
@@ -1588,6 +1627,7 @@ describe('debt maintenance', () => {
         status: created.status,
         maturityDate: created.maturityDate,
         paymentDueDay: 10,
+        paymentScheduleStartDate: '2026-06-01',
         creditLimit: created.creditLimit,
         collateralDescription: created.collateralDescription,
         taxCategory: created.taxCategory,

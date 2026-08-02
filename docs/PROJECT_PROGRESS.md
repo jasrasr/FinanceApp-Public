@@ -1,5 +1,29 @@
 # Project Progress
 
+## Phase 39: Scheduled-payment boundary and navigation repair
+
+Completion date: 2026-08-02. Version: 1.1.2.
+
+- Repaired matching so the first payment window begins at an explicit reviewed
+  scheduling start date rather than legal origination. This prevents synthetic
+  historical obligations from consuming current payments.
+- Added nullable `debts.payment_schedule_start_date` and durable removable
+  scheduling-only confirmations in `payment_schedule_overrides`. No ledger
+  transaction or accounting calculation changes.
+- Added secure typed confirmation/removal IPC and debt-detail fallback controls.
+- Added renderer history entries so debt navigation supports browser Back,
+  Forward, Alt+Left, Alt+Right, and the visible Back action without leaving the
+  application.
+- Migration `0010_amusing_elektra.sql` preserves existing debts with a null
+  scheduling boundary and keeps historical transactions unchanged.
+- Focused domain and service tests cover July 12, July 21, July 23, July 25,
+  and August 1 generated cases, lifecycle filtering, and the boundary.
+- Known limitation: unsupported non-monthly frequencies remain flagged for
+  review; scheduling confirmation reason selection is intentionally a narrow
+  exceptional fallback, not a normal payment-entry path.
+- Recommended next phase: acceptance testing of scheduling-boundary setup and
+  browser mouse navigation in the installed Windows build.
+
 This document is a concise chronological handoff log for future developers and
 AI assistants. It summarizes completed implementation phases using repository
 history, documentation, ADRs, migrations, and implemented code.

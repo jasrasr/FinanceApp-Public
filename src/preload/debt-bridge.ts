@@ -16,6 +16,8 @@ import {
   dataManagementStatusResultSchema,
   deleteBackupRequestSchema,
   deleteDebtPermanentlyRequestSchema,
+  confirmScheduledPaymentRequestSchema,
+  removeScheduledPaymentConfirmationRequestSchema,
   debtReportsResultSchema,
   debtDetailResultSchema,
   debtListResultSchema,
@@ -50,6 +52,8 @@ import {
   type CreateDebtRequest,
   type DeleteBackupRequest,
   type DeleteDebtPermanentlyRequest,
+  type ConfirmScheduledPaymentRequest,
+  type RemoveScheduledPaymentConfirmationRequest,
   type ExportDataRequest,
   type GetDashboardRequest,
   type GetDataManagementStatusRequest,
@@ -75,7 +79,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 22,
+    bridgeVersion: 23,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -259,6 +263,22 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.deletePermanently,
           deleteDebtPermanentlyRequestSchema.parse(request),
+        ),
+      ),
+    confirmScheduledPayment: async (request: ConfirmScheduledPaymentRequest) =>
+      debtDetailResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.confirmScheduledPayment,
+          confirmScheduledPaymentRequestSchema.parse(request),
+        ),
+      ),
+    removeScheduledPaymentConfirmation: async (
+      request: RemoveScheduledPaymentConfirmationRequest,
+    ) =>
+      debtDetailResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.removeScheduledPaymentConfirmation,
+          removeScheduledPaymentConfirmationRequestSchema.parse(request),
         ),
       ),
   });

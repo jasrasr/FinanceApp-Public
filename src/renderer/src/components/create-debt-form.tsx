@@ -71,6 +71,7 @@ export const CreateDebtForm = ({
           'initialTerm.paymentFrequency',
         ) as CreateDebtRequest['debt']['paymentFrequency'],
         paymentDueDay: nullableNumberValue(data, 'debt.paymentDueDay'),
+        paymentScheduleStartDate: nullableValue(data, 'debt.paymentScheduleStartDate'),
         creditLimit: nullableValue(data, 'debt.creditLimit'),
         collateralDescription: nullableValue(data, 'debt.collateralDescription'),
         taxCategory: value(
@@ -138,6 +139,20 @@ export const CreateDebtForm = ({
               id="debt.creditor"
               name="debt.creditor"
               required
+            />
+          </Field>
+          <Field
+            error={fieldErrors?.['debt.paymentScheduleStartDate']}
+            hint="Optional until due-day tracking is configured. Review this boundary; no obligations are generated before it."
+            label="Scheduling start date"
+            name="debt.paymentScheduleStartDate"
+            optional
+          >
+            <input
+              className={inputClassName}
+              id="debt.paymentScheduleStartDate"
+              name="debt.paymentScheduleStartDate"
+              type="date"
             />
           </Field>
           <Field

@@ -15,6 +15,7 @@ describe('typed preload bridge', () => {
       'archiveDebt',
       'archivePayoffScenario',
       'bridgeVersion',
+      'confirmScheduledPayment',
       'createBalanceReconciliation',
       'createBalanceSnapshot',
       'createDebt',
@@ -33,6 +34,7 @@ describe('typed preload bridge', () => {
       'listDebts',
       'listPayoffScenarios',
       'recordRefinance',
+      'removeScheduledPaymentConfirmation',
       'rerunPayoffScenario',
       'restoreBackup',
       'restoreDebt',
@@ -41,9 +43,9 @@ describe('typed preload bridge', () => {
       'voidBalanceReconciliation',
       'voidDebtTransaction',
     ]);
-    expect(bridge.bridgeVersion).toBe(22);
+    expect(bridge.bridgeVersion).toBe(23);
     expect(bridge.appMetadata).toEqual({
-      version: '1.1.1',
+      version: '1.1.2',
       lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);

@@ -16,6 +16,8 @@ import {
   dataManagementStatusDtoSchema,
   deleteBackupRequestSchema,
   deleteDebtPermanentlyRequestSchema,
+  confirmScheduledPaymentRequestSchema,
+  removeScheduledPaymentConfirmationRequestSchema,
   debtReportsDtoSchema,
   debtDetailDtoSchema,
   debtSummaryListSchema,
@@ -424,6 +426,22 @@ export const registerDebtIpcHandlers = (
         return service.deleteDebtPermanently(request, backupId);
       });
     },
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.confirmScheduledPayment,
+    confirmScheduledPaymentRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.confirmScheduledPayment(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.removeScheduledPaymentConfirmation,
+    removeScheduledPaymentConfirmationRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.removeScheduledPaymentConfirmation(request),
   );
 };
 

@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 1.1.1')).toBeVisible();
+    await expect(window.getByText('Version 1.1.2')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
       0,
@@ -48,6 +48,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByLabel('Annual interest rate (%)').fill('5.49');
     await window.getByLabel('Required payment').fill('2450.00');
     await window.getByLabel('Payment due day').fill('15');
+    await window.getByLabel('Scheduling start date').fill('2020-01-15');
     await window.getByRole('button', { name: 'Create debt' }).click();
 
     await expect(

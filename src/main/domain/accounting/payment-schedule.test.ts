@@ -34,6 +34,7 @@ const schedule = (
     status: 'active',
     archivedAtUtc: null,
     paymentDueDay: 15,
+    paymentScheduleStartDate: '2026-07-01',
     terms,
     payments,
     asOfDate,
@@ -53,6 +54,7 @@ describe('scheduled payment calculation', () => {
       status: 'active',
       archivedAtUtc: null,
       paymentDueDay: 31,
+      paymentScheduleStartDate: '2026-01-01',
       terms: [term('2026-01-01')],
       payments: [],
       asOfDate: '2026-03-31',
@@ -170,6 +172,7 @@ describe('scheduled payment calculation', () => {
       status: 'active',
       archivedAtUtc: null,
       paymentDueDay: null,
+      paymentScheduleStartDate: '2026-01-01',
       terms: [term()],
       payments: [],
       asOfDate: '2026-08-15',
@@ -183,6 +186,7 @@ describe('scheduled payment calculation', () => {
       status: 'active',
       archivedAtUtc: null,
       paymentDueDay: 15,
+      paymentScheduleStartDate: '2026-01-01',
       terms: [term('2026-01-01', 100_00, 'irregular')],
       payments: [],
       asOfDate: '2026-08-15',
@@ -230,16 +234,14 @@ describe('scheduled payment calculation', () => {
       status: 'active',
       archivedAtUtc: null,
       paymentDueDay: 12,
+      paymentScheduleStartDate: '2026-07-01',
       terms: [term('2026-06-01')],
-      payments: [
-        payment('june-payment', '2026-06-12'),
-        payment('july-payment', '2026-07-01'),
-      ],
+      payments: [payment('july-payment', '2026-07-01')],
       asOfDate: '2026-07-13',
       lookAheadDays: 31,
     });
 
-    expect(result.obligations[1]).toMatchObject({
+    expect(result.obligations[0]).toMatchObject({
       dueDate: '2026-07-12',
       satisfied: true,
       status: 'satisfied',
@@ -247,6 +249,36 @@ describe('scheduled payment calculation', () => {
     expect(result.nextDueDate).toBe('2026-08-12');
     expect(result.earliestPastDueDate).toBeNull();
   });
+
+  it.each([21, 23, 25])(
+    'satisfies a July %s due date with a July 18 payment and advances one month',
+    (dueDay) => {
+      const result = calculateScheduledPayments({
+        debtId: `debt-due-${dueDay}`,
+        originationDate: '2026-01-01',
+        paymentScheduleStartDate: '2026-07-01',
+        currentBalanceCents: 1_000_00,
+        status: 'active',
+        archivedAtUtc: null,
+        paymentDueDay: dueDay,
+        terms: [term('2026-01-01')],
+        payments: [payment(`july-${dueDay}`, '2026-07-18')],
+        asOfDate: '2026-07-26',
+        lookAheadDays: 31,
+      });
+
+      expect(result.nextDueDate).toBe(`2026-08-${dueDay}`);
+      expect(result.earliestPastDueDate).toBeNull();
+      expect(
+        result.obligations.find(
+          (obligation) => obligation.dueDate === `2026-07-${dueDay}`,
+        ),
+      ).toMatchObject({
+        satisfied: true,
+        status: 'satisfied',
+      });
+    },
+  );
 
   it('satisfies August 1 with an August 1 payment and advances to September 1', () => {
     const result = calculateScheduledPayments({
@@ -256,6 +288,7 @@ describe('scheduled payment calculation', () => {
       status: 'active',
       archivedAtUtc: null,
       paymentDueDay: 1,
+      paymentScheduleStartDate: '2026-07-01',
       terms: [term('2026-07-01')],
       payments: [
         payment('july-payment', '2026-07-01'),

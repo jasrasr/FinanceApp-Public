@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for version 1.1.0. Corrected in version 1.1.1.
+Accepted for version 1.1.0. Corrected in versions 1.1.1 and 1.1.2.
 
 ## Context
 
@@ -44,6 +44,14 @@ could fail to advance the due date when it was below the recorded term payment.
 The date boundaries were kept inclusive for the current due date; the domain rule
 now models the user's actual workflow that every qualifying posted payment
 satisfies one lender minimum obligation.
+
+Version 1.1.2 adds a nullable, explicitly reviewed scheduling start boundary.
+The prior implementation used origination as the first payment window and
+could consume current payments against years of synthetic historical obligations.
+The first window now begins inclusively at the boundary; later windows retain
+their exclusive prior-due-date lower bound. Exceptional scheduling-only
+confirmations are persisted outside the ledger and can be removed with audit
+history.
 
 The dashboard shows unpaid past-due obligations regardless of age, due-today
 obligations, and upcoming unpaid obligations within 30 days.

@@ -17,33 +17,34 @@
 Identifies and classifies an obligation. It does not contain an authoritative
 mutable current-balance field.
 
-| Column                      |    Type | Required | Rule                                                                                                      |
-| --------------------------- | ------: | :------: | --------------------------------------------------------------------------------------------------------- |
-| `id`                        |    text |   Yes    | Primary key; UUID                                                                                         |
-| `name`                      |    text |   Yes    | User-facing obligation name                                                                               |
-| `creditor`                  |    text |   Yes    | Creditor or lender                                                                                        |
-| `owner_entity`              |    text |   Yes    | Compatibility field; new personal-use records default to `Personal`                                       |
-| `debt_type`                 |    text |   Yes    | Mortgage, HELOC, auto, personal, business, credit card, other; legacy student/medical/tax remain readable |
-| `purpose`                   |    text |   Yes    | Purpose of the obligation                                                                                 |
-| `status`                    |    text |   Yes    | Active, paid off, refinanced, or closed                                                                   |
-| `original_principal_cents`  | integer |   Yes    | Nonnegative safe-integer cents                                                                            |
-| `origination_date`          |    text |   Yes    | Financial date                                                                                            |
-| `maturity_date`             |    text |    No    | Financial date not before origination                                                                     |
-| `minimum_payment_cents`     | integer |   Yes    | Compatibility field populated from the initial term for new manual debts                                  |
-| `payment_frequency`         |    text |   Yes    | Compatibility field populated from the initial term for new manual debts                                  |
-| `payment_due_day`           | integer |    No    | Optional scheduled payment day from 1 through 31; shorter months use the final calendar day               |
-| `credit_limit_cents`        | integer |    No    | Nonnegative safe-integer cents                                                                            |
-| `collateral_description`    |    text |    No    | Non-sensitive collateral description                                                                      |
-| `tax_category`              |    text |   Yes    | Controlled tax classification                                                                             |
-| `deductible_percentage_bps` | integer |   Yes    | From 0 through 10,000                                                                                     |
-| `financing_chain_name`      |    text |    No    | Legacy compatibility name for previously linked separate refinance-chain obligations                      |
-| `refinanced_from_debt_id`   |    text |    No    | Legacy nullable self-reference to the prior obligation in a separate-debt refinance chain                 |
-| `refinanced_into_debt_id`   |    text |    No    | Legacy nullable self-reference to the replacement obligation in a separate-debt refinance chain           |
-| `refinance_date`            |    text |    No    | Legacy financial date identifying a separate-debt refinance link when applicable                          |
-| `notes`                     |    text |    No    | Supporting notes                                                                                          |
-| `created_at_utc`            |    text |   Yes    | UTC timestamp                                                                                             |
-| `updated_at_utc`            |    text |   Yes    | UTC timestamp                                                                                             |
-| `archived_at_utc`           |    text |    No    | UTC timestamp                                                                                             |
+| Column                        |    Type | Required | Rule                                                                                                      |
+| ----------------------------- | ------: | :------: | --------------------------------------------------------------------------------------------------------- |
+| `id`                          |    text |   Yes    | Primary key; UUID                                                                                         |
+| `name`                        |    text |   Yes    | User-facing obligation name                                                                               |
+| `creditor`                    |    text |   Yes    | Creditor or lender                                                                                        |
+| `owner_entity`                |    text |   Yes    | Compatibility field; new personal-use records default to `Personal`                                       |
+| `debt_type`                   |    text |   Yes    | Mortgage, HELOC, auto, personal, business, credit card, other; legacy student/medical/tax remain readable |
+| `purpose`                     |    text |   Yes    | Purpose of the obligation                                                                                 |
+| `status`                      |    text |   Yes    | Active, paid off, refinanced, or closed                                                                   |
+| `original_principal_cents`    | integer |   Yes    | Nonnegative safe-integer cents                                                                            |
+| `origination_date`            |    text |   Yes    | Financial date                                                                                            |
+| `maturity_date`               |    text |    No    | Financial date not before origination                                                                     |
+| `minimum_payment_cents`       | integer |   Yes    | Compatibility field populated from the initial term for new manual debts                                  |
+| `payment_frequency`           |    text |   Yes    | Compatibility field populated from the initial term for new manual debts                                  |
+| `payment_due_day`             | integer |    No    | Optional scheduled payment day from 1 through 31; shorter months use the final calendar day               |
+| `payment_schedule_start_date` |    text |    No    | Reviewed date from which scheduled obligations begin; null requires scheduling review                     |
+| `credit_limit_cents`          | integer |    No    | Nonnegative safe-integer cents                                                                            |
+| `collateral_description`      |    text |    No    | Non-sensitive collateral description                                                                      |
+| `tax_category`                |    text |   Yes    | Controlled tax classification                                                                             |
+| `deductible_percentage_bps`   | integer |   Yes    | From 0 through 10,000                                                                                     |
+| `financing_chain_name`        |    text |    No    | Legacy compatibility name for previously linked separate refinance-chain obligations                      |
+| `refinanced_from_debt_id`     |    text |    No    | Legacy nullable self-reference to the prior obligation in a separate-debt refinance chain                 |
+| `refinanced_into_debt_id`     |    text |    No    | Legacy nullable self-reference to the replacement obligation in a separate-debt refinance chain           |
+| `refinance_date`              |    text |    No    | Legacy financial date identifying a separate-debt refinance link when applicable                          |
+| `notes`                       |    text |    No    | Supporting notes                                                                                          |
+| `created_at_utc`              |    text |   Yes    | UTC timestamp                                                                                             |
+| `updated_at_utc`              |    text |   Yes    | UTC timestamp                                                                                             |
+| `archived_at_utc`             |    text |    No    | UTC timestamp                                                                                             |
 
 Indexes cover creditor, owner/entity compatibility data, status, refinance
 references, and financing-chain name.
@@ -74,6 +75,10 @@ based on `updated_at_utc`.
 existing debts remain valid without invented due dates. Effective-dated
 `debt_terms` remain authoritative for the required amount and payment frequency
 applicable to each scheduled due date.
+`payment_schedule_start_date` is a separate nullable boundary and never changes
+the legal origination date or historical transactions. Active scheduling
+confirmations are stored in `payment_schedule_overrides` with a reason and
+timestamps; removing one is an auditable correction.
 
 ## `debt_terms`
 
