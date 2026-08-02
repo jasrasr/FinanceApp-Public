@@ -106,6 +106,7 @@ export interface RecordInPlaceRefinanceRecordInput {
     readonly maturityDate: string;
     readonly minimumPaymentCents: number;
     readonly paymentFrequency: DebtRecord['paymentFrequency'];
+    readonly paymentDueDay: number | null;
     readonly updatedAtUtc: string;
   };
   readonly newTerm: DebtTermInsert;
@@ -146,6 +147,7 @@ export interface DebtUpdateValues {
   readonly purpose: string;
   readonly status: DebtRecord['status'];
   readonly maturityDate: string | null;
+  readonly paymentDueDay: number | null;
   readonly creditLimitCents: number | null;
   readonly collateralDescription: string | null;
   readonly taxCategory: DebtRecord['taxCategory'];
@@ -939,6 +941,7 @@ export const recordInPlaceRefinanceRecord = (
         maturityDate: input.debtUpdate.maturityDate,
         minimumPaymentCents: input.debtUpdate.minimumPaymentCents,
         paymentFrequency: input.debtUpdate.paymentFrequency,
+        paymentDueDay: input.debtUpdate.paymentDueDay,
         updatedAtUtc: input.debtUpdate.updatedAtUtc,
       })
       .where(

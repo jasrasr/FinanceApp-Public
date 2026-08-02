@@ -288,6 +288,83 @@ export const Dashboard = ({
 
           <section
             className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+            aria-labelledby="dashboard-upcoming-payments-heading"
+          >
+            <h3
+              className="text-lg font-semibold"
+              id="dashboard-upcoming-payments-heading"
+            >
+              Upcoming payments
+            </h3>
+            {dashboard.upcomingPayments.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-600">
+                No unpaid scheduled payments are past due, due today, or due in the next
+                30 days.
+              </p>
+            ) : (
+              <div className="mt-5 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+                    <tr>
+                      <th className="py-3 pr-4 font-semibold" scope="col">
+                        Debt
+                      </th>
+                      <th className="px-4 py-3 font-semibold" scope="col">
+                        Due date
+                      </th>
+                      <th className="px-4 py-3 text-right font-semibold" scope="col">
+                        Required
+                      </th>
+                      <th className="px-4 py-3 text-right font-semibold" scope="col">
+                        Applied
+                      </th>
+                      <th className="px-4 py-3 text-right font-semibold" scope="col">
+                        Remaining due
+                      </th>
+                      <th className="px-4 py-3 font-semibold" scope="col">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {dashboard.upcomingPayments.map((item) => (
+                      <tr key={`${item.debtId}-${item.dueDate}`}>
+                        <td className="py-4 pr-4 align-top">
+                          <DebtLinkButton
+                            debtId={item.debtId}
+                            onSelectDebt={onSelectDebt}
+                          >
+                            {combinedDebtLabel({
+                              creditor: item.creditor,
+                              name: item.debtName,
+                            })}
+                          </DebtLinkButton>
+                        </td>
+                        <td className="px-4 py-4 align-top tabular-nums">
+                          {item.dueDate}
+                        </td>
+                        <td className="px-4 py-4 text-right align-top tabular-nums">
+                          {formatDollarString(item.requiredPayment)}
+                        </td>
+                        <td className="px-4 py-4 text-right align-top tabular-nums">
+                          {formatDollarString(item.paymentsApplied)}
+                        </td>
+                        <td className="px-4 py-4 text-right align-top tabular-nums">
+                          {formatDollarString(item.remainingAmountDue)}
+                        </td>
+                        <td className="px-4 py-4 align-top text-slate-700">
+                          {labelFromValue(item.status)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section
+            className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
             aria-labelledby="dashboard-attention-heading"
           >
             <h3 className="text-lg font-semibold" id="dashboard-attention-heading">

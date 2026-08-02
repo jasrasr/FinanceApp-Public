@@ -5,8 +5,9 @@ for maintaining debts and supporting future debt-paydown analysis.
 
 ## Release Status
 
-Version 1.0.0 is the first stable production release. It is intended for local,
-single-user debt tracking with entered debts, historical activity,
+Version 1.1.0 builds on the first stable production release with scheduled
+payment due-day tracking and unpaid upcoming-payment review. It is intended for
+local, single-user debt tracking with entered debts, historical activity,
 reconciliations, reports, backups, and payoff scenarios already validated through
 generated-data test workflows.
 
@@ -32,6 +33,9 @@ Known non-blocking limitations:
 - Manual debt maintenance for a single personal user: list, create, detail,
   descriptive update, archive, and restore.
 - Initial and subsequent effective-dated debt-term periods with preserved history.
+- Optional debt payment due-day configuration, next due-date display, and
+  main-process scheduled-payment tracking that applies posted payments to the
+  oldest eligible unpaid obligation.
 - Manual posted activity entry for payments, draws, fees, penalties, interest,
   principal adjustments, mortgage escrow activity, reversals, and user-facing
   transaction edits implemented as linked superseding corrections.
@@ -43,7 +47,8 @@ Known non-blocking limitations:
   adjustment postings, and void/supersede correction of incorrect
   reconciliations.
 - Basic dashboard with active-debt totals, year-to-date posted activity metrics,
-  credit-card availability and utilization, current escrow balance,
+  unpaid past-due, due-today, and next-30-day scheduled payments, credit-card
+  availability and utilization, current escrow balance,
   current-term payment and rate summaries, upcoming maturities, open
   reconciliation attention items, and drill-through navigation to debt,
   credit-card, and escrow detail.

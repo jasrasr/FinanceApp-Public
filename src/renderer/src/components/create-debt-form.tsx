@@ -25,6 +25,10 @@ const nullableValue = (data: FormData, name: string): string | null => {
   const result = value(data, name);
   return result === '' ? null : result;
 };
+const nullableNumberValue = (data: FormData, name: string): number | null => {
+  const result = value(data, name);
+  return result === '' ? null : Number(result);
+};
 
 const Options = ({ values }: { readonly values: readonly string[] }) => (
   <>
@@ -66,6 +70,7 @@ export const CreateDebtForm = ({
           data,
           'initialTerm.paymentFrequency',
         ) as CreateDebtRequest['debt']['paymentFrequency'],
+        paymentDueDay: nullableNumberValue(data, 'debt.paymentDueDay'),
         creditLimit: nullableValue(data, 'debt.creditLimit'),
         collateralDescription: nullableValue(data, 'debt.collateralDescription'),
         taxCategory: value(
@@ -203,6 +208,23 @@ export const CreateDebtForm = ({
               id="debt.maturityDate"
               name="debt.maturityDate"
               type="date"
+            />
+          </Field>
+          <Field
+            error={fieldErrors?.['debt.paymentDueDay']}
+            hint="Optional. Use 1 through 31; shorter months use the final calendar day."
+            label="Payment due day"
+            name="debt.paymentDueDay"
+            optional
+          >
+            <input
+              className={inputClassName}
+              id="debt.paymentDueDay"
+              inputMode="numeric"
+              max={31}
+              min={1}
+              name="debt.paymentDueDay"
+              type="number"
             />
           </Field>
           <Field

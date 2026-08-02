@@ -25,6 +25,7 @@ const utcTimestampSchema = z.iso.datetime({ offset: false });
 const moneyInputSchema = z.string().trim().min(1).max(100);
 const optionalMoneyInputSchema = z.string().trim().max(100).nullable().optional();
 const optionalUuidInputSchema = uuidSchema.nullable().optional();
+const paymentDueDayInputSchema = z.number().int().min(1).max(31).nullable();
 
 const transactionAllocationInputSchema = z
   .object({
@@ -72,6 +73,7 @@ const debtCoreInputBaseSchema = z
     maturityDate: financialDateInputSchema.nullable(),
     minimumPayment: requiredTextSchema,
     paymentFrequency: z.enum(PAYMENT_FREQUENCIES),
+    paymentDueDay: paymentDueDayInputSchema.optional(),
     creditLimit: z.string().trim().max(100).nullable(),
     collateralDescription: optionalTextSchema,
     taxCategory: z.enum(TAX_CATEGORIES),
@@ -129,6 +131,7 @@ export const updateDebtRequestSchema = z
         purpose: true,
         status: true,
         maturityDate: true,
+        paymentDueDay: true,
         creditLimit: true,
         collateralDescription: true,
         taxCategory: true,
@@ -351,6 +354,7 @@ export const recordRefinanceRequestSchema = z
     newAnnualInterestRatePercent: requiredTextSchema,
     newRequiredPayment: moneyInputSchema,
     newPaymentFrequency: z.enum(PAYMENT_FREQUENCIES),
+    newPaymentDueDay: paymentDueDayInputSchema.optional(),
     newMaturityDate: financialDateInputSchema,
     interestRateType: z.enum(INTEREST_RATE_TYPES),
     dayCountConvention: z.enum(DAY_COUNT_CONVENTIONS),
@@ -491,6 +495,8 @@ export const debtSummaryDtoSchema = z
     maturityDate: financialDateInputSchema.nullable(),
     initialTerm: debtTermDtoSchema,
     currentTerm: debtTermDtoSchema,
+    paymentDueDay: paymentDueDayInputSchema,
+    nextDueDate: financialDateInputSchema.nullable(),
     archivedAtUtc: utcTimestampSchema.nullable(),
     financingChainName: z.string().nullable(),
     refinancedFromDebtId: uuidSchema.nullable(),
@@ -512,6 +518,33 @@ const permanentDebtDeletionPreviewDtoSchema = z
     importProvenance: z.number().int().nonnegative(),
     payoffScenarioReferences: z.number().int().nonnegative(),
     otherRelatedRecords: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const scheduledPaymentStatusSchema = z.enum([
+  'upcoming',
+  'due_today',
+  'past_due',
+  'satisfied',
+  'missing_due_day',
+  'unsupported_frequency',
+  'not_required',
+]);
+
+const scheduledPaymentDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    creditor: z.string(),
+    dueDate: financialDateInputSchema.nullable(),
+    priorDueDate: financialDateInputSchema.nullable(),
+    nextDueDate: financialDateInputSchema.nullable(),
+    requiredPayment: z.string(),
+    paymentsApplied: z.string(),
+    remainingAmountDue: z.string(),
+    status: scheduledPaymentStatusSchema,
+    earliestPastDueDate: financialDateInputSchema.nullable(),
+    reviewMessage: z.string().nullable(),
   })
   .strict();
 
@@ -551,6 +584,7 @@ export const debtDetailDtoSchema = debtSummaryDtoSchema
     deductiblePercentage: z.string(),
     notes: z.string().nullable(),
     currentTerm: debtTermDtoSchema,
+    paymentSchedule: scheduledPaymentDtoSchema,
     terms: z.array(debtTermDtoSchema).min(1),
     refinanceEvents: z.array(refinanceEventDtoSchema),
     permanentDeletionPreview: permanentDebtDeletionPreviewDtoSchema,
@@ -640,6 +674,8 @@ export const dashboardDtoSchema = z
         reviewItems: z.array(z.string()),
       })
       .strict(),
+    upcomingPayments: z.array(scheduledPaymentDtoSchema),
+    schedulingReviewItems: z.array(scheduledPaymentDtoSchema),
     upcomingMaturities: z.array(dashboardDebtMetricDtoSchema),
     escrowBalances: z.array(dashboardDebtMetricDtoSchema),
     attentionItems: z.array(dashboardAttentionItemDtoSchema),
@@ -1026,6 +1062,7 @@ export type BalanceSnapshotDto = z.infer<typeof balanceSnapshotDtoSchema>;
 export type BalanceReconciliationDto = z.infer<typeof balanceReconciliationDtoSchema>;
 export type DebtSummaryDto = z.infer<typeof debtSummaryDtoSchema>;
 export type DebtDetailDto = z.infer<typeof debtDetailDtoSchema>;
+export type ScheduledPaymentDto = z.infer<typeof scheduledPaymentDtoSchema>;
 export type PermanentDebtDeletionDto = z.infer<typeof permanentDebtDeletionDtoSchema>;
 export type RefinanceEventDto = z.infer<typeof refinanceEventDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;

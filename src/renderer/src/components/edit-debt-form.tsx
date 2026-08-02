@@ -21,6 +21,10 @@ const nullableValue = (data: FormData, name: string): string | null => {
   const result = value(data, name);
   return result === '' ? null : result;
 };
+const nullableNumberValue = (data: FormData, name: string): number | null => {
+  const result = value(data, name);
+  return result === '' ? null : Number(result);
+};
 
 export const EditDebtForm = ({
   busy,
@@ -47,6 +51,7 @@ export const EditDebtForm = ({
         purpose: value(data, 'changes.purpose'),
         status: value(data, 'changes.status') as UpdateDebtRequest['changes']['status'],
         maturityDate: nullableValue(data, 'changes.maturityDate'),
+        paymentDueDay: nullableNumberValue(data, 'changes.paymentDueDay'),
         creditLimit: nullableValue(data, 'changes.creditLimit'),
         collateralDescription: nullableValue(data, 'changes.collateralDescription'),
         taxCategory: value(
@@ -152,6 +157,24 @@ export const EditDebtForm = ({
             id="changes.maturityDate"
             name="changes.maturityDate"
             type="date"
+          />
+        </Field>
+        <Field
+          error={fieldErrors?.['changes.paymentDueDay']}
+          hint="Optional. Use 1 through 31; shorter months use the final calendar day."
+          label="Payment due day"
+          name="changes.paymentDueDay"
+          optional
+        >
+          <input
+            className={inputClassName}
+            defaultValue={debt.paymentDueDay ?? ''}
+            id="changes.paymentDueDay"
+            inputMode="numeric"
+            max={31}
+            min={1}
+            name="changes.paymentDueDay"
+            type="number"
           />
         </Field>
         <Field

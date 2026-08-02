@@ -1276,6 +1276,110 @@ describe('debt maintenance', () => {
     });
   });
 
+  it('returns unpaid upcoming payments from the same schedule calculation used by debt detail', () => {
+    const request = validRequest('Generated Scheduled Mortgage');
+    request.debt.originationDate = '2026-06-01';
+    request.debt.maturityDate = '2036-06-01';
+    request.debt.paymentDueDay = 15;
+    request.initialTerm.effectiveStartDate = '2026-06-01';
+    request.initialTerm.requiredPayment = '1000.00';
+    const created = service.createDebt(request);
+
+    service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        ...validTransactionRequest(created.id).transaction,
+        effectiveDate: '2026-06-15',
+        postingDate: '2026-06-15',
+        totalAmount: '1000.00',
+        allocations: {
+          principal: '900.00',
+          interest: '100.00',
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    const dashboard = service.getDashboard({});
+    const detail = service.getDebt({ id: created.id });
+    const dashboardPayment = dashboard.upcomingPayments.find(
+      (entry) => entry.debtId === created.id,
+    );
+
+    expect(dashboardPayment).toMatchObject({
+      debtName: 'Generated Scheduled Mortgage',
+      dueDate: '2026-07-15',
+      requiredPayment: '1000.00',
+      paymentsApplied: '0.00',
+      remainingAmountDue: '1000.00',
+      status: 'past_due',
+    });
+    expect(detail.paymentSchedule).toMatchObject(dashboardPayment!);
+  });
+
+  it('flags missing due-day debts for scheduling review without inventing a due date', () => {
+    const request = validRequest('Generated Missing Schedule Loan');
+    request.debt.originationDate = '2026-06-01';
+    request.initialTerm.effectiveStartDate = '2026-06-01';
+    const created = service.createDebt(request);
+
+    const dashboard = service.getDashboard({});
+    const detail = service.getDebt({ id: created.id });
+
+    expect(
+      dashboard.upcomingPayments.some((entry) => entry.debtId === created.id),
+    ).toBe(false);
+    expect(
+      dashboard.schedulingReviewItems.find((entry) => entry.debtId === created.id),
+    ).toMatchObject({
+      status: 'missing_due_day',
+      dueDate: null,
+      reviewMessage:
+        'Payment due day is missing; edit the debt to add scheduling information.',
+    });
+    expect(detail.paymentDueDay).toBeNull();
+    expect(detail.paymentSchedule.status).toBe('missing_due_day');
+  });
+
+  it('persists due-day edits and recalculates the next scheduled due date', () => {
+    const request = validRequest('Generated Editable Schedule Loan');
+    request.debt.originationDate = '2026-06-01';
+    request.debt.paymentDueDay = 31;
+    request.initialTerm.effectiveStartDate = '2026-06-01';
+    const created = service.createDebt(request);
+
+    const updated = service.updateDebt({
+      id: created.id,
+      expectedUpdatedAtUtc: created.updatedAtUtc,
+      changes: {
+        name: created.name,
+        creditor: created.creditor,
+        ownerEntity: created.ownerEntity,
+        debtType: created.debtType,
+        purpose: created.purpose,
+        status: created.status,
+        maturityDate: created.maturityDate,
+        paymentDueDay: 10,
+        creditLimit: created.creditLimit,
+        collateralDescription: created.collateralDescription,
+        taxCategory: created.taxCategory,
+        deductiblePercentage: created.deductiblePercentage,
+        financingChainName: created.financingChainName,
+        refinancedFromDebtId: created.refinancedFromDebtId,
+        refinancedIntoDebtId: created.refinancedIntoDebtId,
+        refinanceDate: created.refinanceDate,
+        notes: created.notes,
+      },
+    });
+
+    expect(updated.paymentDueDay).toBe(10);
+    expect(updated.paymentSchedule.dueDate).toBe('2026-06-10');
+  });
+
   it('includes current-year originated debt opening principal in new borrowings YTD', () => {
     const request = validRequest('Fictional Current-Year Opening Loan');
     request.debt.originationDate = '2026-03-15';

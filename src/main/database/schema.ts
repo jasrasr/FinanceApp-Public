@@ -82,6 +82,7 @@ export const debts = sqliteTable(
     paymentFrequency: text('payment_frequency', {
       enum: PAYMENT_FREQUENCIES,
     }).notNull(),
+    paymentDueDay: integer('payment_due_day'),
     creditLimitCents: integer('credit_limit_cents'),
     collateralDescription: text('collateral_description'),
     taxCategory: text('tax_category', { enum: TAX_CATEGORIES }).notNull(),
@@ -113,6 +114,10 @@ export const debts = sqliteTable(
     check(
       'debts_payment_frequency_valid',
       sql`${table.paymentFrequency} IN (${sqlList(PAYMENT_FREQUENCIES)})`,
+    ),
+    check(
+      'debts_payment_due_day_range',
+      sql`${table.paymentDueDay} IS NULL OR ${table.paymentDueDay} BETWEEN 1 AND 31`,
     ),
     check(
       'debts_tax_category_valid',

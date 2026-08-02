@@ -171,7 +171,47 @@ Material terms are stored as historical periods:
 Effective-dated `debt_terms` records are authoritative for required payment and
 payment frequency. The debt table's minimum payment and frequency fields are
 retained for database compatibility and are populated from the initial term for
-new manual debts.
+new manual debts. Debt-level `payment_due_day` is authoritative only for the
+scheduled calendar day; it does not change historical payment transaction dates
+or historical term periods.
+
+## Scheduled Payment Obligations
+
+Debt Tracker tracks unpaid scheduled payment obligations for active debts with a
+positive application-calculated principal balance, a modeled payment frequency,
+and a configured due day. Existing debts without a due day remain valid and are
+flagged for scheduling review; the application does not invent a due date.
+
+Monthly due dates use the configured day from 1 through 31. When a month does not
+have that day, the due date is the final calendar day of that month; later months
+return to the configured day when available. Required payment and payment
+frequency come from the effective-dated term that applies on the due date.
+
+Payments satisfy obligations in chronological order:
+
+- Only current posted `payment` transactions qualify.
+- Reversed, voided, superseded, generated reversal, draw, fee, interest-charge,
+  escrow, adjustment, refinance, and other nonpayment transactions do not satisfy
+  scheduled obligations.
+- Corrected replacement payment transactions qualify when they are current and
+  posted.
+- The transaction effective date is used; created, updated, audit, import, and
+  system timestamps are ignored.
+- The qualifying payment amount is the posted payment total, not only principal.
+- A payment applies first to the earliest unpaid due date.
+- A payment after the prior due date and on or before the current due date
+  applies to the current due date when earlier obligations are already satisfied.
+- A late payment applies to the oldest overdue obligation before any later due
+  date.
+- Multiple payments may combine to satisfy one due date; partial payments leave
+  the remaining amount due.
+- Overpayments satisfy the current due date but do not automatically satisfy a
+  future due date in this phase. Remaining payment capacity can cover additional
+  already-due missed obligations only through the same oldest-first allocation.
+
+The dashboard shows unpaid past-due obligations regardless of age, obligations
+due today, and upcoming unpaid obligations due within 30 days. Unsupported
+frequencies are excluded from Upcoming payments and flagged for review.
 
 ## Manual Debt Maintenance
 

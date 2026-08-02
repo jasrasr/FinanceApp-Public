@@ -210,6 +210,18 @@ export const DebtDetail = ({
             label="Current required payment"
             value={`${formatDollarString(debt.currentTerm.requiredPayment)} ${labelFromValue(debt.currentTerm.paymentFrequency)}`}
           />
+          <Definition
+            label="Payment due day"
+            value={
+              debt.paymentDueDay === null
+                ? 'Scheduling review needed'
+                : `Day ${debt.paymentDueDay}`
+            }
+          />
+          <Definition
+            label="Next scheduled due date"
+            value={debt.paymentSchedule.nextDueDate ?? 'Not scheduled'}
+          />
           <Definition label="Debt type" value={labelFromValue(debt.debtType)} />
           <Definition label="Origination date" value={debt.originationDate} />
           <Definition
@@ -223,6 +235,19 @@ export const DebtDetail = ({
             />
           ) : null}
           <Definition label="Status" value={labelFromValue(debt.status)} />
+          <Definition
+            label="Payment status"
+            value={
+              debt.paymentSchedule.reviewMessage ??
+              `${labelFromValue(debt.paymentSchedule.status)}; required ${formatDollarString(debt.paymentSchedule.requiredPayment)}, applied ${formatDollarString(debt.paymentSchedule.paymentsApplied)}, remaining ${formatDollarString(debt.paymentSchedule.remainingAmountDue)}`
+            }
+          />
+          {debt.paymentSchedule.earliestPastDueDate ? (
+            <Definition
+              label="Earliest past-due date"
+              value={debt.paymentSchedule.earliestPastDueDate}
+            />
+          ) : null}
           {debt.archivedAtUtc ? (
             <Definition label="Archived" value={formatTimestamp(debt.archivedAtUtc)} />
           ) : null}

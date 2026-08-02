@@ -41,7 +41,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 1.0.0')).toBeVisible();
+      await expect(window.getByText('Version 1.1.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
       await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
         0,
@@ -430,12 +430,14 @@ const createGeneratedMortgage = async (window: Page): Promise<void> => {
   await window.getByLabel('Purpose').fill('Generated packaged historical workflow');
   await window.getByLabel('Annual interest rate (%)').fill('4.50');
   await window.getByLabel('Required payment').fill('1500.00');
+  await window.getByLabel('Payment due day').fill('15');
   await window.getByRole('button', { name: 'Create debt' }).click();
   await expect(
     window.getByRole('heading', {
       name: 'Packaged Historical Mortgage — Packaged Smoke Fictional Mortgage Co.',
     }),
   ).toBeVisible();
+  await expect(window.getByText('Day 15')).toBeVisible();
 };
 
 const parseCsv = (content: string): Record<string, string>[] => {
@@ -593,6 +595,7 @@ const createGeneratedDebt = async (
   await window.getByLabel('Purpose').fill('Generated packaging smoke workflow');
   await window.getByLabel('Annual interest rate (%)').fill('4.25');
   await window.getByLabel('Required payment').fill(payment);
+  await window.getByLabel('Payment due day').fill('15');
   await window.getByRole('button', { name: 'Create debt' }).click();
   await expect(
     window.getByRole('heading', {

@@ -140,6 +140,13 @@ export const DebtList = ({
                   <span className="block text-xs text-slate-500">
                     {labelFromValue(debt.currentTerm.paymentFrequency)}
                   </span>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    {debt.nextDueDate
+                      ? `Due ${debt.nextDueDate}`
+                      : debt.paymentDueDay === null
+                        ? 'Due day missing'
+                        : 'Not scheduled'}
+                  </span>
                 </td>
                 <td className="px-4 py-4 text-slate-700">
                   {debt.maturityDate ?? labelFromValue(debt.status)}

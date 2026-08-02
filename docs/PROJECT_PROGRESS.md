@@ -1841,3 +1841,54 @@ year`.
 - Recommended next phase:
   - Production use with generated-data regression testing before future
     post-1.0 maintenance changes.
+
+## Phase 37: Debt Payment Due Dates and Upcoming Payments
+
+- Completion date: 2026-08-02
+- Application version: 1.1.0
+- Features implemented:
+  - Added optional debt payment due-day configuration for manual debt creation
+    and editing.
+  - Added main-process scheduled-payment calculation for active debts with
+    positive balances, modeled required payments, and known due days.
+  - Added dashboard Upcoming payments below primary metrics and above Items
+    requiring attention.
+  - Added debt-detail payment scheduling status and collapsed debt-list due-date
+    hints.
+  - Allowed in-place refinance to preserve the current due day or update it when
+    entered.
+- Material architecture and accounting decisions:
+  - Required payment and payment frequency remain authoritative in
+    effective-dated `debt_terms`.
+  - Debt-level `payment_due_day` stores only the scheduled calendar day and is
+    nullable for existing debts.
+  - Payment satisfaction is derived from current posted payment transactions by
+    financial effective date, applied oldest unpaid obligation first.
+  - Overpayments do not automatically satisfy future due dates in this phase.
+  - Unsupported frequencies are excluded from Upcoming payments and flagged for
+    scheduling review.
+- Database schema or migration changes:
+  - Added migration `0009_mysterious_weapon_omega.sql` to add nullable
+    `debts.payment_due_day` with a `1..31` check.
+  - Existing rows migrate with `payment_due_day` set to `NULL`; no existing due
+    date is invented.
+- New or changed IPC operations:
+  - No new channels. Existing debt, dashboard, and debt-list DTOs include
+    scheduled-payment fields.
+- New UI screens or workflows:
+  - No new top-level screens.
+  - Debt create/edit forms include payment due day.
+  - Dashboard includes an Upcoming payments section.
+- Validation and smoke-test results:
+  - Focused scheduler domain tests passed: 1 file and 8 tests.
+  - Focused debt-maintenance integration tests passed: 1 file and 60 tests.
+  - Focused renderer app tests passed: 1 file and 36 tests.
+  - Full validation gate results are recorded in the task completion report.
+- Known limitations and technical debt:
+  - Monthly schedules are modeled. Non-monthly frequencies are not silently
+    treated as monthly upcoming-payment obligations.
+  - Overpayments do not prepay future scheduled obligations until a deliberate
+    future design supports that behavior.
+- Recommended next phase:
+  - Acceptance testing of due-day configuration against generated debts with
+    varied payment histories before expanding non-monthly schedule support.

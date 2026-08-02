@@ -35,6 +35,10 @@ const nullableValue = (data: FormData, name: string): string | null => {
   const result = value(data, name);
   return result === '' ? null : result;
 };
+const nullableNumberValue = (data: FormData, name: string): number | null => {
+  const result = value(data, name);
+  return result === '' ? null : Number(result);
+};
 
 const Options = ({ values }: { readonly values: readonly string[] }) => (
   <>
@@ -71,6 +75,7 @@ export const RecordRefinanceForm = ({
         data,
         'newPaymentFrequency',
       ) as RecordRefinanceRequest['newPaymentFrequency'],
+      newPaymentDueDay: nullableNumberValue(data, 'newPaymentDueDay'),
       newMaturityDate: value(data, 'newMaturityDate'),
       interestRateType: value(
         data,
@@ -193,6 +198,24 @@ export const RecordRefinanceForm = ({
             >
               <Options values={PAYMENT_FREQUENCIES} />
             </select>
+          </Field>
+          <Field
+            error={fieldErrors?.newPaymentDueDay}
+            hint="Optional. Leave unchanged unless the refinance changed the due day."
+            label="New payment due day"
+            name="newPaymentDueDay"
+            optional
+          >
+            <input
+              className={inputClassName}
+              defaultValue={debt.paymentDueDay ?? ''}
+              id="newPaymentDueDay"
+              inputMode="numeric"
+              max={31}
+              min={1}
+              name="newPaymentDueDay"
+              type="number"
+            />
           </Field>
           <Field
             error={fieldErrors?.newMaturityDate}

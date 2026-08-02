@@ -31,6 +31,7 @@ mutable current-balance field.
 | `maturity_date`             |    text |    No    | Financial date not before origination                                                                     |
 | `minimum_payment_cents`     | integer |   Yes    | Compatibility field populated from the initial term for new manual debts                                  |
 | `payment_frequency`         |    text |   Yes    | Compatibility field populated from the initial term for new manual debts                                  |
+| `payment_due_day`           | integer |    No    | Optional scheduled payment day from 1 through 31; shorter months use the final calendar day               |
 | `credit_limit_cents`        | integer |    No    | Nonnegative safe-integer cents                                                                            |
 | `collateral_description`    |    text |    No    | Non-sensitive collateral description                                                                      |
 | `tax_category`              |    text |   Yes    | Controlled tax classification                                                                             |
@@ -68,6 +69,11 @@ readable; the UI does not silently convert them.
 The manual-maintenance service treats original principal and origination date as
 opening facts. Descriptive and administrative fields use optimistic concurrency
 based on `updated_at_utc`.
+
+`payment_due_day` is debt-level scheduling configuration. It is nullable so
+existing debts remain valid without invented due dates. Effective-dated
+`debt_terms` remain authoritative for the required amount and payment frequency
+applicable to each scheduled due date.
 
 ## `debt_terms`
 

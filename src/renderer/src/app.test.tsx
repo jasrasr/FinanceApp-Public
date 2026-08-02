@@ -24,7 +24,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 22,
   appMetadata: {
-    version: '1.0.0',
+    version: '1.1.0',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -185,6 +185,8 @@ const sampleDashboard: DashboardDto = {
     details: [],
     reviewItems: [],
   },
+  upcomingPayments: [],
+  schedulingReviewItems: [],
   upcomingMaturities: [],
   escrowBalances: [
     {
@@ -583,6 +585,8 @@ const sampleDebtDetail: DebtDetailDto = {
   maturityDate: '2030-01-15',
   minimumPayment: '2450.00',
   paymentFrequency: 'monthly',
+  paymentDueDay: 15,
+  nextDueDate: '2026-08-15',
   creditLimit: null,
   collateralDescription: 'Generated equipment description',
   taxCategory: 'business',
@@ -607,6 +611,20 @@ const sampleDebtDetail: DebtDetailDto = {
     notes: 'Current terms.',
     createdAtUtc: '2026-07-27T13:00:00.000Z',
     updatedAtUtc: '2026-07-27T13:00:00.000Z',
+  },
+  paymentSchedule: {
+    debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+    debtName: 'Fictional Equipment Note',
+    creditor: 'Harbor Ridge Cooperative',
+    dueDate: '2026-08-15',
+    priorDueDate: '2026-07-15',
+    nextDueDate: '2026-08-15',
+    requiredPayment: '2500.00',
+    paymentsApplied: '0.00',
+    remainingAmountDue: '2500.00',
+    status: 'upcoming',
+    earliestPastDueDate: null,
+    reviewMessage: null,
   },
   terms: [
     {
@@ -742,6 +760,8 @@ const sampleDebtSummary: DebtSummaryDto = {
   maturityDate: sampleDebtDetail.maturityDate,
   initialTerm: sampleDebtDetail.terms[0]!,
   currentTerm: sampleDebtDetail.currentTerm,
+  paymentDueDay: sampleDebtDetail.paymentDueDay,
+  nextDueDate: sampleDebtDetail.nextDueDate,
   financingChainName: sampleDebtDetail.financingChainName,
   refinancedFromDebtId: sampleDebtDetail.refinancedFromDebtId,
   refinancedFromDebtName: sampleDebtDetail.refinancedFromDebtName,
@@ -779,6 +799,7 @@ describe('debt maintenance application', () => {
     expect(screen.getByLabelText(/Debt name/)).toBeVisible();
     expect(screen.getByLabelText(/Original principal/)).toBeVisible();
     expect(screen.getByLabelText(/Origination date/)).toBeVisible();
+    expect(screen.getByLabelText(/Payment due day/)).toBeVisible();
     expect(screen.getByLabelText(/Effective start date/)).toBeVisible();
     expect(screen.getByLabelText(/Annual interest rate/)).toBeVisible();
     expect(screen.getByRole('button', { name: 'Create debt' })).toBeVisible();
@@ -801,6 +822,7 @@ describe('debt maintenance application', () => {
     expect(screen.getByText('$124,600.00')).toBeVisible();
     expect(screen.getByText('5.75%')).toBeVisible();
     expect(screen.getByText('$2,500.00')).toBeVisible();
+    expect(screen.getByText('Due 2026-08-15')).toBeVisible();
     expect(screen.queryByText('Initial rate')).toBeNull();
     expect(screen.queryByText('Initial required payment')).toBeNull();
     expect(screen.queryByText('$125,000.00')).toBeNull();
@@ -834,6 +856,9 @@ describe('debt maintenance application', () => {
     expect(screen.getByText('$124,600.00 as of 2026-07-28')).toBeVisible();
     expect(screen.getByText('5.75%')).toBeVisible();
     expect(screen.getByText('$2,500.00 Monthly')).toBeVisible();
+    expect(screen.getByText('Day 15')).toBeVisible();
+    expect(screen.getByText('2026-08-15')).toBeVisible();
+    expect(screen.getByText(/Upcoming; required/)).toBeVisible();
     expect(screen.queryByText('Original principal')).toBeNull();
     expect(screen.queryByText('Purpose')).toBeNull();
     expect(screen.queryByText('Collateral')).toBeNull();
@@ -1247,11 +1272,69 @@ describe('debt maintenance application', () => {
     expect(screen.getByText(/Application-calculated ledger balances/)).toHaveClass(
       'sr-only',
     );
+    expect(screen.getByRole('heading', { name: 'Upcoming payments' })).toBeVisible();
+    expect(
+      screen.getByText(
+        'No unpaid scheduled payments are past due, due today, or due in the next 30 days.',
+      ),
+    ).toBeVisible();
     expect(
       screen.getByText(
         'No unreconciled, in-progress, or exception reconciliation items for active debts.',
       ),
     ).toBeVisible();
+    expect(
+      screen
+        .getByRole('heading', { name: 'Upcoming payments' })
+        .compareDocumentPosition(
+          screen.getByRole('heading', { name: 'Items requiring attention' }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('renders unpaid dashboard upcoming payments with debt navigation', async () => {
+    const bridge = createBridge();
+    bridge.getDashboard = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        ...sampleDashboard,
+        upcomingPayments: [
+          {
+            debtId: sampleDebtDetail.id,
+            debtName: sampleDebtDetail.name,
+            creditor: sampleDebtDetail.creditor,
+            dueDate: '2026-07-15',
+            priorDueDate: '2026-06-15',
+            nextDueDate: '2026-07-15',
+            requiredPayment: '2500.00',
+            paymentsApplied: '500.00',
+            remainingAmountDue: '2000.00',
+            status: 'past_due' as const,
+            earliestPastDueDate: '2026-07-15',
+            reviewMessage: null,
+          },
+        ],
+      },
+    }));
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: sampleDebtDetail,
+    }));
+    render(<App bridge={bridge} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Upcoming payments' }),
+    ).toBeVisible();
+    expect(screen.getByText('2026-07-15')).toBeVisible();
+    expect(screen.getByText('$2,000.00')).toBeVisible();
+    expect(screen.getByText(/Past due/i)).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Fictional Equipment Note — Harbor Ridge Cooperative',
+      }),
+    );
+
+    expect(bridge.getDebt).toHaveBeenCalledWith({ id: sampleDebtDetail.id });
   });
 
   it('navigates from dashboard total active debt to debts', async () => {
@@ -1658,7 +1741,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 1.0.0')).toBeVisible();
+    expect(await screen.findByText('Version 1.1.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,

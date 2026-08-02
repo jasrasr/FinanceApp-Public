@@ -77,6 +77,7 @@ export const debtInsertSchema = z
     maturityDate: financialDateSchema.nullable().optional(),
     minimumPaymentCents: nonnegativeMoneyCentsSchema,
     paymentFrequency: z.enum(PAYMENT_FREQUENCIES),
+    paymentDueDay: z.number().int().min(1).max(31).nullable().optional(),
     creditLimitCents: nonnegativeMoneyCentsSchema.nullable().optional(),
     collateralDescription: optionalText,
     taxCategory: z.enum(TAX_CATEGORIES),

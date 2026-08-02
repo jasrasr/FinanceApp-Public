@@ -713,7 +713,7 @@ describe('database migrations and isolation', () => {
       { status: 'superseded', count: 1 },
     ]);
     expect(temporaryRebuildTable).toBeUndefined();
-    expect(migrationCount.count).toBe(9);
+    expect(migrationCount.count).toBe(10);
     expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
     expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
 

@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 1.0.0')).toBeVisible();
+    await expect(window.getByText('Version 1.1.0')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
       0,
@@ -47,6 +47,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByLabel('Purpose').fill('Generated home mortgage');
     await window.getByLabel('Annual interest rate (%)').fill('5.49');
     await window.getByLabel('Required payment').fill('2450.00');
+    await window.getByLabel('Payment due day').fill('15');
     await window.getByRole('button', { name: 'Create debt' }).click();
 
     await expect(
@@ -58,11 +59,16 @@ test('completes the manual debt-maintenance workflow', async () => {
       window.getByText('Debt and initial effective-dated terms were created.'),
     ).toBeVisible();
     await expect(window.getByText('$125,000.00')).toBeVisible();
+    await expect(window.getByText('Day 15')).toBeVisible();
 
     await window.getByRole('button', { name: 'Dashboard' }).click();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
     await expect(window.getByText('Total active debt')).toBeVisible();
     await expect(window.getByText('$125,000.00')).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'Upcoming payments' }),
+    ).toBeVisible();
+    await expect(window.getByText('Remaining due')).toBeVisible();
     await window.getByRole('button', { name: 'Debts', exact: true }).click();
     await window
       .getByRole('button', { name: /Open Fictional Harbor Mortgage Note/ })
@@ -195,7 +201,9 @@ test('completes the manual debt-maintenance workflow', async () => {
 
     await window.getByRole('button', { name: 'Dashboard' }).click();
     await expect(window.getByText('Principal reduction YTD')).toBeVisible();
-    await expect(window.getByText('$450.00')).toBeVisible();
+    await expect(
+      window.getByRole('region', { name: /Principal reduction YTD: \$450\.00/ }),
+    ).toBeVisible();
     await expect(window.getByText('Interest activity YTD')).toBeVisible();
     await expect(window.getByText('$50.00', { exact: true })).toBeVisible();
     await expect(window.getByText('Current escrow balance')).toBeVisible();

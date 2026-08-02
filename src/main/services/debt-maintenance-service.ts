@@ -128,6 +128,10 @@ import {
   type PayoffDebtInput,
   type PayoffProjectionResult,
 } from '../domain/accounting/payoff-engine';
+import {
+  calculateScheduledPayments,
+  type ScheduledPaymentResult,
+} from '../domain/accounting/payment-schedule';
 import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
 import { ApplicationServiceError } from './application-error';
 
@@ -289,6 +293,16 @@ const validateCreditLimit = (
   }
 
   return normalized ? convertMoney('debt.creditLimit', normalized) : null;
+};
+
+const validatePaymentDueDay = (field: string, value: number | null): number | null => {
+  if (value === null) return null;
+  if (!Number.isInteger(value) || value < 1 || value > 31) {
+    throw new ApplicationServiceError('validation', 'Review the highlighted fields.', {
+      [field]: ['Payment due day must be a whole number from 1 through 31.'],
+    });
+  }
+  return value;
 };
 
 const validateRefinanceLinks = (
@@ -910,6 +924,24 @@ const mapTerm = (term: DebtTermRecord): DebtDetailDto['terms'][number] => ({
   updatedAtUtc: term.updatedAtUtc,
 });
 
+const qualifyingScheduledPayments = (
+  record: DebtWithActivityRecord,
+): readonly {
+  readonly id: string;
+  readonly effectiveDate: string;
+  readonly amountCents: number;
+}[] =>
+  record.transactions
+    .filter(
+      ({ transaction }) =>
+        transaction.transactionType === 'payment' && transaction.status === 'posted',
+    )
+    .map(({ transaction }) => ({
+      id: transaction.id,
+      effectiveDate: transaction.effectiveDate,
+      amountCents: Math.abs(transaction.totalAmountCents),
+    }));
+
 const requireInitialTerm = (record: DebtWithTermsRecord): DebtTermRecord => {
   const initialTerm = record.terms[0];
 
@@ -948,6 +980,42 @@ const currentTermForDate = (
   return fallbackTerm;
 };
 
+const scheduledPaymentForRecord = (
+  record: DebtWithActivityRecord,
+  currentBalanceCents: number,
+  effectiveDate: string,
+): ScheduledPaymentResult =>
+  calculateScheduledPayments({
+    debtId: record.debt.id,
+    originationDate: record.debt.originationDate,
+    currentBalanceCents,
+    status: record.debt.status,
+    archivedAtUtc: record.debt.archivedAtUtc,
+    paymentDueDay: record.debt.paymentDueDay,
+    terms: record.terms,
+    payments: qualifyingScheduledPayments(record),
+    asOfDate: effectiveDate,
+    lookAheadDays: 30,
+  });
+
+const mapScheduledPayment = (
+  record: DebtWithActivityRecord,
+  schedule: ScheduledPaymentResult,
+): DebtDetailDto['paymentSchedule'] => ({
+  debtId: record.debt.id,
+  debtName: record.debt.name,
+  creditor: record.debt.creditor,
+  dueDate: schedule.dueDate,
+  priorDueDate: schedule.priorDueDate,
+  nextDueDate: schedule.nextDueDate,
+  requiredPayment: centsToDollars(schedule.requiredPaymentCents),
+  paymentsApplied: centsToDollars(schedule.paymentsAppliedCents),
+  remainingAmountDue: centsToDollars(schedule.remainingAmountDueCents),
+  status: schedule.status,
+  earliestPastDueDate: schedule.earliestPastDueDate,
+  reviewMessage: schedule.reviewMessage,
+});
+
 const mapSummary = (
   database: AppDatabase,
   record: DebtWithActivityRecord,
@@ -956,6 +1024,16 @@ const mapSummary = (
   const debt = record.debt;
   const debtName = (id: string | null): string | null =>
     id ? (getDebtRecord(database, id)?.debt.name ?? null) : null;
+  const currentBalanceCents = calculateLedgerBalanceThroughDate(
+    database,
+    debt.id,
+    effectiveDate,
+  );
+  const schedule = scheduledPaymentForRecord(
+    record,
+    currentBalanceCents,
+    effectiveDate,
+  );
 
   return {
     id: debt.id,
@@ -965,9 +1043,7 @@ const mapSummary = (
     debtType: debt.debtType,
     status: debt.status,
     originalPrincipal: centsToDollars(debt.originalPrincipalCents),
-    currentBalance: centsToDollars(
-      calculateLedgerBalanceThroughDate(database, debt.id, effectiveDate),
-    ),
+    currentBalance: centsToDollars(currentBalanceCents),
     currentBalanceEffectiveDate: effectiveDate,
     calculatedEscrowBalance: centsToDollars(
       calculateEscrowBalanceFromActivity(record, effectiveDate),
@@ -976,6 +1052,8 @@ const mapSummary = (
     maturityDate: debt.maturityDate,
     initialTerm: mapTerm(requireInitialTerm(record)),
     currentTerm: mapTerm(currentTermForDate(record.terms, effectiveDate)),
+    paymentDueDay: debt.paymentDueDay,
+    nextDueDate: schedule.nextDueDate,
     archivedAtUtc: debt.archivedAtUtc,
     financingChainName: debt.financingChainName,
     refinancedFromDebtId: debt.refinancedFromDebtId,
@@ -997,6 +1075,16 @@ const mapDetail = (
 
   requireInitialTerm(record);
   const currentTerm = currentTermForDate(record.terms, effectiveDate);
+  const currentBalanceCents = calculateLedgerBalanceThroughDate(
+    database,
+    debt.id,
+    effectiveDate,
+  );
+  const schedule = scheduledPaymentForRecord(
+    record,
+    currentBalanceCents,
+    effectiveDate,
+  );
 
   return {
     id: debt.id,
@@ -1007,14 +1095,14 @@ const mapDetail = (
     purpose: debt.purpose,
     status: debt.status,
     originalPrincipal: centsToDollars(debt.originalPrincipalCents),
-    currentBalance: centsToDollars(
-      calculateLedgerBalanceThroughDate(database, debt.id, effectiveDate),
-    ),
+    currentBalance: centsToDollars(currentBalanceCents),
     currentBalanceEffectiveDate: effectiveDate,
     originationDate: debt.originationDate,
     maturityDate: debt.maturityDate,
     minimumPayment: centsToDollars(debt.minimumPaymentCents),
     paymentFrequency: debt.paymentFrequency,
+    paymentDueDay: debt.paymentDueDay,
+    nextDueDate: schedule.nextDueDate,
     creditLimit:
       debt.creditLimitCents === null ? null : centsToDollars(debt.creditLimitCents),
     collateralDescription: debt.collateralDescription,
@@ -1028,6 +1116,7 @@ const mapDetail = (
     refinancedIntoDebtName: debtName(debt.refinancedIntoDebtId),
     refinanceDate: debt.refinanceDate,
     currentTerm: mapTerm(currentTerm),
+    paymentSchedule: mapScheduledPayment(record, schedule),
     terms: record.terms.map(mapTerm),
     permanentDeletionPreview: previewPermanentDebtDeletion(database, debt.id),
     transactions: record.transactions.map(mapTransaction),
@@ -1161,6 +1250,8 @@ const createDashboard = (
   let creditCardOverLimitCents = 0;
 
   const upcomingMaturities: DashboardDto['upcomingMaturities'] = [];
+  const upcomingPayments: DashboardDto['upcomingPayments'] = [];
+  const schedulingReviewItems: DashboardDto['schedulingReviewItems'] = [];
   const escrowBalances: DashboardDto['escrowBalances'] = [];
   const attentionItems: DashboardDto['attentionItems'] = [];
   const creditCardDetails: DashboardDto['creditCardPortfolio']['details'] = [];
@@ -1176,6 +1267,28 @@ const createDashboard = (
       record.debt.id,
       effectiveDate,
     );
+    const paymentSchedule = scheduledPaymentForRecord(
+      record,
+      ledgerBalanceCents,
+      effectiveDate,
+    );
+    const paymentScheduleDto = mapScheduledPayment(record, paymentSchedule);
+
+    if (
+      paymentSchedule.remainingAmountDueCents > 0 &&
+      (paymentSchedule.status === 'past_due' ||
+        paymentSchedule.status === 'due_today' ||
+        paymentSchedule.status === 'upcoming')
+    ) {
+      upcomingPayments.push(paymentScheduleDto);
+    }
+
+    if (
+      paymentSchedule.status === 'missing_due_day' ||
+      paymentSchedule.status === 'unsupported_frequency'
+    ) {
+      schedulingReviewItems.push(paymentScheduleDto);
+    }
 
     activeDebtCents += ledgerBalanceCents;
     if (record.debt.debtType === 'credit_card' && record.debt.status === 'active') {
@@ -1346,6 +1459,16 @@ const createDashboard = (
     right.statementDate.localeCompare(left.statementDate),
   );
   escrowBalances.sort((left, right) => right.amount.localeCompare(left.amount));
+  upcomingPayments.sort((left, right) => {
+    const statusRank = (status: (typeof left)['status']): number => {
+      if (status === 'past_due') return 0;
+      if (status === 'due_today') return 1;
+      return 2;
+    };
+    const rankComparison = statusRank(left.status) - statusRank(right.status);
+    if (rankComparison !== 0) return rankComparison;
+    return (left.dueDate ?? '').localeCompare(right.dueDate ?? '');
+  });
 
   const weightedAverageInterestRateMicros =
     weightedRateDenominator === 0n
@@ -1392,6 +1515,8 @@ const createDashboard = (
       details: creditCardDetails,
       reviewItems: creditCardReviewItems,
     },
+    upcomingPayments,
+    schedulingReviewItems,
     upcomingMaturities: upcomingMaturities.slice(0, 10),
     escrowBalances: escrowBalances.slice(0, 10),
     attentionItems: attentionItems.slice(0, 10),
@@ -2333,6 +2458,10 @@ export const createDebtMaintenanceService = ({
             parsed.initialTerm.requiredPayment,
           ),
           paymentFrequency: parsed.initialTerm.paymentFrequency,
+          paymentDueDay: validatePaymentDueDay(
+            'debt.paymentDueDay',
+            parsed.debt.paymentDueDay ?? null,
+          ),
           creditLimitCents: validateCreditLimit(
             parsed.debt.debtType,
             parsed.debt.creditLimit,
@@ -2467,6 +2596,12 @@ export const createDebtMaintenanceService = ({
           purpose: parsed.changes.purpose,
           status: parsed.changes.status,
           maturityDate,
+          paymentDueDay: validatePaymentDueDay(
+            'changes.paymentDueDay',
+            parsed.changes.paymentDueDay === undefined
+              ? existing.debt.paymentDueDay
+              : parsed.changes.paymentDueDay,
+          ),
           creditLimitCents: validateCreditLimit(
             parsed.changes.debtType,
             parsed.changes.creditLimit,
@@ -2659,6 +2794,10 @@ export const createDebtMaintenanceService = ({
           'newRequiredPayment',
           parsed.newRequiredPayment,
         );
+        const paymentDueDay = validatePaymentDueDay(
+          'newPaymentDueDay',
+          parsed.newPaymentDueDay ?? existing.debt.paymentDueDay,
+        );
         const escrowAmountInput = nullableText(parsed.escrowAmount);
         const escrowAmount =
           parsed.escrowHandling === 'carry_forward'
@@ -2812,6 +2951,7 @@ export const createDebtMaintenanceService = ({
             maturityDate: newMaturityDate,
             minimumPaymentCents: requiredPayment,
             paymentFrequency: parsed.newPaymentFrequency,
+            paymentDueDay,
             updatedAtUtc: timestamp,
           },
           newTerm,
@@ -2827,7 +2967,12 @@ export const createDebtMaintenanceService = ({
               'record_refinance',
               timestamp,
               'In-place refinance was recorded without creating a new debt.',
-              ['maturityDate', 'minimumPaymentCents', 'paymentFrequency'],
+              [
+                'maturityDate',
+                'minimumPaymentCents',
+                'paymentFrequency',
+                'paymentDueDay',
+              ],
             ),
             createAudit(
               createId(),
