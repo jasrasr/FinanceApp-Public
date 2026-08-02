@@ -1778,3 +1778,66 @@ year`.
 - Recommended next phase:
   - Continue acceptance testing around payoff comparison readability and credit
     card review workflows with generated data.
+
+## Phase 36: Version 1.0.0 Production Stabilization
+
+- Completion date: 2026-08-02
+- Application version: 1.0.0
+- Features implemented:
+  - Prepared the first stable production release without adding product features.
+  - Updated application version metadata, test expectations, installer naming,
+    README release status, and production-readiness documentation.
+  - Reviewed release-blocking areas for balances, interest, escrow, credit-card
+    utilization, reconciliations, refinance events, transaction correction
+    chains, dashboard metrics, reports, payoff scenarios, backup/restore/export,
+    migrations, installed startup, user-data preservation, and renderer security.
+- Material architecture and accounting decisions:
+  - No established accounting behavior was changed.
+  - No database migration was added solely for the version change.
+  - Existing local-only, narrow IPC, sandboxed renderer, and SQLite system-of-record
+    boundaries remain unchanged.
+- Database schema or migration changes:
+  - None.
+- New or changed IPC operations:
+  - None.
+- New UI screens or workflows:
+  - None.
+- Validation and smoke-test results:
+  - `npm run format` passed.
+  - `npm run format:check` passed.
+  - `npm run lint` passed.
+  - `npm run typecheck` passed.
+  - `npm run test` passed with 10 Vitest files and 141 tests.
+  - `npm run test:integration` passed with 2 files and 65 tests.
+  - `npm run db:generate` initially exposed a release-blocking migration
+    metadata defect: the 0008 migration snapshot was missing, so Drizzle tried
+    to generate a duplicate `refinance_events` migration. The generated 0008
+    snapshot was retained as metadata, the duplicate 0009 migration artifacts
+    were removed, and rerunning `npm run db:generate` reported no schema changes.
+  - `npm run db:migrate` applied 9 migration batches to an isolated fresh
+    database.
+  - `npm run db:check` passed with 13 tables, foreign keys enabled, and
+    integrity OK.
+  - `npm run check` passed under escalation after an initial sandbox
+    access-denied failure in the Electron build. The gate completed with 10
+    Vitest files and 141 tests passing, database integrity passing, production
+    build passing, and the active Electron E2E workflow passing; packaged source
+    specs were skipped in that suite.
+  - `npm audit --omit=dev` passed under escalation after the sandboxed audit
+    request failed; the production dependency audit found 0 vulnerabilities.
+  - `npm run package` passed under escalation after the same sandbox
+    access-denied build failure and produced
+    `dist\Debt Tracker Setup 1.0.0.exe`.
+  - `npm run package:smoke` passed under escalation with packaged launch,
+    backup, restore, export, reinstall/upgrade preservation, and user-data
+    survival checks.
+  - `git diff --check` passed.
+- Known limitations and technical debt:
+  - The Windows installer remains unsigned.
+  - Actual-versus-plan reporting remains deferred until period-level scenario
+    baselines are intentionally supported.
+  - Dormant legacy import tables remain for compatibility but workbook import is
+    not a normal workflow.
+- Recommended next phase:
+  - Production use with generated-data regression testing before future
+    post-1.0 maintenance changes.

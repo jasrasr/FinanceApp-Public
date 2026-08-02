@@ -41,7 +41,7 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 0.26.3')).toBeVisible();
+      await expect(window.getByText('Version 1.0.0')).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
       await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
         0,

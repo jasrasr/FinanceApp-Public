@@ -3,6 +3,24 @@
 Debt Tracker is a Windows-first, local, single-user Electron desktop application
 for maintaining debts and supporting future debt-paydown analysis.
 
+## Release Status
+
+Version 1.0.0 is the first stable production release. It is intended for local,
+single-user debt tracking with entered debts, historical activity,
+reconciliations, reports, backups, and payoff scenarios already validated through
+generated-data test workflows.
+
+Known non-blocking limitations:
+
+- The Windows installer is unsigned, so Windows may show unknown-publisher or
+  SmartScreen warnings.
+- Workbook import remains retired from the normal product workflow; dormant
+  legacy import tables are preserved only for compatibility.
+- Actual-versus-plan variance remains deferred until saved payoff scenarios
+  intentionally persist period-level baselines.
+- Advanced tax analysis, cloud synchronization, multi-user access, and remote
+  services are out of scope.
+
 ## Current Functionality
 
 - Electron main process written in TypeScript.

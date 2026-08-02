@@ -50,3 +50,23 @@ renderer.
   unknown-publisher warnings until a future code-signing process is approved.
 - Packaged smoke tests are separate from the standard source validation gate
   because they produce installers and run OS-level install/uninstall behavior.
+
+## 1.0.0 Production Release
+
+Version 1.0.0 is the first stable production release. No database migration is
+added solely for the version change. The release keeps the established local
+user-data path, app identifier, migration journal, backup directory, and NSIS
+installer behavior so same-path reinstall and upgrade preserve the database and
+backups.
+
+Release preparation repaired Drizzle metadata by adding the missing snapshot for
+the already-existing `0008_in_place_refinance_events` migration. Without that
+metadata, `drizzle-kit generate` attempted to create a duplicate
+`refinance_events` table migration even though the committed migration already
+existed. The repair changes migration metadata only and adds no runtime schema
+change.
+
+The expected installer artifact is `Debt Tracker Setup 1.0.0.exe`.
+Non-blocking release limitations remain: the installer is unsigned, Windows may
+warn about an unknown publisher, and actual-versus-plan reporting remains
+deferred until period-level scenario baselines are intentionally supported.
