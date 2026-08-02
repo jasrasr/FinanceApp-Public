@@ -185,7 +185,8 @@ flagged for scheduling review; the application does not invent a due date.
 Monthly due dates use the configured day from 1 through 31. When a month does not
 have that day, the due date is the final calendar day of that month; later months
 return to the configured day when available. Required payment and payment
-frequency come from the effective-dated term that applies on the due date.
+frequency remain part of the effective-dated term that applies on the due date,
+but the required-payment amount does not control due-date satisfaction.
 
 Payments satisfy obligations in chronological order:
 
@@ -197,17 +198,23 @@ Payments satisfy obligations in chronological order:
   posted.
 - The transaction effective date is used; created, updated, audit, import, and
   system timestamps are ignored.
-- The qualifying payment amount is the posted payment total, not only principal.
 - A payment applies first to the earliest unpaid due date.
 - A payment after the prior due date and on or before the current due date
   applies to the current due date when earlier obligations are already satisfied.
 - A late payment applies to the oldest overdue obligation before any later due
   date.
-- Multiple payments may combine to satisfy one due date; partial payments leave
-  the remaining amount due.
-- Overpayments satisfy the current due date but do not automatically satisfy a
-  future due date in this phase. Remaining payment capacity can cover additional
-  already-due missed obligations only through the same oldest-first allocation.
+- Any qualifying posted payment satisfies one scheduled obligation regardless of
+  payment amount.
+- Multiple payments in the same payment window still satisfy only that one
+  scheduled obligation.
+- A single payment cannot satisfy more than one scheduled obligation in this
+  phase.
+- Partial-payment, payments-applied, and remaining-due statuses are not
+  calculated by scheduling.
+- Overpayments satisfy the current eligible due date but do not automatically
+  satisfy a future due date.
+- Later draws, interest charges, fees, escrow activity, adjustments, refinance
+  events, and other balance activity do not reopen an already satisfied due date.
 
 The dashboard shows unpaid past-due obligations regardless of age, obligations
 due today, and upcoming unpaid obligations due within 30 days. Unsupported

@@ -239,7 +239,7 @@ export const DebtDetail = ({
             label="Payment status"
             value={
               debt.paymentSchedule.reviewMessage ??
-              `${labelFromValue(debt.paymentSchedule.status)}; required ${formatDollarString(debt.paymentSchedule.requiredPayment)}, applied ${formatDollarString(debt.paymentSchedule.paymentsApplied)}, remaining ${formatDollarString(debt.paymentSchedule.remainingAmountDue)}`
+              labelFromValue(debt.paymentSchedule.status)
             }
           />
           {debt.paymentSchedule.earliestPastDueDate ? (

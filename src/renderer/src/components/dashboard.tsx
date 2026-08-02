@@ -312,15 +312,6 @@ export const Dashboard = ({
                       <th className="px-4 py-3 font-semibold" scope="col">
                         Due date
                       </th>
-                      <th className="px-4 py-3 text-right font-semibold" scope="col">
-                        Required
-                      </th>
-                      <th className="px-4 py-3 text-right font-semibold" scope="col">
-                        Applied
-                      </th>
-                      <th className="px-4 py-3 text-right font-semibold" scope="col">
-                        Remaining due
-                      </th>
                       <th className="px-4 py-3 font-semibold" scope="col">
                         Status
                       </th>
@@ -328,29 +319,33 @@ export const Dashboard = ({
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {dashboard.upcomingPayments.map((item) => (
-                      <tr key={`${item.debtId}-${item.dueDate}`}>
+                      <tr
+                        aria-label={`Open ${combinedDebtLabel({
+                          creditor: item.creditor,
+                          name: item.debtName,
+                        })} scheduled payment due ${item.dueDate}`}
+                        className="cursor-pointer hover:bg-slate-50 focus:bg-slate-50 focus:outline focus:outline-2 focus:outline-blue-500"
+                        key={`${item.debtId}-${item.dueDate}`}
+                        onClick={() => onSelectDebt(item.debtId)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            onSelectDebt(item.debtId);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
                         <td className="py-4 pr-4 align-top">
-                          <DebtLinkButton
-                            debtId={item.debtId}
-                            onSelectDebt={onSelectDebt}
-                          >
+                          <span className="font-semibold text-blue-700">
                             {combinedDebtLabel({
                               creditor: item.creditor,
                               name: item.debtName,
                             })}
-                          </DebtLinkButton>
+                          </span>
                         </td>
                         <td className="px-4 py-4 align-top tabular-nums">
                           {item.dueDate}
-                        </td>
-                        <td className="px-4 py-4 text-right align-top tabular-nums">
-                          {formatDollarString(item.requiredPayment)}
-                        </td>
-                        <td className="px-4 py-4 text-right align-top tabular-nums">
-                          {formatDollarString(item.paymentsApplied)}
-                        </td>
-                        <td className="px-4 py-4 text-right align-top tabular-nums">
-                          {formatDollarString(item.remainingAmountDue)}
                         </td>
                         <td className="px-4 py-4 align-top text-slate-700">
                           {labelFromValue(item.status)}

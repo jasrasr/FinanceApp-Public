@@ -929,7 +929,6 @@ const qualifyingScheduledPayments = (
 ): readonly {
   readonly id: string;
   readonly effectiveDate: string;
-  readonly amountCents: number;
 }[] =>
   record.transactions
     .filter(
@@ -939,7 +938,6 @@ const qualifyingScheduledPayments = (
     .map(({ transaction }) => ({
       id: transaction.id,
       effectiveDate: transaction.effectiveDate,
-      amountCents: Math.abs(transaction.totalAmountCents),
     }));
 
 const requireInitialTerm = (record: DebtWithTermsRecord): DebtTermRecord => {
@@ -1008,9 +1006,6 @@ const mapScheduledPayment = (
   dueDate: schedule.dueDate,
   priorDueDate: schedule.priorDueDate,
   nextDueDate: schedule.nextDueDate,
-  requiredPayment: centsToDollars(schedule.requiredPaymentCents),
-  paymentsApplied: centsToDollars(schedule.paymentsAppliedCents),
-  remainingAmountDue: centsToDollars(schedule.remainingAmountDueCents),
   status: schedule.status,
   earliestPastDueDate: schedule.earliestPastDueDate,
   reviewMessage: schedule.reviewMessage,
@@ -1275,7 +1270,7 @@ const createDashboard = (
     const paymentScheduleDto = mapScheduledPayment(record, paymentSchedule);
 
     if (
-      paymentSchedule.remainingAmountDueCents > 0 &&
+      !paymentSchedule.satisfied &&
       (paymentSchedule.status === 'past_due' ||
         paymentSchedule.status === 'due_today' ||
         paymentSchedule.status === 'upcoming')

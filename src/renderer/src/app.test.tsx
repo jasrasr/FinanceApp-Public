@@ -24,7 +24,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 22,
   appMetadata: {
-    version: '1.1.0',
+    version: '1.1.1',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -619,9 +619,6 @@ const sampleDebtDetail: DebtDetailDto = {
     dueDate: '2026-08-15',
     priorDueDate: '2026-07-15',
     nextDueDate: '2026-08-15',
-    requiredPayment: '2500.00',
-    paymentsApplied: '0.00',
-    remainingAmountDue: '2500.00',
     status: 'upcoming',
     earliestPastDueDate: null,
     reviewMessage: null,
@@ -858,7 +855,7 @@ describe('debt maintenance application', () => {
     expect(screen.getByText('$2,500.00 Monthly')).toBeVisible();
     expect(screen.getByText('Day 15')).toBeVisible();
     expect(screen.getByText('2026-08-15')).toBeVisible();
-    expect(screen.getByText(/Upcoming; required/)).toBeVisible();
+    expect(screen.getByText('Upcoming')).toBeVisible();
     expect(screen.queryByText('Original principal')).toBeNull();
     expect(screen.queryByText('Purpose')).toBeNull();
     expect(screen.queryByText('Collateral')).toBeNull();
@@ -1306,9 +1303,6 @@ describe('debt maintenance application', () => {
             dueDate: '2026-07-15',
             priorDueDate: '2026-06-15',
             nextDueDate: '2026-07-15',
-            requiredPayment: '2500.00',
-            paymentsApplied: '500.00',
-            remainingAmountDue: '2000.00',
             status: 'past_due' as const,
             earliestPastDueDate: '2026-07-15',
             reviewMessage: null,
@@ -1326,15 +1320,67 @@ describe('debt maintenance application', () => {
       await screen.findByRole('heading', { name: 'Upcoming payments' }),
     ).toBeVisible();
     expect(screen.getByText('2026-07-15')).toBeVisible();
-    expect(screen.getByText('$2,000.00')).toBeVisible();
     expect(screen.getByText(/Past due/i)).toBeVisible();
+    expect(screen.queryByText('Remaining due')).toBeNull();
+    expect(screen.queryByText('Payments applied')).toBeNull();
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Fictional Equipment Note — Harbor Ridge Cooperative',
+        name: /Open Fictional Equipment Note.*scheduled payment due 2026-07-15/,
       }),
     );
 
     expect(bridge.getDebt).toHaveBeenCalledWith({ id: sampleDebtDetail.id });
+  });
+
+  it('supports keyboard navigation from the full upcoming payment row', async () => {
+    const bridge = createBridge();
+    bridge.getDashboard = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        ...sampleDashboard,
+        upcomingPayments: [
+          {
+            debtId: sampleDebtDetail.id,
+            debtName: sampleDebtDetail.name,
+            creditor: sampleDebtDetail.creditor,
+            dueDate: '2026-07-15',
+            priorDueDate: '2026-06-15',
+            nextDueDate: '2026-07-15',
+            status: 'past_due' as const,
+            earliestPastDueDate: '2026-07-15',
+            reviewMessage: null,
+          },
+        ],
+      },
+    }));
+    bridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: sampleDebtDetail,
+    }));
+    const { unmount } = render(<App bridge={bridge} />);
+
+    const enterRow = await screen.findByRole('button', {
+      name: /Open Fictional Equipment Note.*scheduled payment due 2026-07-15/,
+    });
+    fireEvent.keyDown(enterRow, { key: 'Enter' });
+
+    expect(bridge.getDebt).toHaveBeenCalledWith({ id: sampleDebtDetail.id });
+
+    unmount();
+    const secondBridge = createBridge();
+    secondBridge.getDashboard = bridge.getDashboard;
+    secondBridge.getDebt = vi.fn(async () => ({
+      ok: true as const,
+      value: sampleDebtDetail,
+    }));
+    render(<App bridge={secondBridge} />);
+
+    const spaceRow = await screen.findByRole('button', {
+      name: /Open Fictional Equipment Note.*scheduled payment due 2026-07-15/,
+    });
+    fireEvent.keyDown(spaceRow, { key: ' ' });
+
+    expect(secondBridge.getDebt).toHaveBeenCalledWith({ id: sampleDebtDetail.id });
   });
 
   it('navigates from dashboard total active debt to debts', async () => {
@@ -1741,7 +1787,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 1.1.0')).toBeVisible();
+    expect(await screen.findByText('Version 1.1.1')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,

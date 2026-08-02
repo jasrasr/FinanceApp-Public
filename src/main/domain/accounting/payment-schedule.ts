@@ -19,15 +19,13 @@ export interface ScheduleTermInput {
 export interface SchedulePaymentInput {
   readonly id: string;
   readonly effectiveDate: string;
-  readonly amountCents: number;
 }
 
 export interface ScheduledPaymentObligation {
   readonly dueDate: string;
   readonly priorDueDate: string | null;
   readonly requiredPaymentCents: number;
-  readonly paymentsAppliedCents: number;
-  readonly remainingAmountDueCents: number;
+  readonly satisfied: boolean;
   readonly status: ScheduledPaymentStatus;
 }
 
@@ -38,8 +36,7 @@ export interface ScheduledPaymentResult {
   readonly dueDate: string | null;
   readonly nextDueDate: string | null;
   readonly requiredPaymentCents: number;
-  readonly paymentsAppliedCents: number;
-  readonly remainingAmountDueCents: number;
+  readonly satisfied: boolean;
   readonly earliestPastDueDate: string | null;
   readonly obligations: readonly ScheduledPaymentObligation[];
   readonly reviewMessage: string | null;
@@ -141,8 +138,7 @@ const emptyResult = (
   dueDate: null,
   nextDueDate: null,
   requiredPaymentCents: 0,
-  paymentsAppliedCents: 0,
-  remainingAmountDueCents: 0,
+  satisfied: false,
   earliestPastDueDate: null,
   obligations: [],
   reviewMessage,
@@ -150,10 +146,10 @@ const emptyResult = (
 
 const statusForObligation = (
   dueDate: string,
-  remainingAmountDueCents: number,
+  satisfied: boolean,
   asOfDate: string,
 ): ScheduledPaymentStatus => {
-  if (remainingAmountDueCents <= 0) return 'satisfied';
+  if (satisfied) return 'satisfied';
   if (dueDate < asOfDate) return 'past_due';
   if (dueDate === asOfDate) return 'due_today';
   return 'upcoming';
@@ -209,9 +205,8 @@ export const calculateScheduledPayments = ({
         dueDate,
         priorDueDate,
         requiredPaymentCents: term.requiredPaymentCents,
-        paymentsAppliedCents: 0,
-        remainingAmountDueCents: term.requiredPaymentCents,
-        status: statusForObligation(dueDate, term.requiredPaymentCents, asOfDate),
+        satisfied: false,
+        status: statusForObligation(dueDate, false, asOfDate),
       });
     }
     priorDueDate = dueDate;
@@ -223,44 +218,36 @@ export const calculateScheduledPayments = ({
   }
 
   const mutableObligations = obligations.map((obligation) => ({ ...obligation }));
-  const sortedPayments = [...payments].sort((left, right) => {
-    const dateComparison = left.effectiveDate.localeCompare(right.effectiveDate);
-    return dateComparison === 0 ? left.id.localeCompare(right.id) : dateComparison;
-  });
+  const sortedPayments = payments
+    .filter((payment) => payment.effectiveDate <= asOfDate)
+    .sort((left, right) => {
+      const dateComparison = left.effectiveDate.localeCompare(right.effectiveDate);
+      return dateComparison === 0 ? left.id.localeCompare(right.id) : dateComparison;
+    });
 
   for (const payment of sortedPayments) {
-    let remainingPayment = payment.amountCents;
     for (const obligation of mutableObligations) {
-      if (remainingPayment <= 0) break;
-      if (obligation.remainingAmountDueCents <= 0) continue;
+      if (obligation.satisfied) continue;
       const windowStart = obligation.priorDueDate ?? originationDate;
+      const isAfterWindowStart = obligation.priorDueDate
+        ? payment.effectiveDate > windowStart
+        : payment.effectiveDate >= windowStart;
       const isInCurrentWindow =
-        payment.effectiveDate > windowStart &&
-        payment.effectiveDate <= obligation.dueDate;
+        isAfterWindowStart && payment.effectiveDate <= obligation.dueDate;
       const isLateForObligation = payment.effectiveDate > obligation.dueDate;
       if (!isInCurrentWindow && !isLateForObligation) continue;
 
-      const applied = Math.min(remainingPayment, obligation.remainingAmountDueCents);
-      obligation.paymentsAppliedCents += applied;
-      obligation.remainingAmountDueCents -= applied;
-      remainingPayment -= applied;
-
-      if (payment.effectiveDate <= obligation.dueDate) {
-        break;
-      }
+      obligation.satisfied = true;
+      break;
     }
   }
 
   const calculatedObligations = mutableObligations.map((obligation) => ({
     ...obligation,
-    status: statusForObligation(
-      obligation.dueDate,
-      obligation.remainingAmountDueCents,
-      asOfDate,
-    ),
+    status: statusForObligation(obligation.dueDate, obligation.satisfied, asOfDate),
   }));
   const earliestUnpaid = calculatedObligations.find(
-    (obligation) => obligation.remainingAmountDueCents > 0,
+    (obligation) => !obligation.satisfied,
   );
   const nextUpcoming = calculatedObligations.find(
     (obligation) => obligation.dueDate >= asOfDate,
@@ -279,15 +266,11 @@ export const calculateScheduledPayments = ({
     status: selected.status,
     priorDueDate: selected.priorDueDate,
     dueDate: selected.dueDate,
-    nextDueDate:
-      selected.status === 'satisfied'
-        ? (calculatedObligations.find(
-            (obligation) => obligation.dueDate > selected.dueDate,
-          )?.dueDate ?? null)
-        : selected.dueDate,
+    nextDueDate: selected.satisfied
+      ? nextMonthlyDueDate(selected.dueDate, paymentDueDay)
+      : selected.dueDate,
     requiredPaymentCents: selected.requiredPaymentCents,
-    paymentsAppliedCents: selected.paymentsAppliedCents,
-    remainingAmountDueCents: selected.remainingAmountDueCents,
+    satisfied: selected.satisfied,
     earliestPastDueDate: earliestPastDue,
     obligations: calculatedObligations,
     reviewMessage: null,

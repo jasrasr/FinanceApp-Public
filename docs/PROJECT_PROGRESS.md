@@ -1892,3 +1892,47 @@ year`.
 - Recommended next phase:
   - Acceptance testing of due-day configuration against generated debts with
     varied payment histories before expanding non-monthly schedule support.
+
+## Phase 38: Payment Due-Date Satisfaction Correction
+
+- Completion date: 2026-08-02
+- Application version: 1.1.1
+- Features implemented:
+  - Corrected scheduled-payment satisfaction so any qualifying posted payment
+    satisfies one due-date obligation regardless of amount.
+  - Simplified dashboard Upcoming payments to show debt, due date, and status
+    only.
+  - Made the full Upcoming payments row mouse- and keyboard-activatable.
+  - Simplified debt-detail scheduling display by removing payments-applied and
+    remaining-due concepts.
+- Material architecture and accounting decisions:
+  - Required payment remains in effective-dated debt terms for normal debt
+    maintenance, reports, and payoff calculations.
+  - Scheduling no longer compares payment amount to required payment and does
+    not calculate partial-payment status.
+  - The root cause was amount-based satisfaction in the domain scheduler, not a
+    renderer masking issue or timezone conversion defect.
+  - One qualifying payment cannot satisfy multiple scheduled obligations in
+    this phase, and later nonpayment activity does not reopen a satisfied due
+    date.
+- Database schema or migration changes:
+  - No new migration. The existing nullable `debts.payment_due_day` schema from
+    version 1.1.0 remains unchanged.
+- New or changed IPC operations:
+  - No new channels. Scheduled-payment DTOs removed amount/applied/remaining
+    fields from the existing typed debt and dashboard responses.
+- New UI screens or workflows:
+  - No new screens.
+  - Dashboard rows now navigate to debt detail when activated anywhere on the
+    row.
+- Validation and smoke-test results:
+  - Focused scheduler, service, and renderer tests were updated for the
+    occurrence-based rule.
+  - Full validation gate results are recorded in the task completion report.
+- Known limitations and technical debt:
+  - Non-monthly frequency support remains deliberately excluded from upcoming
+    payment tracking unless it can be modeled reliably.
+  - Overpayments still do not prepay future scheduled obligations.
+- Recommended next phase:
+  - Monitor acceptance use for non-monthly schedules before expanding the
+    scheduler beyond monthly obligations.

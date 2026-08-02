@@ -1313,12 +1313,236 @@ describe('debt maintenance', () => {
     expect(dashboardPayment).toMatchObject({
       debtName: 'Generated Scheduled Mortgage',
       dueDate: '2026-07-15',
-      requiredPayment: '1000.00',
-      paymentsApplied: '0.00',
-      remainingAmountDue: '1000.00',
       status: 'past_due',
     });
     expect(detail.paymentSchedule).toMatchObject(dashboardPayment!);
+  });
+
+  it('satisfies due dates by qualifying payment occurrence rather than required amount', () => {
+    const request = validRequest('Generated Boundary Schedule Loan');
+    request.debt.originationDate = '2026-06-01';
+    request.debt.paymentDueDay = 12;
+    request.initialTerm.effectiveStartDate = '2026-06-01';
+    request.initialTerm.requiredPayment = '2500.00';
+    const created = service.createDebt(request);
+
+    for (const [effectiveDate, totalAmount] of [
+      ['2026-06-12', '100.00'],
+      ['2026-07-01', '25.00'],
+    ] as const) {
+      service.createDebtTransaction({
+        debtId: created.id,
+        transaction: {
+          ...validTransactionRequest(created.id).transaction,
+          effectiveDate,
+          postingDate: effectiveDate,
+          totalAmount,
+          allocations: {
+            principal: totalAmount,
+            interest: null,
+            escrow: null,
+            fee: null,
+            penalty: null,
+            extraPrincipal: null,
+            other: null,
+          },
+        },
+      });
+    }
+
+    const detail = service.getDebt({ id: created.id });
+
+    expect(detail.paymentSchedule).toMatchObject({
+      dueDate: '2026-08-12',
+      nextDueDate: '2026-08-12',
+      status: 'upcoming',
+      earliestPastDueDate: null,
+    });
+    expect(
+      service
+        .getDashboard({})
+        .upcomingPayments.some(
+          (entry) => entry.debtId === created.id && entry.dueDate === '2026-07-12',
+        ),
+    ).toBe(false);
+  });
+
+  it('satisfies an August 1 due date with an August 1 payment', () => {
+    const request = validRequest('Generated First-Day Schedule Loan');
+    request.debt.originationDate = '2026-07-01';
+    request.debt.paymentDueDay = 1;
+    request.initialTerm.effectiveStartDate = '2026-07-01';
+    const created = service.createDebt(request);
+
+    for (const effectiveDate of ['2026-07-01', '2026-08-01']) {
+      service.createDebtTransaction({
+        debtId: created.id,
+        transaction: {
+          ...validTransactionRequest(created.id).transaction,
+          effectiveDate,
+          postingDate: effectiveDate,
+        },
+      });
+    }
+
+    clock = Date.parse('2026-08-02T13:00:00.000Z');
+    const detail = service.getDebt({ id: created.id });
+
+    expect(detail.paymentSchedule).toMatchObject({
+      dueDate: '2026-09-01',
+      nextDueDate: '2026-09-01',
+      status: 'upcoming',
+      earliestPastDueDate: null,
+    });
+  });
+
+  it('uses corrected replacement payments and excludes voided or reversed payments', () => {
+    const request = validRequest('Generated Payment Chain Schedule Loan');
+    request.debt.originationDate = '2026-06-01';
+    request.debt.paymentDueDay = 15;
+    request.initialTerm.effectiveStartDate = '2026-06-01';
+    const created = service.createDebt(request);
+
+    const original = service
+      .createDebtTransaction({
+        debtId: created.id,
+        transaction: {
+          ...validTransactionRequest(created.id).transaction,
+          effectiveDate: '2026-06-15',
+          postingDate: '2026-06-15',
+          totalAmount: '10.00',
+          allocations: {
+            principal: '10.00',
+            interest: null,
+            escrow: null,
+            fee: null,
+            penalty: null,
+            extraPrincipal: null,
+            other: null,
+          },
+        },
+      })
+      .transactions.at(-1)!;
+
+    service.editDebtTransaction({
+      id: original.id,
+      expectedUpdatedAtUtc: original.updatedAtUtc,
+      debtId: created.id,
+      transaction: {
+        ...validTransactionRequest(created.id).transaction,
+        effectiveDate: '2026-06-15',
+        postingDate: '2026-06-15',
+        totalAmount: '20.00',
+        allocations: {
+          principal: '20.00',
+          interest: null,
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    const voided = service
+      .createDebtTransaction({
+        debtId: created.id,
+        transaction: {
+          ...validTransactionRequest(created.id).transaction,
+          effectiveDate: '2026-07-15',
+          postingDate: '2026-07-15',
+        },
+      })
+      .transactions.at(-1)!;
+    service.voidDebtTransaction({
+      id: voided.id,
+      expectedUpdatedAtUtc: voided.updatedAtUtc,
+      voidDate: '2026-07-15',
+      confirmed: true,
+    });
+
+    const reversed = service
+      .createDebtTransaction({
+        debtId: created.id,
+        transaction: {
+          ...validTransactionRequest(created.id).transaction,
+          effectiveDate: '2026-07-16',
+          postingDate: '2026-07-16',
+        },
+      })
+      .transactions.at(-1)!;
+    service.reverseDebtTransaction({
+      id: reversed.id,
+      expectedUpdatedAtUtc: reversed.updatedAtUtc,
+      reversalDate: '2026-07-16',
+      confirmed: true,
+    });
+
+    const detail = service.getDebt({ id: created.id });
+
+    expect(detail.paymentSchedule).toMatchObject({
+      dueDate: '2026-07-15',
+      status: 'past_due',
+      earliestPastDueDate: '2026-07-15',
+    });
+  });
+
+  it('does not reopen a satisfied credit-card due date after later charges', () => {
+    const request = validRequest('Generated Scheduled Credit Card');
+    request.debt.debtType = 'credit_card';
+    request.debt.originationDate = '2026-07-01';
+    request.debt.paymentDueDay = 15;
+    request.debt.creditLimit = '5000.00';
+    request.initialTerm.effectiveStartDate = '2026-07-01';
+    request.initialTerm.requiredPayment = '75.00';
+    const created = service.createDebt(request);
+
+    service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        ...validTransactionRequest(created.id).transaction,
+        effectiveDate: '2026-07-15',
+        postingDate: '2026-07-15',
+        totalAmount: '25.00',
+        allocations: {
+          principal: '25.00',
+          interest: null,
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        ...validBorrowingRequest(created.id).transaction,
+        effectiveDate: '2026-07-20',
+        postingDate: '2026-07-20',
+        totalAmount: '200.00',
+        allocations: {
+          principal: '200.00',
+          interest: null,
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+
+    const detail = service.getDebt({ id: created.id });
+
+    expect(detail.paymentSchedule).toMatchObject({
+      dueDate: '2026-08-15',
+      status: 'upcoming',
+      earliestPastDueDate: null,
+    });
+    expect(detail.currentBalance).toBe('125175.13');
   });
 
   it('flags missing due-day debts for scheduling review without inventing a due date', () => {

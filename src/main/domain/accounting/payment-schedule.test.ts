@@ -17,10 +17,9 @@ const term = (
   paymentFrequency,
 });
 
-const payment = (id: string, effectiveDate: string, amountCents = 100_00) => ({
+const payment = (id: string, effectiveDate: string) => ({
   id,
   effectiveDate,
-  amountCents,
 });
 
 const schedule = (
@@ -103,34 +102,37 @@ describe('scheduled payment calculation', () => {
     });
   });
 
-  it('leaves partial payments outstanding and combines multiple payments', () => {
-    const partial = schedule([
+  it('treats any qualifying payment as satisfying one obligation regardless of amount', () => {
+    const result = schedule([
       payment('july-due', '2026-07-15'),
-      payment('partial', '2026-08-01', 40_00),
+      payment('small-payment', '2026-08-01'),
     ]);
-    expect(partial.obligations[1]).toMatchObject({
-      paymentsAppliedCents: 40_00,
-      remainingAmountDueCents: 60_00,
-      status: 'due_today',
-    });
 
-    const combined = schedule([
-      payment('july-due', '2026-07-15'),
-      payment('partial-1', '2026-07-16', 40_00),
-      payment('partial-2', '2026-08-15', 60_00),
-    ]);
-    expect(combined.obligations[1]).toMatchObject({
-      paymentsAppliedCents: 100_00,
-      remainingAmountDueCents: 0,
+    expect(result.obligations[1]).toMatchObject({
+      dueDate: '2026-08-15',
+      satisfied: true,
       status: 'satisfied',
     });
+    expect(result.nextDueDate).toBe('2026-09-15');
+  });
+
+  it('does not let multiple payments in one window satisfy later future obligations', () => {
+    const result = schedule([
+      payment('july-due', '2026-07-15'),
+      payment('first-august-window-payment', '2026-07-16'),
+      payment('second-august-window-payment', '2026-08-14'),
+    ]);
+    expect(result.obligations[1]).toMatchObject({
+      dueDate: '2026-08-15',
+      satisfied: true,
+      status: 'satisfied',
+    });
+    expect(result.nextDueDate).toBe('2026-09-15');
+    expect(result.obligations.at(-1)?.dueDate).toBe('2026-08-15');
   });
 
   it('applies late payments to oldest missed obligations before later due dates', () => {
-    const result = schedule(
-      [payment('late-large', '2026-09-01', 200_00)],
-      '2026-09-01',
-    );
+    const result = schedule([payment('late', '2026-09-01')], '2026-09-01');
 
     expect(result.obligations[0]).toMatchObject({
       dueDate: '2026-07-15',
@@ -138,18 +140,17 @@ describe('scheduled payment calculation', () => {
     });
     expect(result.obligations[1]).toMatchObject({
       dueDate: '2026-08-15',
-      status: 'satisfied',
+      status: 'past_due',
     });
     expect(result.obligations[2]).toMatchObject({
       dueDate: '2026-09-15',
       status: 'upcoming',
-      paymentsAppliedCents: 0,
     });
   });
 
   it('does not automatically satisfy a future due date with an overpayment', () => {
     const result = schedule(
-      [payment('july-due', '2026-07-15'), payment('overpay', '2026-08-15', 250_00)],
+      [payment('july-due', '2026-07-15'), payment('overpay', '2026-08-15')],
       '2026-08-15',
       [term()],
     );
@@ -157,7 +158,6 @@ describe('scheduled payment calculation', () => {
     expect(result.obligations[1]).toMatchObject({
       dueDate: '2026-08-15',
       status: 'satisfied',
-      paymentsAppliedCents: 100_00,
     });
     expect(result.obligations.at(-1)?.dueDate).toBe('2026-08-15');
   });
@@ -207,10 +207,7 @@ describe('scheduled payment calculation', () => {
 
   it('honors required-payment changes by due date', () => {
     const result = schedule(
-      [
-        payment('july-payment', '2026-07-15', 100_00),
-        payment('august-payment', '2026-08-15', 125_00),
-      ],
+      [payment('july-payment', '2026-07-15'), payment('august-payment', '2026-08-15')],
       '2026-08-15',
       [
         { ...term('2026-01-01', 100_00), effectiveEndDate: '2026-07-31' },
@@ -223,5 +220,57 @@ describe('scheduled payment calculation', () => {
       requiredPaymentCents: 125_00,
       status: 'satisfied',
     });
+  });
+
+  it('satisfies July 12 with a July 1 payment and advances to August 12', () => {
+    const result = calculateScheduledPayments({
+      debtId: 'debt-1',
+      originationDate: '2026-06-01',
+      currentBalanceCents: 1_000_00,
+      status: 'active',
+      archivedAtUtc: null,
+      paymentDueDay: 12,
+      terms: [term('2026-06-01')],
+      payments: [
+        payment('june-payment', '2026-06-12'),
+        payment('july-payment', '2026-07-01'),
+      ],
+      asOfDate: '2026-07-13',
+      lookAheadDays: 31,
+    });
+
+    expect(result.obligations[1]).toMatchObject({
+      dueDate: '2026-07-12',
+      satisfied: true,
+      status: 'satisfied',
+    });
+    expect(result.nextDueDate).toBe('2026-08-12');
+    expect(result.earliestPastDueDate).toBeNull();
+  });
+
+  it('satisfies August 1 with an August 1 payment and advances to September 1', () => {
+    const result = calculateScheduledPayments({
+      debtId: 'debt-1',
+      originationDate: '2026-07-01',
+      currentBalanceCents: 1_000_00,
+      status: 'active',
+      archivedAtUtc: null,
+      paymentDueDay: 1,
+      terms: [term('2026-07-01')],
+      payments: [
+        payment('july-payment', '2026-07-01'),
+        payment('august-payment', '2026-08-01'),
+      ],
+      asOfDate: '2026-08-02',
+      lookAheadDays: 31,
+    });
+
+    expect(result.obligations[1]).toMatchObject({
+      dueDate: '2026-08-01',
+      satisfied: true,
+      status: 'satisfied',
+    });
+    expect(result.nextDueDate).toBe('2026-09-01');
+    expect(result.earliestPastDueDate).toBeNull();
   });
 });
