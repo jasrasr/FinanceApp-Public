@@ -502,21 +502,20 @@ Maturity and required-payment schedules use current effective terms as of the
 report effective date. Required payments are normalized to monthly equivalents
 using the same helper used by the dashboard.
 
-Interest-rate sensitivity answers how projected interest cost and payoff timing
-would change if variable rates increase or decrease. It includes only debts where
-rate sensitivity is meaningful and uses explicit variable-rate assumptions.
-Extra-payment sensitivity answers how projected interest and payoff timing would
-change with additional monthly payments. Both reports reuse the payoff scenario
-engine. Unsupported payment schedules, unsupported calculation conventions,
-variable-rate debts without explicit assumptions, and balloon maturity limits
-produce warnings from that engine rather than deceptively precise payoff dates or
-interest totals.
+Interest-rate sensitivity and actual-versus-plan variance are deferred from the
+normal Reports screen. Actual-versus-plan analysis must not fabricate planned
+values; it requires intentionally persisted period-level scenario baselines
+before it can return meaningful variance amounts.
 
-Actual-versus-plan variance uses saved payoff scenarios as the plan source.
-Saved scenarios currently preserve scenario-level results and per-debt final
-results, but they do not persist monthly planned-balance schedules. When a
-period-by-period planned reduction cannot be determined, the report labels the
-variance as limited instead of inventing a plan amount.
+Extra-payment comparison belongs to the payoff scenario workflow and reuses the
+payoff engine. Required payments continue on all included debts. The user's
+extra monthly amount is applied once per month to the current priority debt, not
+once per debt. When a debt is paid off, freed required payments and the extra
+amount roll to the next priority debt where supported by the selected strategy.
+Unsupported payment schedules, unsupported calculation conventions,
+variable-rate debts without explicit assumptions, and balloon maturity limits
+produce debt-specific warnings rather than deceptively precise payoff dates or
+interest totals.
 
 Reconciliation and data-quality exception reporting includes unreconciled,
 in-progress, exception, and unsupported-data items. It does not change

@@ -21,7 +21,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 0.26.2')).toBeVisible();
+    await expect(window.getByText('Version 0.26.3')).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
       0,
@@ -291,7 +291,9 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByLabel('Extra monthly payment').fill('250.00');
     await window.getByRole('button', { name: 'Save scenario' }).click();
     await expect(window.getByText('Payoff scenario was saved.')).toBeVisible();
-    await expect(window.getByText('Generated E2E Avalanche')).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'Generated E2E Avalanche' }),
+    ).toBeVisible();
     await expect(window.getByText('Savings vs baseline')).toBeVisible();
 
     await window.getByRole('button', { name: 'Reports' }).click();
@@ -316,9 +318,8 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(
       window.getByRole('columnheader', { name: 'Check' }).first(),
     ).toBeVisible();
-    await expect(
-      window.getByText('Actual-versus-plan variance using saved payoff scenarios'),
-    ).toBeVisible();
+    await expect(window.getByText('Actual-versus-plan variance')).toHaveCount(0);
+    await expect(window.getByText('Interest-rate sensitivity')).toHaveCount(0);
     await expect(window.getByText('Debt balance trend')).toHaveCount(0);
     await window.getByText('Debt balance history by obligation').click();
     await expect(

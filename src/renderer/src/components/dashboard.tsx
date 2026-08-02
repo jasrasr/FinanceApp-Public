@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { DashboardDto } from '../../../shared/debt-contracts';
 import { combinedDebtLabel } from './debt-label';
 import { formatDollarString } from './display-format';
@@ -86,6 +87,7 @@ export const Dashboard = ({
   onShowDebts,
   onShowEscrowDetail,
 }: DashboardProps): React.JSX.Element => {
+  const [showCreditCards, setShowCreditCards] = useState(false);
   const metricCards = [
     {
       label: 'Total active debt',
@@ -131,6 +133,20 @@ export const Dashboard = ({
         : 'Not available',
       basis: dashboard.metricBasis.weightedAverageInterestRate,
     },
+    {
+      label: 'Credit-card utilization',
+      value: dashboard.totals.creditUtilizationPercent ?? 'Not available',
+      basis: dashboard.metricBasis.creditUtilizationPercent,
+      effectiveDate: dashboard.effectiveDate,
+      onClick: () => setShowCreditCards((current) => !current),
+    },
+    {
+      label: 'Available credit',
+      value: formatDollarString(dashboard.totals.availableCredit),
+      basis: dashboard.metricBasis.availableCredit,
+      effectiveDate: dashboard.effectiveDate,
+      onClick: () => setShowCreditCards((current) => !current),
+    },
   ];
 
   return (
@@ -168,6 +184,107 @@ export const Dashboard = ({
               />
             ))}
           </div>
+
+          {showCreditCards ? (
+            <section
+              aria-labelledby="credit-card-summary-heading"
+              className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+            >
+              <h3 className="text-lg font-semibold" id="credit-card-summary-heading">
+                Credit-card detail summary
+              </h3>
+              <dl className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+                <div>
+                  <dt className="text-slate-500">Total balances</dt>
+                  <dd className="font-semibold">
+                    {formatDollarString(dashboard.totals.creditCardBalances)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Available credit</dt>
+                  <dd className="font-semibold">
+                    {formatDollarString(dashboard.totals.availableCredit)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Utilization</dt>
+                  <dd className="font-semibold">
+                    {dashboard.totals.creditUtilizationPercent ?? 'Not available'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Over limit</dt>
+                  <dd className="font-semibold">
+                    {formatDollarString(dashboard.totals.creditCardOverLimit)}
+                  </dd>
+                </div>
+              </dl>
+              {dashboard.creditCardPortfolio.reviewItems.length > 0 ? (
+                <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                  <p className="font-semibold">Credit-card records requiring review</p>
+                  <ul className="mt-1 list-disc pl-5">
+                    {dashboard.creditCardPortfolio.reviewItems.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="mt-5 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+                    <tr>
+                      <th className="py-3 pr-4 font-semibold">Debt</th>
+                      <th className="px-4 py-3 text-right font-semibold">Balance</th>
+                      <th className="px-4 py-3 text-right font-semibold">
+                        Credit limit
+                      </th>
+                      <th className="px-4 py-3 text-right font-semibold">Available</th>
+                      <th className="px-4 py-3 text-right font-semibold">
+                        Utilization
+                      </th>
+                      <th className="px-4 py-3 font-semibold">Review</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {dashboard.creditCardPortfolio.details.map((card) => (
+                      <tr key={card.debtId}>
+                        <td className="py-4 pr-4">
+                          <DebtLinkButton
+                            debtId={card.debtId}
+                            onSelectDebt={onSelectDebt}
+                          >
+                            {combinedDebtLabel({
+                              creditor: card.creditor,
+                              name: card.debtName,
+                            })}
+                          </DebtLinkButton>
+                        </td>
+                        <td className="px-4 py-4 text-right tabular-nums">
+                          {formatDollarString(card.currentBalance)}
+                        </td>
+                        <td className="px-4 py-4 text-right tabular-nums">
+                          {card.creditLimit
+                            ? formatDollarString(card.creditLimit)
+                            : 'Review'}
+                        </td>
+                        <td className="px-4 py-4 text-right tabular-nums">
+                          {card.availableCredit
+                            ? formatDollarString(card.availableCredit)
+                            : 'Review'}
+                        </td>
+                        <td className="px-4 py-4 text-right tabular-nums">
+                          {card.utilizationPercent ?? 'Review'}
+                        </td>
+                        <td className="px-4 py-4 text-slate-600">
+                          {card.reviewFlag ?? '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
 
           <section
             className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"

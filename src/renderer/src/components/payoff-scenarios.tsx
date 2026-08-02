@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type {
   ApplicationError,
   CreatePayoffScenarioRequest,
+  DebtSummaryDto,
   PayoffScenarioDto,
 } from '../../../shared/debt-contracts';
 import { formatDollarString } from './display-format';
 
 export interface PayoffScenariosProps {
+  readonly debts: readonly DebtSummaryDto[];
   readonly scenarios: readonly PayoffScenarioDto[];
   readonly loading: boolean;
   readonly saving: boolean;
@@ -17,12 +19,34 @@ export interface PayoffScenariosProps {
   readonly onRerun: (scenario: PayoffScenarioDto) => void;
 }
 
+interface DebtEligibility {
+  readonly debt: DebtSummaryDto;
+  readonly included: boolean;
+  readonly reason: string | null;
+}
+
 const today = (): string => new Date().toISOString().slice(0, 10);
 
 const formatFinancialDate = (value: string): string =>
   new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' }).format(
     new Date(`${value}T00:00:00.000Z`),
   );
+
+const parseAmount = (value: string): number => {
+  const parsed = Number(value.replaceAll(',', ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const strategyExplanations: Record<CreatePayoffScenarioRequest['strategy'], string> = {
+  avalanche:
+    'Apply the extra monthly payment to the eligible debt with the highest interest rate. Required payments continue on all included debts, and the single extra amount rolls to the next priority debt as debts are paid off.',
+  snowball:
+    'Apply the extra monthly payment to the eligible debt with the lowest current balance. Required payments continue on all included debts, and freed payments roll forward where supported.',
+  custom:
+    'Apply the extra monthly payment using the ordered debt list below. Required payments continue on all included debts, and the extra amount is applied once per month to the current priority debt.',
+  baseline:
+    'Make required payments only, with no extra monthly payment. Scenario calculations do not post transactions to the actual ledger.',
+};
 
 const FieldError = ({
   error,
@@ -67,7 +91,232 @@ const TextInput = ({
   </label>
 );
 
+const debtEligibility = (debt: DebtSummaryDto): DebtEligibility => {
+  if (debt.status !== 'active') {
+    return { debt, included: false, reason: `Status is ${debt.status}.` };
+  }
+  if (debt.archivedAtUtc) {
+    return { debt, included: false, reason: 'Debt is archived.' };
+  }
+  if (parseAmount(debt.currentBalance) <= 0) {
+    return { debt, included: false, reason: 'Current balance is zero or below.' };
+  }
+  if (debt.currentTerm.paymentFrequency === 'irregular') {
+    return {
+      debt,
+      included: false,
+      reason: 'Irregular payment frequency is unsupported for payoff projection.',
+    };
+  }
+  if (debt.currentTerm.interestRateType === 'variable') {
+    return {
+      debt,
+      included: false,
+      reason: 'Variable-rate debt needs an explicit scenario rate override.',
+    };
+  }
+  return { debt, included: true, reason: null };
+};
+
+const monthlyPayment = (debt: DebtSummaryDto): number => {
+  const payment = parseAmount(debt.currentTerm.requiredPayment);
+  if (debt.currentTerm.paymentFrequency === 'semimonthly') return payment * 2;
+  if (debt.currentTerm.paymentFrequency === 'weekly') return (payment * 52) / 12;
+  if (debt.currentTerm.paymentFrequency === 'biweekly') return (payment * 26) / 12;
+  if (debt.currentTerm.paymentFrequency === 'quarterly') return payment / 3;
+  if (debt.currentTerm.paymentFrequency === 'annually') return payment / 12;
+  return payment;
+};
+
+const moveItem = (
+  values: readonly string[],
+  fromIndex: number,
+  direction: -1 | 1,
+): readonly string[] => {
+  const toIndex = fromIndex + direction;
+  if (toIndex < 0 || toIndex >= values.length) return values;
+  const next = [...values];
+  const [item] = next.splice(fromIndex, 1);
+  if (!item) return values;
+  next.splice(toIndex, 0, item);
+  return next;
+};
+
+const ComparisonChart = ({
+  scenarios,
+}: {
+  readonly scenarios: readonly PayoffScenarioDto[];
+}): React.JSX.Element | null => {
+  const eligibleScenarios = scenarios.filter(
+    (scenario) => scenario.result.monthlySchedule.length > 0,
+  );
+  const [selectedIds, setSelectedIds] = useState<readonly string[] | null>(null);
+  const activeSelectedIds =
+    selectedIds ?? eligibleScenarios.slice(0, 4).map((scenario) => scenario.id);
+  const selected = eligibleScenarios.filter((scenario) =>
+    activeSelectedIds.includes(scenario.id),
+  );
+  if (eligibleScenarios.length === 0) return null;
+
+  const colors = ['#1d4ed8', '#047857', '#b45309', '#7c3aed', '#be123c', '#0891b2'];
+  const width = 760;
+  const height = 260;
+  const padding = { left: 70, right: 24, top: 20, bottom: 44 };
+  const points = selected.flatMap((scenario) =>
+    scenario.result.monthlySchedule.map((entry, index) => ({
+      scenario,
+      index,
+      date: entry.month,
+      value: parseAmount(entry.totalProjectedBalance),
+    })),
+  );
+  const maxIndex = Math.max(1, ...points.map((point) => point.index));
+  const maxValue = Math.max(1, ...points.map((point) => point.value));
+  const xFor = (index: number): number =>
+    padding.left + (index / maxIndex) * (width - padding.left - padding.right);
+  const yFor = (value: number): number =>
+    padding.top + (1 - value / maxValue) * (height - padding.top - padding.bottom);
+
+  return (
+    <section className="rounded-lg border border-slate-200 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h4 className="font-semibold">Scenario balance comparison</h4>
+        <div className="flex flex-wrap gap-2 text-sm">
+          {eligibleScenarios.map((scenario, index) => {
+            const active = activeSelectedIds.includes(scenario.id);
+            return (
+              <button
+                aria-pressed={active}
+                className={`inline-flex items-center gap-2 rounded-md border border-slate-300 px-2 py-1 ${
+                  active ? 'bg-white' : 'bg-slate-100 opacity-50'
+                }`}
+                key={scenario.id}
+                onClick={() =>
+                  setSelectedIds((current) =>
+                    (current ?? activeSelectedIds).includes(scenario.id)
+                      ? (current ?? activeSelectedIds).filter(
+                          (id) => id !== scenario.id,
+                        )
+                      : [...(current ?? activeSelectedIds), scenario.id],
+                  )
+                }
+                type="button"
+              >
+                <span
+                  className="h-3 w-3 rounded-sm"
+                  style={{ backgroundColor: colors[index % colors.length] }}
+                />
+                {scenario.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-4 overflow-x-auto">
+        <svg
+          aria-label="Projected total principal balance by scenario"
+          className="min-w-[760px]"
+          role="img"
+          viewBox={`0 0 ${width} ${height}`}
+        >
+          <line
+            stroke="#cbd5e1"
+            x1={padding.left}
+            x2={width - padding.right}
+            y1={height - padding.bottom}
+            y2={height - padding.bottom}
+          />
+          <line
+            stroke="#cbd5e1"
+            x1={padding.left}
+            x2={padding.left}
+            y1={padding.top}
+            y2={height - padding.bottom}
+          />
+          {selected.map((scenario) => {
+            const color =
+              colors[
+                eligibleScenarios.findIndex((item) => item.id === scenario.id) %
+                  colors.length
+              ] ?? '#1d4ed8';
+            const path = scenario.result.monthlySchedule
+              .map((entry, index) => {
+                const command = index === 0 ? 'M' : 'L';
+                return `${command} ${xFor(index).toFixed(1)} ${yFor(
+                  parseAmount(entry.totalProjectedBalance),
+                ).toFixed(1)}`;
+              })
+              .join(' ');
+            return <path d={path} fill="none" key={scenario.id} stroke={color} />;
+          })}
+          {selected.map((scenario) =>
+            scenario.result.monthlySchedule.map((entry, index) => {
+              const color =
+                colors[
+                  eligibleScenarios.findIndex((item) => item.id === scenario.id) %
+                    colors.length
+                ] ?? '#1d4ed8';
+              return (
+                <circle
+                  cx={xFor(index)}
+                  cy={yFor(parseAmount(entry.totalProjectedBalance))}
+                  fill={color}
+                  key={`${scenario.id}-${entry.month}`}
+                  r="3"
+                >
+                  <title>
+                    {`${formatFinancialDate(entry.month)} - ${scenario.name}: ${formatDollarString(entry.totalProjectedBalance)}`}
+                  </title>
+                </circle>
+              );
+            }),
+          )}
+          <text fill="#475569" fontSize="12" x={padding.left} y={height - 14}>
+            Projection month
+          </text>
+          <text fill="#475569" fontSize="12" x="6" y={padding.top + 8}>
+            Balance
+          </text>
+        </svg>
+      </div>
+      <details className="mt-3">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+          Chart data
+        </summary>
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="border-b border-slate-200 text-xs text-slate-500 uppercase">
+              <tr>
+                <th className="py-2 pr-4">Scenario</th>
+                <th className="py-2 pr-4">Month</th>
+                <th className="py-2 pr-4 text-right">Projected total balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selected.flatMap((scenario) =>
+                scenario.result.monthlySchedule.map((entry) => (
+                  <tr
+                    className="border-b border-slate-100"
+                    key={`${scenario.id}-${entry.month}`}
+                  >
+                    <td className="py-2 pr-4">{scenario.name}</td>
+                    <td className="py-2 pr-4">{formatFinancialDate(entry.month)}</td>
+                    <td className="py-2 pr-4 text-right tabular-nums">
+                      {formatDollarString(entry.totalProjectedBalance)}
+                    </td>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+  );
+};
+
 export const PayoffScenarios = ({
+  debts,
   scenarios,
   loading,
   saving,
@@ -82,8 +331,20 @@ export const PayoffScenarios = ({
   const [strategy, setStrategy] =
     useState<CreatePayoffScenarioRequest['strategy']>('avalanche');
   const [extraMonthlyPayment, setExtraMonthlyPayment] = useState('0.00');
-  const [customPriorityText, setCustomPriorityText] = useState('');
   const [maxProjectionMonths, setMaxProjectionMonths] = useState(360);
+
+  const eligibility = useMemo(() => debts.map(debtEligibility), [debts]);
+  const includedDebts = eligibility
+    .filter((item) => item.included)
+    .map((item) => item.debt);
+  const [customPriority, setCustomPriority] = useState<readonly string[]>([]);
+  const orderedCustomPriority =
+    customPriority.length > 0
+      ? customPriority.filter((id) => includedDebts.some((debt) => debt.id === id))
+      : includedDebts.map((debt) => debt.id);
+  const cashRequirement =
+    includedDebts.reduce((total, debt) => total + monthlyPayment(debt), 0) +
+    (strategy === 'baseline' ? 0 : parseAmount(extraMonthlyPayment));
 
   const submit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -91,11 +352,8 @@ export const PayoffScenarios = ({
       name,
       scenarioStartDate,
       strategy,
-      extraMonthlyPayment,
-      customPriority: customPriorityText
-        .split(/\s*,\s*/)
-        .map((value) => value.trim())
-        .filter(Boolean),
+      extraMonthlyPayment: strategy === 'baseline' ? '0.00' : extraMonthlyPayment,
+      customPriority: strategy === 'custom' ? orderedCustomPriority : [],
       variableRateOverrides: {},
       maxProjectionMonths,
     });
@@ -159,22 +417,110 @@ export const PayoffScenarios = ({
           </label>
           <TextInput
             error={fieldErrors?.extraMonthlyPayment?.[0]}
-            label="Extra monthly payment"
+            label="Total extra monthly payment"
             name="extra-monthly-payment"
             onChange={setExtraMonthlyPayment}
             required
             value={extraMonthlyPayment}
           />
-          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-            Custom priority debt IDs
-            <textarea
-              className="mt-1 block min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:ring-slate-500"
-              onChange={(event) => setCustomPriorityText(event.target.value)}
-              placeholder="Comma-separated debt IDs; required only for custom strategy."
-              value={customPriorityText}
-            />
-            <FieldError error={fieldErrors?.customPriority?.[0]} />
-          </label>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 md:col-span-2">
+            <p>{strategyExplanations[strategy]}</p>
+            <p className="mt-2 font-semibold">
+              Assumed total monthly cash requirement:{' '}
+              {formatDollarString(cashRequirement.toFixed(2))}
+            </p>
+          </div>
+          {strategy === 'custom' ? (
+            <div className="md:col-span-2">
+              <p className="text-sm font-medium text-slate-700">
+                Custom payoff priority
+              </p>
+              <div className="mt-2 space-y-2">
+                {orderedCustomPriority.map((debtId, index) => {
+                  const debt = includedDebts.find((item) => item.id === debtId);
+                  if (!debt) return null;
+                  return (
+                    <div
+                      className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm"
+                      key={debt.id}
+                    >
+                      <span>
+                        {index + 1}. {debt.name}
+                      </span>
+                      <span className="flex gap-2">
+                        <button
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold disabled:opacity-40"
+                          disabled={index === 0}
+                          onClick={() =>
+                            setCustomPriority((current) =>
+                              moveItem(
+                                current.length > 0
+                                  ? current
+                                  : includedDebts.map((item) => item.id),
+                                index,
+                                -1,
+                              ),
+                            )
+                          }
+                          type="button"
+                        >
+                          Move up
+                        </button>
+                        <button
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold disabled:opacity-40"
+                          disabled={index === orderedCustomPriority.length - 1}
+                          onClick={() =>
+                            setCustomPriority((current) =>
+                              moveItem(
+                                current.length > 0
+                                  ? current
+                                  : includedDebts.map((item) => item.id),
+                                index,
+                                1,
+                              ),
+                            )
+                          }
+                          type="button"
+                        >
+                          Move down
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <FieldError error={fieldErrors?.customPriority?.[0]} />
+            </div>
+          ) : null}
+          <section className="rounded-lg border border-slate-200 p-4 md:col-span-2">
+            <h4 className="font-semibold">Included and excluded debts</h4>
+            <div className="mt-3 grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="text-sm font-medium text-slate-700">Included</p>
+                <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                  {includedDebts.map((debt) => (
+                    <li key={debt.id}>{debt.name}</li>
+                  ))}
+                  {includedDebts.length === 0 ? <li>No eligible debts.</li> : null}
+                </ul>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-700">Excluded</p>
+                <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                  {eligibility
+                    .filter((item) => !item.included)
+                    .map((item) => (
+                      <li key={item.debt.id}>
+                        {item.debt.name}: {item.reason}
+                      </li>
+                    ))}
+                  {eligibility.every((item) => item.included) ? (
+                    <li>No excluded debts.</li>
+                  ) : null}
+                </ul>
+              </div>
+            </div>
+          </section>
           <TextInput
             label="Maximum projection months"
             name="max-projection-months"
@@ -189,7 +535,7 @@ export const PayoffScenarios = ({
               disabled={saving}
               type="submit"
             >
-              {saving ? 'Saving…' : 'Save scenario'}
+              {saving ? 'Saving...' : 'Save scenario'}
             </button>
           </div>
         </form>
@@ -200,6 +546,8 @@ export const PayoffScenarios = ({
         ) : null}
       </section>
 
+      <ComparisonChart scenarios={scenarios} />
+
       <section
         className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
         aria-labelledby="saved-scenarios-heading"
@@ -208,7 +556,7 @@ export const PayoffScenarios = ({
           Saved scenarios
         </h3>
         {loading ? (
-          <p className="mt-4 text-sm text-slate-600">Loading payoff scenarios…</p>
+          <p className="mt-4 text-sm text-slate-600">Loading payoff scenarios...</p>
         ) : null}
         {!loading && scenarios.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-6 text-sm text-slate-600">
@@ -226,8 +574,8 @@ export const PayoffScenarios = ({
                 <div>
                   <h4 className="font-semibold">{scenario.name}</h4>
                   <p className="mt-1 text-sm text-slate-600">
-                    {scenario.strategy} strategy • start date{' '}
-                    {formatFinancialDate(scenario.scenarioStartDate)} • engine{' '}
+                    {scenario.strategy} strategy - start date{' '}
+                    {formatFinancialDate(scenario.scenarioStartDate)} - engine{' '}
                     {scenario.calculationEngineVersion}
                   </p>
                 </div>
@@ -276,6 +624,124 @@ export const PayoffScenarios = ({
                   </dd>
                 </div>
               </dl>
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+                  Payoff order summary
+                </summary>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-xs text-slate-500 uppercase">
+                      <tr>
+                        <th className="py-2 pr-4">Priority</th>
+                        <th className="py-2 pr-4">Debt</th>
+                        <th className="py-2 pr-4">Payoff date</th>
+                        <th className="py-2 pr-4 text-right">Months</th>
+                        <th className="py-2 pr-4 text-right">Interest</th>
+                        <th className="py-2 pr-4 text-right">Interest saved</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scenario.result.payoffOrder.map((row) => (
+                        <tr className="border-b border-slate-100" key={row.debtId}>
+                          <td className="py-2 pr-4">{row.priority}</td>
+                          <td className="py-2 pr-4">{row.debtName}</td>
+                          <td className="py-2 pr-4">
+                            {row.projectedPayoffDate
+                              ? formatFinancialDate(row.projectedPayoffDate)
+                              : 'Not within horizon'}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {row.monthsToPayoff ?? 'N/A'}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {row.projectedInterest
+                              ? formatDollarString(row.projectedInterest)
+                              : 'Not reliable'}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {row.interestSaved
+                              ? formatDollarString(row.interestSaved)
+                              : 'N/A'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <dl className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+                  <div>
+                    <dt className="text-slate-500">Total projected payoff date</dt>
+                    <dd className="font-semibold">
+                      {scenario.result.projectedPayoffDate
+                        ? formatFinancialDate(scenario.result.projectedPayoffDate)
+                        : 'Not within horizon'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">Total projected interest</dt>
+                    <dd className="font-semibold">
+                      {formatDollarString(scenario.result.totalProjectedInterest)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">Months saved</dt>
+                    <dd className="font-semibold">
+                      {scenario.result.monthsSaved ?? 'N/A'}
+                    </dd>
+                  </div>
+                </dl>
+              </details>
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+                  Monthly extra-payment allocation schedule
+                </summary>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-xs text-slate-500 uppercase">
+                      <tr>
+                        <th className="py-2 pr-4">Month</th>
+                        <th className="py-2 pr-4">Extra payment debt</th>
+                        <th className="py-2 pr-4 text-right">Required</th>
+                        <th className="py-2 pr-4 text-right">Extra</th>
+                        <th className="py-2 pr-4 text-right">Total to debt</th>
+                        <th className="py-2 pr-4 text-right">Ending balance</th>
+                        <th className="py-2 pr-4">Paid off</th>
+                        <th className="py-2 pr-4">Next priority</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scenario.result.monthlySchedule.map((entry) => (
+                        <tr className="border-b border-slate-100" key={entry.month}>
+                          <td className="py-2 pr-4">
+                            {formatFinancialDate(entry.month)}
+                          </td>
+                          <td className="py-2 pr-4">
+                            {entry.debtName ?? 'No extra payment'}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {formatDollarString(entry.requiredPayment)}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {formatDollarString(entry.extraPayment)}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {formatDollarString(entry.totalPayment)}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {formatDollarString(entry.endingProjectedBalance)}
+                          </td>
+                          <td className="py-2 pr-4">
+                            {entry.paidOffDebtName ?? 'None'}
+                          </td>
+                          <td className="py-2 pr-4">
+                            {entry.nextPriorityDebtName ?? 'None'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
               <details className="mt-4">
                 <summary className="cursor-pointer text-sm font-semibold text-slate-700">
                   Assumptions, debt results, and warnings

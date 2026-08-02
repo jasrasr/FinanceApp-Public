@@ -728,15 +728,6 @@ export const createDataManagementService = ({
       );
       fileCount += writeCsvFile(
         exportDirectory,
-        'scenario-report-actual-versus-plan.csv',
-        reports.actualVersusPlanVariance.rows.map((row) => ({
-          value_basis: 'scenario variance compared with actual ledger activity',
-          ...row,
-          warnings: row.warnings.join('; '),
-        })),
-      );
-      fileCount += writeCsvFile(
-        exportDirectory,
         'exceptions-report-reconciliation-data-quality.csv',
         reports.reconciliationAndDataQuality.rows.map((row) => ({
           value_basis: 'exception/data quality',

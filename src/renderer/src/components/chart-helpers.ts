@@ -18,6 +18,24 @@ export const interestYearTreatment = (
   readonly stroke: string;
 } => interestYearTreatments[index % interestYearTreatments.length]!;
 
+const debtSeriesColors = [
+  '#1d4ed8',
+  '#047857',
+  '#b45309',
+  '#7c3aed',
+  '#be123c',
+  '#0891b2',
+  '#4d7c0f',
+  '#c2410c',
+  '#0f766e',
+  '#4338ca',
+  '#b91c1c',
+  '#a16207',
+] as const;
+
+export const debtSeriesColor = (index: number): string =>
+  debtSeriesColors[index % debtSeriesColors.length] ?? '#1d4ed8';
+
 export interface ChartScaleOptions {
   readonly values: readonly number[];
   readonly chartHeight: number;

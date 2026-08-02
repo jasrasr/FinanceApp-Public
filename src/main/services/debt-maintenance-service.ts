@@ -1154,10 +1154,17 @@ const createDashboard = (
   let requiredMonthlyPaymentsCents = 0;
   let weightedRateNumerator = 0n;
   let weightedRateDenominator = 0n;
+  let creditCardBalanceCents = 0;
+  let creditCardUtilizationBalanceCents = 0;
+  let creditCardLimitCents = 0;
+  let creditCardAvailableCents = 0;
+  let creditCardOverLimitCents = 0;
 
   const upcomingMaturities: DashboardDto['upcomingMaturities'] = [];
   const escrowBalances: DashboardDto['escrowBalances'] = [];
   const attentionItems: DashboardDto['attentionItems'] = [];
+  const creditCardDetails: DashboardDto['creditCardPortfolio']['details'] = [];
+  const creditCardReviewItems: string[] = [];
   let hasDataIntegrityExceptions = false;
 
   for (const record of records) {
@@ -1171,6 +1178,44 @@ const createDashboard = (
     );
 
     activeDebtCents += ledgerBalanceCents;
+    if (record.debt.debtType === 'credit_card' && record.debt.status === 'active') {
+      creditCardBalanceCents += Math.max(0, ledgerBalanceCents);
+      if (record.debt.creditLimitCents === null || record.debt.creditLimitCents <= 0) {
+        creditCardReviewItems.push(
+          `${record.debt.name} has no valid credit limit and is excluded from utilization.`,
+        );
+        creditCardDetails.push({
+          debtId: record.debt.id,
+          debtName: record.debt.name,
+          creditor: record.debt.creditor,
+          currentBalance: centsToDollars(ledgerBalanceCents),
+          creditLimit: null,
+          availableCredit: null,
+          utilizationPercent: null,
+          reviewFlag:
+            'No valid credit limit; excluded from portfolio utilization calculation.',
+        });
+      } else {
+        creditCardLimitCents += record.debt.creditLimitCents;
+        creditCardUtilizationBalanceCents += Math.max(0, ledgerBalanceCents);
+        const rawAvailable = record.debt.creditLimitCents - ledgerBalanceCents;
+        creditCardAvailableCents += Math.max(0, rawAvailable);
+        creditCardOverLimitCents += Math.max(0, -rawAvailable);
+        creditCardDetails.push({
+          debtId: record.debt.id,
+          debtName: record.debt.name,
+          creditor: record.debt.creditor,
+          currentBalance: centsToDollars(ledgerBalanceCents),
+          creditLimit: centsToDollars(record.debt.creditLimitCents),
+          availableCredit: centsToDollars(Math.max(0, rawAvailable)),
+          utilizationPercent: `${((Math.max(0, ledgerBalanceCents) / record.debt.creditLimitCents) * 100).toFixed(1)}%`,
+          reviewFlag:
+            rawAvailable < 0
+              ? `Over limit by ${centsToDollars(Math.abs(rawAvailable))}.`
+              : null,
+        });
+      }
+    }
     const debtEscrowBalanceCents = calculateEscrowBalanceFromActivity(
       record,
       effectiveDate,
@@ -1322,6 +1367,13 @@ const createDashboard = (
         weightedAverageInterestRateMicros === null
           ? null
           : rateMicrosToPercentString(weightedAverageInterestRateMicros),
+      creditCardBalances: centsToDollars(creditCardBalanceCents),
+      availableCredit: centsToDollars(creditCardAvailableCents),
+      creditUtilizationPercent:
+        creditCardLimitCents === 0
+          ? null
+          : `${((creditCardUtilizationBalanceCents / creditCardLimitCents) * 100).toFixed(1)}%`,
+      creditCardOverLimit: centsToDollars(creditCardOverLimitCents),
     },
     metricBasis: {
       activeDebt: `Application-calculated ledger balances for active debts as of ${effectiveDate}; not confirmed snapshots or original principal.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected balances require review.' : ''}`,
@@ -1331,6 +1383,14 @@ const createDashboard = (
       escrowBalance: `Application-calculated escrow balances for active debts as of ${effectiveDate}; excluded from debt principal balance.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected escrow balances require review.' : ''}`,
       requiredMonthlyPayments: `Current effective debt terms as of ${effectiveDate}, normalized to monthly equivalents; irregular and other frequencies are excluded from the amount.`,
       weightedAverageInterestRate: `Current effective annual rates as of ${effectiveDate}, weighted by application-calculated ledger balances for active debts.`,
+      creditCardBalances: `Application-calculated balances for active credit-card debts as of ${effectiveDate}.`,
+      availableCredit: `Active credit-card credit limits less application-calculated active credit-card balances as of ${effectiveDate}; displayed available credit is not shown below zero.`,
+      creditUtilizationPercent: `Active credit-card balances divided by active credit limits as of ${effectiveDate}; cards without valid limits are excluded and flagged for review.`,
+      creditCardOverLimit: `Amount by which active credit-card balances exceed stated credit limits as of ${effectiveDate}.`,
+    },
+    creditCardPortfolio: {
+      details: creditCardDetails,
+      reviewItems: creditCardReviewItems,
     },
     upcomingMaturities: upcomingMaturities.slice(0, 10),
     escrowBalances: escrowBalances.slice(0, 10),
@@ -1363,6 +1423,36 @@ const mapPayoffResult = (
     requiredMonthlyPayment: centsToDollars(debt.requiredMonthlyPaymentCents),
     warnings: [...debt.warnings],
   })),
+  monthlySchedule: (result.monthlySchedule ?? []).map((entry) => ({
+    month: entry.month,
+    debtId: entry.debtId,
+    debtName: entry.debtName,
+    requiredPayment: centsToDollars(entry.requiredPaymentCents),
+    extraPayment: centsToDollars(entry.extraPaymentCents),
+    totalPayment: centsToDollars(entry.totalPaymentCents),
+    endingProjectedBalance: centsToDollars(entry.endingProjectedBalanceCents),
+    totalProjectedBalance: centsToDollars(
+      entry.totalProjectedBalanceCents ?? entry.endingProjectedBalanceCents,
+    ),
+    paidOffDebtName: entry.paidOffDebtName,
+    nextPriorityDebtName: entry.nextPriorityDebtName,
+  })),
+  payoffOrder: (result.payoffOrder ?? []).map((entry) => ({
+    debtId: entry.debtId,
+    debtName: entry.debtName,
+    priority: entry.priority,
+    projectedPayoffDate: entry.projectedPayoffDate,
+    monthsToPayoff: entry.monthsToPayoff,
+    projectedInterest:
+      entry.projectedInterestCents === null
+        ? null
+        : centsToDollars(entry.projectedInterestCents),
+    interestSaved:
+      entry.interestSavedCents === null
+        ? null
+        : centsToDollars(entry.interestSavedCents),
+  })),
+  monthsSaved: result.monthsSaved ?? null,
   warnings: [...result.warnings],
 });
 
@@ -1535,15 +1625,6 @@ const filterReportRecords = (
     return true;
   });
 
-const calculateReportBalanceThroughDate = (
-  database: AppDatabase,
-  record: DebtWithActivityRecord,
-  date: string,
-): number =>
-  date < record.debt.originationDate
-    ? 0
-    : calculateLedgerBalanceThroughDate(database, record.debt.id, date);
-
 const calculateReportPrincipalBalanceThroughDate = (
   record: DebtWithActivityRecord,
   date: string,
@@ -1688,167 +1769,6 @@ const createBalanceTrendRows = (
   return totalRows;
 };
 
-const monthsBetweenDates = (
-  startDate: string | null,
-  endDate: string | null,
-): number | null => {
-  if (!startDate || !endDate) return null;
-  return (
-    (Number(endDate.slice(0, 4)) - Number(startDate.slice(0, 4))) * 12 +
-    Number(endDate.slice(5, 7)) -
-    Number(startDate.slice(5, 7))
-  );
-};
-
-const createReportPayoffInputs = (
-  database: AppDatabase,
-  records: readonly DebtWithActivityRecord[],
-  startDate: string,
-): readonly PayoffDebtInput[] =>
-  records
-    .map((record): PayoffDebtInput => ({
-      debtId: record.debt.id,
-      debtName: record.debt.name,
-      creditor: record.debt.creditor,
-      debtType: record.debt.debtType,
-      startingBalanceCents: calculateReportBalanceThroughDate(
-        database,
-        record,
-        startDate,
-      ),
-      maturityDate: record.debt.maturityDate,
-      terms: record.terms.map((term) => ({
-        effectiveStartDate: term.effectiveStartDate,
-        effectiveEndDate: term.effectiveEndDate,
-        interestRateType: term.interestRateType,
-        interestRateMicros: term.interestRateMicros,
-        requiredPaymentCents: term.requiredPaymentCents,
-        paymentFrequency: term.paymentFrequency,
-        dayCountConvention: term.dayCountConvention,
-        calculationConvention: term.calculationConvention,
-      })),
-    }))
-    .filter((debt) => debt.startingBalanceCents > 0);
-
-const reportVariableRateOverrides = (
-  records: readonly DebtWithActivityRecord[],
-  effectiveDate: string,
-  rateAdjustmentMicros: number,
-): Readonly<Record<string, number>> =>
-  Object.fromEntries(
-    records.flatMap((record) => {
-      const term = currentTermForDate(record.terms, effectiveDate);
-      if (term.interestRateType !== 'variable') return [];
-      return [
-        [record.debt.id, Math.max(0, term.interestRateMicros + rateAdjustmentMicros)],
-      ];
-    }),
-  );
-
-const createSensitivityRows = (
-  inputs: readonly PayoffDebtInput[],
-  records: readonly DebtWithActivityRecord[],
-  startDate: string,
-  kind: 'rate' | 'extra',
-): DebtReportsDto['interestRateSensitivity']['rows'] => {
-  const sensitivityInputs =
-    kind === 'rate'
-      ? inputs.filter((input) =>
-          input.terms.some((term) => term.interestRateType === 'variable'),
-        )
-      : inputs;
-  if (sensitivityInputs.length === 0) return [];
-
-  const cases =
-    kind === 'rate'
-      ? [
-          { label: 'Rates -1.00%', rateChange: -10_000, extra: 0 },
-          { label: 'Baseline', rateChange: 0, extra: 0 },
-          { label: 'Rates +1.00%', rateChange: 10_000, extra: 0 },
-          { label: 'Rates +2.00%', rateChange: 20_000, extra: 0 },
-        ]
-      : [
-          { label: 'No extra payment', rateChange: 0, extra: 0 },
-          { label: 'Extra $100/month', rateChange: 0, extra: 10_000 },
-          { label: 'Extra $250/month', rateChange: 0, extra: 25_000 },
-          { label: 'Extra $500/month', rateChange: 0, extra: 50_000 },
-        ];
-
-  const runCase = (item: (typeof cases)[number]): PayoffProjectionResult => {
-    const adjustedInputs = sensitivityInputs.map((debt) => ({
-      ...debt,
-      terms: debt.terms.map((term) => ({
-        ...term,
-        interestRateMicros:
-          term.interestRateType === 'variable'
-            ? term.interestRateMicros
-            : Math.max(0, term.interestRateMicros + item.rateChange),
-      })),
-    }));
-    return projectPayoffScenario(adjustedInputs, {
-      scenarioStartDate: startDate,
-      strategy: 'avalanche',
-      extraMonthlyPaymentCents: item.extra,
-      customPriority: [],
-      variableRateOverrides: reportVariableRateOverrides(
-        records,
-        startDate,
-        item.rateChange,
-      ),
-      maxProjectionMonths: 360,
-    });
-  };
-
-  const baselineCase = cases.find((item) => item.rateChange === 0 && item.extra === 0);
-  if (!baselineCase) return [];
-  const baselineResult = runCase(baselineCase);
-  const baselineVariableRateMicros =
-    kind === 'rate'
-      ? records
-          .map((record) => currentTermForDate(record.terms, startDate))
-          .find((term) => term.interestRateType === 'variable')?.interestRateMicros
-      : null;
-
-  return cases.map((item) => {
-    const result = runCase(item);
-    const interestChange =
-      result.totalProjectedInterestCents - baselineResult.totalProjectedInterestCents;
-    const timingChange = monthsBetweenDates(
-      baselineResult.projectedPayoffDate,
-      result.projectedPayoffDate,
-    );
-
-    return {
-      scenarioLabel: item.label,
-      assumption:
-        kind === 'rate'
-          ? 'How would projected interest cost and payoff timing change if variable rates increase or decrease? Only variable-rate debts are included.'
-          : 'How much interest and time would be saved by applying additional monthly payments? Uses avalanche priority and the stated extra payment.',
-      baselineRate:
-        baselineVariableRateMicros === null || baselineVariableRateMicros === undefined
-          ? null
-          : rateMicrosToPercentString(baselineVariableRateMicros),
-      rateChange:
-        kind === 'rate'
-          ? `${item.rateChange >= 0 ? '+' : '-'}${rateMicrosToPercentString(Math.abs(item.rateChange))}%`
-          : null,
-      projectedPayoffDate: result.projectedPayoffDate,
-      payoffTimingChangeMonths: timingChange,
-      totalProjectedInterest: centsToDollars(result.totalProjectedInterestCents),
-      changeFromBaselineInterest: centsToDollars(interestChange),
-      interestSaved:
-        kind === 'extra'
-          ? centsToDollars(
-              baselineResult.totalProjectedInterestCents -
-                result.totalProjectedInterestCents,
-            )
-          : null,
-      monthlyCashRequirement: centsToDollars(result.monthlyCashRequirementCents),
-      warnings: [...result.warnings],
-    };
-  });
-};
-
 const createDebtReports = (
   database: AppDatabase,
   request: GetDebtReportsRequest,
@@ -1872,7 +1792,6 @@ const createDebtReports = (
     status: parsed.status,
   };
   const records = filterReportRecords(listDebtActivityRecords(database, true), filters);
-  const reportInputs = createReportPayoffInputs(database, records, effectiveDate);
   const baseAssumptions = [
     'Reports are read-only and do not edit posted financial records.',
     'Posted activity excludes superseded transactions.',
@@ -1952,51 +1871,6 @@ const createDebtReports = (
       ),
       basis: `Current effective term as of ${effectiveDate}; balance is application-calculated ledger balance.`,
     };
-  });
-
-  const scenarioRows = listPayoffScenarioRecords(database, true).flatMap((scenario) => {
-    const result = parsePayoffResult(scenario.resultJson);
-    return result.debts.map((debtResult) => {
-      const record = records.find(
-        (candidate) => candidate.debt.id === debtResult.debtId,
-      );
-      const currentBalance = record
-        ? calculateLedgerBalanceThroughDate(database, record.debt.id, endDate)
-        : debtResult.startingBalanceCents;
-      const actualPrincipalReduction = Math.max(
-        0,
-        debtResult.startingBalanceCents - currentBalance,
-      );
-      const plannedPrincipalReduction =
-        debtResult.projectedPayoffDate && debtResult.projectedPayoffDate <= endDate
-          ? debtResult.startingBalanceCents
-          : null;
-      return {
-        scenarioId: scenario.id,
-        scenarioName: scenario.name,
-        debtId: debtResult.debtId,
-        debtName: debtResult.debtName,
-        actualPrincipalReduction: centsToDollars(actualPrincipalReduction),
-        plannedPrincipalReduction:
-          plannedPrincipalReduction === null
-            ? null
-            : centsToDollars(plannedPrincipalReduction),
-        variance:
-          plannedPrincipalReduction === null
-            ? null
-            : centsToDollars(actualPrincipalReduction - plannedPrincipalReduction),
-        basis:
-          'Actual reduction compares scenario starting balance to current calculated ledger balance. Planned reduction is available only when saved scenario payoff date falls within the report range.',
-        warnings: [
-          ...result.warnings,
-          ...(plannedPrincipalReduction === null
-            ? [
-                'Saved scenario does not persist monthly plan balances, so planned principal reduction is unavailable for this date range.',
-              ]
-            : []),
-        ],
-      };
-    });
   });
 
   const exceptionRows: DebtReportsDto['reconciliationAndDataQuality']['rows'] =
@@ -2107,45 +1981,6 @@ const createDebtReports = (
         ],
       ),
       rows: scheduleRows,
-    },
-    interestRateSensitivity: {
-      basis: reportBasis(
-        'Interest-rate sensitivity',
-        startDate,
-        endDate,
-        effectiveDate,
-        [
-          ...baseAssumptions,
-          'Sensitivity reuses the payoff projection engine and does not post projected transactions.',
-        ],
-      ),
-      rows: createSensitivityRows(reportInputs, records, effectiveDate, 'rate'),
-    },
-    extraPaymentSensitivity: {
-      basis: reportBasis(
-        'Extra-payment sensitivity',
-        startDate,
-        endDate,
-        effectiveDate,
-        [
-          ...baseAssumptions,
-          'Sensitivity reuses the payoff projection engine and does not post projected transactions.',
-        ],
-      ),
-      rows: createSensitivityRows(reportInputs, records, effectiveDate, 'extra'),
-    },
-    actualVersusPlanVariance: {
-      basis: reportBasis(
-        'Actual-versus-plan variance using saved payoff scenarios',
-        startDate,
-        endDate,
-        effectiveDate,
-        [
-          ...baseAssumptions,
-          'Saved scenarios do not currently persist monthly projected balances; variance is limited to payoff-date-based planned reduction where available.',
-        ],
-      ),
-      rows: scenarioRows,
     },
     reconciliationAndDataQuality: {
       basis: reportBasis(

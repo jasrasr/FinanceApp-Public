@@ -574,6 +574,19 @@ export const dashboardDebtMetricDtoSchema = z
   })
   .strict();
 
+const dashboardCreditCardDetailDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    creditor: z.string(),
+    currentBalance: z.string(),
+    creditLimit: z.string().nullable(),
+    availableCredit: z.string().nullable(),
+    utilizationPercent: z.string().nullable(),
+    reviewFlag: z.string().nullable(),
+  })
+  .strict();
+
 export const dashboardAttentionItemDtoSchema = z
   .object({
     debtId: uuidSchema,
@@ -600,6 +613,10 @@ export const dashboardDtoSchema = z
         escrowBalance: z.string(),
         requiredMonthlyPayments: z.string(),
         weightedAverageInterestRate: z.string().nullable(),
+        creditCardBalances: z.string(),
+        availableCredit: z.string(),
+        creditUtilizationPercent: z.string().nullable(),
+        creditCardOverLimit: z.string(),
       })
       .strict(),
     metricBasis: z
@@ -611,6 +628,16 @@ export const dashboardDtoSchema = z
         escrowBalance: z.string(),
         requiredMonthlyPayments: z.string(),
         weightedAverageInterestRate: z.string(),
+        creditCardBalances: z.string(),
+        availableCredit: z.string(),
+        creditUtilizationPercent: z.string(),
+        creditCardOverLimit: z.string(),
+      })
+      .strict(),
+    creditCardPortfolio: z
+      .object({
+        details: z.array(dashboardCreditCardDetailDtoSchema),
+        reviewItems: z.array(z.string()),
       })
       .strict(),
     upcomingMaturities: z.array(dashboardDebtMetricDtoSchema),
@@ -756,36 +783,6 @@ const scheduleRowDtoSchema = z
   })
   .strict();
 
-const sensitivityRowDtoSchema = z
-  .object({
-    scenarioLabel: z.string(),
-    assumption: z.string(),
-    baselineRate: z.string().nullable(),
-    rateChange: z.string().nullable(),
-    projectedPayoffDate: financialDateInputSchema.nullable(),
-    payoffTimingChangeMonths: z.number().int().nullable(),
-    totalProjectedInterest: z.string(),
-    changeFromBaselineInterest: z.string().nullable(),
-    interestSaved: z.string().nullable(),
-    monthlyCashRequirement: z.string(),
-    warnings: z.array(z.string()),
-  })
-  .strict();
-
-const varianceRowDtoSchema = z
-  .object({
-    scenarioId: uuidSchema,
-    scenarioName: z.string(),
-    debtId: uuidSchema,
-    debtName: z.string(),
-    actualPrincipalReduction: z.string(),
-    plannedPrincipalReduction: z.string().nullable(),
-    variance: z.string().nullable(),
-    basis: z.string(),
-    warnings: z.array(z.string()),
-  })
-  .strict();
-
 const exceptionRowDtoSchema = z
   .object({
     severity: z.enum(['info', 'warning', 'exception']),
@@ -826,15 +823,6 @@ export const debtReportsDtoSchema = z
     maturitySchedule: z
       .object({ basis: reportBasisDtoSchema, rows: z.array(scheduleRowDtoSchema) })
       .strict(),
-    interestRateSensitivity: z
-      .object({ basis: reportBasisDtoSchema, rows: z.array(sensitivityRowDtoSchema) })
-      .strict(),
-    extraPaymentSensitivity: z
-      .object({ basis: reportBasisDtoSchema, rows: z.array(sensitivityRowDtoSchema) })
-      .strict(),
-    actualVersusPlanVariance: z
-      .object({ basis: reportBasisDtoSchema, rows: z.array(varianceRowDtoSchema) })
-      .strict(),
     reconciliationAndDataQuality: z
       .object({ basis: reportBasisDtoSchema, rows: z.array(exceptionRowDtoSchema) })
       .strict(),
@@ -864,6 +852,33 @@ export const payoffScenarioDebtResultDtoSchema = z
   })
   .strict();
 
+export const payoffMonthlyAllocationDtoSchema = z
+  .object({
+    month: financialDateInputSchema,
+    debtId: uuidSchema.nullable(),
+    debtName: z.string().nullable(),
+    requiredPayment: z.string(),
+    extraPayment: z.string(),
+    totalPayment: z.string(),
+    endingProjectedBalance: z.string(),
+    totalProjectedBalance: z.string(),
+    paidOffDebtName: z.string().nullable(),
+    nextPriorityDebtName: z.string().nullable(),
+  })
+  .strict();
+
+export const payoffOrderSummaryDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    priority: z.number().int().positive(),
+    projectedPayoffDate: financialDateInputSchema.nullable(),
+    monthsToPayoff: z.number().int().nullable(),
+    projectedInterest: z.string().nullable(),
+    interestSaved: z.string().nullable(),
+  })
+  .strict();
+
 export const payoffScenarioResultDtoSchema = z
   .object({
     calculationEngineVersion: z.string(),
@@ -875,6 +890,9 @@ export const payoffScenarioResultDtoSchema = z
     interestSavings: z.string(),
     assumptions: z.array(z.string()),
     debts: z.array(payoffScenarioDebtResultDtoSchema),
+    monthlySchedule: z.array(payoffMonthlyAllocationDtoSchema),
+    payoffOrder: z.array(payoffOrderSummaryDtoSchema),
+    monthsSaved: z.number().int().nullable(),
     warnings: z.array(z.string()),
   })
   .strict();

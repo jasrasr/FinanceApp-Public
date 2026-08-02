@@ -1227,6 +1227,55 @@ describe('debt maintenance', () => {
     );
   });
 
+  it('calculates dashboard credit-card availability and excludes no-limit cards from utilization', () => {
+    const cardWithLimit = validRequest('Generated Rewards Card');
+    cardWithLimit.debt.debtType = 'credit_card';
+    cardWithLimit.debt.originalPrincipal = '1000.00';
+    cardWithLimit.debt.creditLimit = '5000.00';
+    cardWithLimit.initialTerm.requiredPayment = '75.00';
+    service.createDebt(cardWithLimit);
+
+    const noLimitCard = validRequest('Generated Limit Review Card');
+    noLimitCard.debt.debtType = 'credit_card';
+    noLimitCard.debt.originalPrincipal = '500.00';
+    noLimitCard.debt.creditLimit = '500.00';
+    noLimitCard.initialTerm.requiredPayment = '25.00';
+    const noLimit = service.createDebt(noLimitCard);
+    context.database
+      .update(debts)
+      .set({ creditLimitCents: null })
+      .where(eq(debts.id, noLimit.id))
+      .run();
+
+    const closedCard = validRequest('Generated Closed Card');
+    closedCard.debt.debtType = 'credit_card';
+    closedCard.debt.status = 'closed';
+    closedCard.debt.originalPrincipal = '3000.00';
+    closedCard.debt.creditLimit = '3000.00';
+    service.createDebt(closedCard);
+
+    const dashboard = service.getDashboard({});
+
+    expect(dashboard.totals.creditCardBalances).toBe('1500.00');
+    expect(dashboard.totals.availableCredit).toBe('4000.00');
+    expect(dashboard.totals.creditUtilizationPercent).toBe('20.0%');
+    expect(dashboard.totals.creditCardOverLimit).toBe('0.00');
+    expect(dashboard.creditCardPortfolio.details).toHaveLength(2);
+    expect(dashboard.creditCardPortfolio.reviewItems[0]).toContain(
+      'Generated Limit Review Card',
+    );
+    expect(
+      dashboard.creditCardPortfolio.details.find(
+        (detail) => detail.debtName === 'Generated Limit Review Card',
+      ),
+    ).toMatchObject({
+      creditLimit: null,
+      utilizationPercent: null,
+      reviewFlag:
+        'No valid credit limit; excluded from portfolio utilization calculation.',
+    });
+  });
+
   it('includes current-year originated debt opening principal in new borrowings YTD', () => {
     const request = validRequest('Fictional Current-Year Opening Loan');
     request.debt.originationDate = '2026-03-15';
@@ -1956,7 +2005,7 @@ describe('debt maintenance', () => {
     );
   });
 
-  it('reports saved-scenario variance as limited when monthly plan balances are unavailable', () => {
+  it('omits deferred sensitivity and actual-versus-plan reports from normal debt reports', () => {
     const debt = service.createDebt(validRequest('Generated Variance Report Note'));
     service.createDebtTransaction(validTransactionRequest(debt.id));
     service.createPayoffScenario({
@@ -1978,56 +2027,39 @@ describe('debt maintenance', () => {
       status: null,
     });
 
-    expect(reports.interestRateSensitivity.rows).toHaveLength(0);
-    expect(reports.extraPaymentSensitivity.rows).toHaveLength(4);
-    expect(reports.actualVersusPlanVariance.rows[0]).toMatchObject({
-      scenarioName: 'Generated report variance scenario',
-      debtId: debt.id,
-      actualPrincipalReduction: '0.00',
-      plannedPrincipalReduction: null,
-      variance: null,
-    });
-    expect(reports.actualVersusPlanVariance.rows[0]?.warnings.join(' ')).toContain(
-      'monthly plan balances',
-    );
+    expect('interestRateSensitivity' in reports).toBe(false);
+    expect('extraPaymentSensitivity' in reports).toBe(false);
+    expect('actualVersusPlanVariance' in reports).toBe(false);
+    expect(reports.monthlyRollforward.rows.length).toBeGreaterThan(0);
   });
 
-  it('reports meaningful rate and extra-payment sensitivity output from payoff inputs', () => {
+  it('saves payoff scenarios with monthly extra-payment allocations and payoff order', () => {
     const request = validRequest('Generated Variable Rate Sensitivity Loan');
-    request.initialTerm.interestRateType = 'variable';
-    request.initialTerm.annualInterestRatePercent = '6.00';
-    service.createDebt(request);
+    request.debt.maturityDate = null;
+    const debt = service.createDebt(request);
 
-    const reports = service.getDebtReports({
-      startDate: '2026-01-01',
-      endDate: '2026-07-28',
-      debtId: null,
-      ownerEntity: null,
-      debtType: null,
-      status: null,
+    const scenario = service.createPayoffScenario({
+      name: 'Generated payoff allocation scenario',
+      scenarioStartDate: '2026-07-28',
+      strategy: 'avalanche',
+      extraMonthlyPayment: '500.00',
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 360,
     });
 
-    expect(
-      reports.interestRateSensitivity.rows.map((row) => row.scenarioLabel),
-    ).toEqual(['Rates -1.00%', 'Baseline', 'Rates +1.00%', 'Rates +2.00%']);
-    expect(reports.interestRateSensitivity.rows[1]).toMatchObject({
-      baselineRate: '6',
-      rateChange: '+0%',
-      changeFromBaselineInterest: '0.00',
+    expect(scenario.result.monthlySchedule[0]).toMatchObject({
+      debtId: debt.id,
+      debtName: 'Generated Variable Rate Sensitivity Loan',
+      extraPayment: '500.00',
     });
     expect(
-      reports.extraPaymentSensitivity.rows.map((row) => row.scenarioLabel),
-    ).toEqual([
-      'No extra payment',
-      'Extra $100/month',
-      'Extra $250/month',
-      'Extra $500/month',
-    ]);
-    expect(
-      Number(reports.extraPaymentSensitivity.rows[3]?.monthlyCashRequirement),
-    ).toBe(
-      Number(reports.extraPaymentSensitivity.rows[0]?.monthlyCashRequirement) + 500,
-    );
+      Number(scenario.result.monthlySchedule[0]?.totalProjectedBalance),
+    ).toBeGreaterThan(0);
+    expect(scenario.result.payoffOrder[0]).toMatchObject({
+      debtId: debt.id,
+      priority: 1,
+    });
   });
 
   it('retrieves a debt through the application service', () => {
@@ -2907,12 +2939,13 @@ describe('debt maintenance', () => {
 
     try {
       const result = dataService.exportData({ format: 'csv', includeReports: true });
-      expect(result).toMatchObject({ status: 'succeeded', fileCount: 14 });
+      expect(result).toMatchObject({ status: 'succeeded', fileCount: 13 });
       const files = readdirSync(result.exportDirectoryDisplayPath!);
       expect(files).toContain('actual-debts.csv');
       expect(files).toContain('actual-refinance-events.csv');
       expect(files).toContain('confirmed-balance-snapshots.csv');
       expect(files).toContain('calculated-dashboard-summary.csv');
+      expect(files).not.toContain('scenario-report-actual-versus-plan.csv');
       expect(
         readFileSync(
           join(result.exportDirectoryDisplayPath!, 'actual-posted-transactions.csv'),

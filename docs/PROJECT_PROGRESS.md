@@ -1717,3 +1717,64 @@ year`.
 - Recommended next phase:
   - Continue generated-data acceptance testing around long-range interest
     analysis readability.
+
+## Phase 35: Report Persistence, Credit Utilization, and Payoff Refinement
+
+- Completion date: 2026-08-02
+- Application version: 0.26.3
+- Features implemented:
+  - Preserved Reports filter state for the current renderer session, including
+    date preset, custom dates, debt, debt type, status, section expansion, and
+    monthly interest year visibility.
+  - Added monthly interest year legend toggles plus Select none and Select all.
+  - Added a shared deterministic debt-series chart palette with twelve solid
+    high-contrast colors before reuse.
+  - Added dashboard credit-card balance, available credit, utilization, over-limit,
+    and review-detail metrics for active credit cards.
+  - Expanded payoff scenario creation with plain-language strategy explanations,
+    included/excluded debt review, debt-name custom ordering, cash requirement
+    display, saved-scenario allocation schedules, payoff-order summaries, and a
+    projected-balance comparison chart.
+  - Removed interest-rate sensitivity and actual-versus-plan variance from the
+    normal Reports screen.
+  - Hid empty refinance history on debt detail while preserving the Record
+    refinance action and existing history display.
+- Material architecture and accounting decisions:
+  - Report filter persistence is renderer-session state only and is not written
+    to database settings.
+  - Credit-card utilization excludes active cards without valid credit limits and
+    flags them for review; available credit is never displayed below zero.
+  - Payoff allocation schedules remain scenario-only and do not post actual
+    ledger transactions.
+  - Actual-versus-plan variance remains deferred until saved scenarios persist
+    period-level planned baselines.
+- Database schema or migration changes:
+  - None.
+- New or changed IPC operations:
+  - No new channels. Existing dashboard, report, and payoff DTOs gained
+    calculated presentation fields.
+- New UI screens or workflows:
+  - Added a clickable dashboard credit-card detail summary.
+  - Added payoff scenario comparison and allocation detail sections.
+  - Removed the normal report sections for interest-rate sensitivity and
+    actual-versus-plan variance.
+- Validation and smoke-test results:
+  - Focused renderer and service integration tests passed: 2 files and 92 tests.
+  - `npm run format` passed.
+  - `npm run check` passed under escalation after an initial sandbox
+    access-denied failure in the Electron build. The gate completed with 10
+    Vitest files and 141 tests passing, database integrity passing, production
+    build passing, and the active Electron E2E workflow passing; packaged source
+    specs were skipped in that suite.
+  - `npm run package:smoke` passed packaged launch/export and
+    upgrade-preservation tests under escalation after the same sandbox
+    access-denied build failure. The runner reported the existing Node
+    `fs.R_OK` deprecation warning and a temporary installed-app cleanup warning.
+- Known limitations and technical debt:
+  - Actual-versus-plan analysis remains intentionally unavailable until scenario
+    period baselines are designed and persisted.
+  - Existing saved payoff scenarios without allocation schedules remain readable
+    but do not provide historical comparison chart points until rerun.
+- Recommended next phase:
+  - Continue acceptance testing around payoff comparison readability and credit
+    card review workflows with generated data.

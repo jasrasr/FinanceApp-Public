@@ -11,7 +11,11 @@ import type {
   PayoffScenarioDto,
 } from '../../shared/debt-contracts';
 import { App } from './app';
-import { buildChartScale, interestYearTreatment } from './components/chart-helpers';
+import {
+  buildChartScale,
+  debtSeriesColor,
+  interestYearTreatment,
+} from './components/chart-helpers';
 import { formatLastChanged } from './components/display-format';
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
@@ -20,7 +24,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 22,
   appMetadata: {
-    version: '0.26.2',
+    version: '0.26.3',
     lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -153,6 +157,10 @@ const sampleDashboard: DashboardDto = {
     escrowBalance: '300.00',
     requiredMonthlyPayments: '2450.00',
     weightedAverageInterestRate: '5.49',
+    creditCardBalances: '0.00',
+    availableCredit: '0.00',
+    creditUtilizationPercent: null,
+    creditCardOverLimit: '0.00',
   },
   metricBasis: {
     activeDebt:
@@ -167,6 +175,15 @@ const sampleDashboard: DashboardDto = {
     requiredMonthlyPayments: 'Current effective debt terms as of 2026-07-28.',
     weightedAverageInterestRate:
       'Current annual rates weighted by calculated ledger balances.',
+    creditCardBalances: 'Active credit-card balances as of 2026-07-28.',
+    availableCredit: 'Active credit-card limits less balances as of 2026-07-28.',
+    creditUtilizationPercent:
+      'Active credit-card balances divided by active credit limits.',
+    creditCardOverLimit: 'Active credit-card balances over stated limits.',
+  },
+  creditCardPortfolio: {
+    details: [],
+    reviewItems: [],
   },
   upcomingMaturities: [],
   escrowBalances: [
@@ -391,59 +408,6 @@ const sampleReports: DebtReportsDto = {
       },
     ],
   },
-  interestRateSensitivity: {
-    basis: sampleReportBasis,
-    rows: [
-      {
-        scenarioLabel: 'Baseline',
-        assumption: 'Saved terms as of report effective date.',
-        baselineRate: '5.49',
-        rateChange: '+0.00%',
-        projectedPayoffDate: '2030-06-28',
-        payoffTimingChangeMonths: 0,
-        totalProjectedInterest: '11250.00',
-        changeFromBaselineInterest: '0.00',
-        interestSaved: null,
-        monthlyCashRequirement: '2450.00',
-        warnings: [],
-      },
-    ],
-  },
-  extraPaymentSensitivity: {
-    basis: sampleReportBasis,
-    rows: [
-      {
-        scenarioLabel: 'Extra $250/month',
-        assumption: 'Debt avalanche strategy with generated extra payment.',
-        baselineRate: null,
-        rateChange: null,
-        projectedPayoffDate: '2029-12-28',
-        payoffTimingChangeMonths: -6,
-        totalProjectedInterest: '10000.00',
-        changeFromBaselineInterest: '-1250.00',
-        interestSaved: '1250.00',
-        monthlyCashRequirement: '2700.00',
-        warnings: [],
-      },
-    ],
-  },
-  actualVersusPlanVariance: {
-    basis: sampleReportBasis,
-    rows: [
-      {
-        scenarioId: '77777777-7777-4777-8777-777777777777',
-        scenarioName: 'Generated avalanche scenario',
-        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
-        debtName: 'Fictional Equipment Note',
-        actualPrincipalReduction: '400.00',
-        plannedPrincipalReduction: null,
-        variance: null,
-        basis:
-          'Saved payoff scenarios do not yet persist period-by-period planned balances.',
-        warnings: ['Variance is limited until monthly plan snapshots are saved.'],
-      },
-    ],
-  },
   reconciliationAndDataQuality: {
     basis: sampleReportBasis,
     rows: [
@@ -483,6 +447,32 @@ const samplePayoffScenario: PayoffScenarioDto = {
       'Projected activity is scenario-only and is not written to the posted ledger.',
     ],
     warnings: [],
+    monthlySchedule: [
+      {
+        month: '2026-07-28',
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+        debtName: 'Fictional Equipment Note',
+        requiredPayment: '2450.00',
+        extraPayment: '250.00',
+        totalPayment: '2700.00',
+        endingProjectedBalance: '121800.00',
+        totalProjectedBalance: '121800.00',
+        paidOffDebtName: null,
+        nextPriorityDebtName: 'Fictional Equipment Note',
+      },
+    ],
+    payoffOrder: [
+      {
+        debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
+        debtName: 'Fictional Equipment Note',
+        priority: 1,
+        projectedPayoffDate: '2030-06-28',
+        monthsToPayoff: 47,
+        projectedInterest: '11250.00',
+        interestSaved: '1250.00',
+      },
+    ],
+    monthsSaved: 6,
     debts: [
       {
         debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c001',
@@ -863,6 +853,7 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
     expect(screen.getByRole('button', { name: 'Record transaction' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Record refinance' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Refinance history' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Record snapshot' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Reconcile balance' })).toBeVisible();
   });
@@ -1558,6 +1549,70 @@ describe('debt maintenance application', () => {
     ]);
   });
 
+  it('opens credit-card portfolio details from dashboard metrics', async () => {
+    const bridge = createBridge();
+    bridge.getDashboard = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        ...sampleDashboard,
+        totals: {
+          ...sampleDashboard.totals,
+          creditCardBalances: '1500.00',
+          availableCredit: '4000.00',
+          creditUtilizationPercent: '20.0%',
+        },
+        creditCardPortfolio: {
+          details: [
+            {
+              debtId: sampleDebtSummary.id,
+              debtName: 'Generated Rewards Card',
+              creditor: 'Harbor Ridge Cooperative',
+              currentBalance: '1000.00',
+              creditLimit: '5000.00',
+              availableCredit: '4000.00',
+              utilizationPercent: '20.0%',
+              reviewFlag: null,
+            },
+            {
+              debtId: '6cc0ac8c-f8d9-4de8-a6d2-1f0d3854c099',
+              debtName: 'Generated Limit Review Card',
+              creditor: 'Harbor Ridge Cooperative',
+              currentBalance: '500.00',
+              creditLimit: null,
+              availableCredit: null,
+              utilizationPercent: null,
+              reviewFlag:
+                'No valid credit limit; excluded from portfolio utilization calculation.',
+            },
+          ],
+          reviewItems: [
+            'Generated Limit Review Card has no valid credit limit and is excluded from utilization.',
+          ],
+        },
+      },
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Credit-card utilization: 20.0%/,
+      }),
+    );
+
+    expect(
+      screen.getByRole('heading', { name: 'Credit-card detail summary' }),
+    ).toBeVisible();
+    expect(screen.getByText(/Generated Rewards Card/)).toBeVisible();
+    expect(screen.getAllByText(/Generated Limit Review Card/).length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      screen.getAllByText(
+        'No valid credit limit; excluded from portfolio utilization calculation.',
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('renders dashboard data-integrity exceptions for malformed reversals', async () => {
     const bridge = createBridge();
     const dashboardWithIntegrityException: DashboardDto = {
@@ -1603,7 +1658,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 0.26.2')).toBeVisible();
+    expect(await screen.findByText('Version 0.26.3')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -1813,6 +1868,8 @@ describe('debt maintenance application', () => {
         name: /Bar chart of annual interest expense/i,
       }),
     ).toBeVisible();
+    expect(screen.queryByText('Interest-rate sensitivity')).toBeNull();
+    expect(screen.queryByText('Actual-versus-plan variance')).toBeNull();
     expect(screen.getByTestId('annual-interest-total-2026')).toHaveTextContent(
       '$1,200.00',
     );
@@ -1866,6 +1923,70 @@ describe('debt maintenance application', () => {
     });
     expect(screen.getByLabelText('Start date')).toHaveValue('2019-01-01');
     expect(bridge.getDebtReports).toHaveBeenCalledWith({
+      startDate: null,
+      endDate: null,
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+  });
+
+  it('preserves report filters during navigation and resets to defaults explicitly', async () => {
+    const bridge = createBridge();
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [sampleDebtSummary],
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reports' }));
+    await screen.findByRole('heading', { name: 'Debt reporting' });
+    fireEvent.change(screen.getByLabelText('Date preset'), {
+      target: { value: 'custom' },
+    });
+    fireEvent.change(screen.getByLabelText('Start date'), {
+      target: { value: '2026-02-01' },
+    });
+    fireEvent.change(screen.getByLabelText('End date'), {
+      target: { value: '2026-03-31' },
+    });
+    fireEvent.change(screen.getByLabelText('Debt'), {
+      target: { value: sampleDebtSummary.id },
+    });
+    fireEvent.change(screen.getByLabelText('Debt type'), {
+      target: { value: 'business' },
+    });
+    fireEvent.change(screen.getByLabelText('Status'), {
+      target: { value: 'active' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
+
+    expect(bridge.getDebtReports).toHaveBeenLastCalledWith({
+      startDate: '2026-02-01',
+      endDate: '2026-03-31',
+      debtId: sampleDebtSummary.id,
+      ownerEntity: null,
+      debtType: 'business',
+      status: 'active',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+    await screen.findByRole('heading', { name: 'Debt overview' });
+    fireEvent.click(screen.getByRole('button', { name: 'Reports' }));
+
+    expect(await screen.findByLabelText('Start date')).toHaveValue('2026-02-01');
+    expect(screen.getByLabelText('End date')).toHaveValue('2026-03-31');
+    expect(screen.getByLabelText('Debt')).toHaveValue(sampleDebtSummary.id);
+    expect(screen.getByLabelText('Debt type')).toHaveValue('business');
+    expect(screen.getByLabelText('Status')).toHaveValue('active');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }));
+    expect(screen.getByLabelText('Date preset')).toHaveValue('current_year');
+    expect(screen.getByLabelText('Debt')).toHaveValue('');
+    expect(screen.getByLabelText('Debt type')).toHaveValue('');
+    expect(screen.getByLabelText('Status')).toHaveValue('');
+    expect(bridge.getDebtReports).toHaveBeenLastCalledWith({
       startDate: null,
       endDate: null,
       debtId: null,
@@ -1978,6 +2099,27 @@ describe('debt maintenance application', () => {
         ?.getAttribute('style'),
     );
     expect(new Set(yearColors)).toHaveProperty('size', 8);
+    const year2019 = within(monthlyChart).getByRole('button', { name: '2019' });
+    fireEvent.click(year2019);
+    expect(year2019).toHaveAttribute('aria-pressed', 'false');
+    expect(year2019).toHaveClass('opacity-45');
+    expect(
+      within(monthlyChart)
+        .queryAllByTestId('interest-comparison-tooltip')
+        .some((tooltip) => /Jan 2019/.test(tooltip.textContent ?? '')),
+    ).toBe(false);
+    fireEvent.click(within(monthlyChart).getByRole('button', { name: 'Select none' }));
+    expect(
+      within(monthlyChart).queryAllByTestId('interest-comparison-bar'),
+    ).toHaveLength(0);
+    fireEvent.click(within(monthlyChart).getByRole('button', { name: 'Select all' }));
+    expect(within(monthlyChart).getByRole('button', { name: '2019' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(
+      within(monthlyChart).queryAllByTestId('interest-comparison-bar').length,
+    ).toBeGreaterThan(0);
     expect(
       screen
         .getAllByTestId('interest-comparison-bar')
@@ -2008,6 +2150,12 @@ describe('debt maintenance application', () => {
     expect(new Set(fills)).toHaveProperty('size', 10);
     expect(interestYearTreatment(10).fill).toBe(interestYearTreatment(0).fill);
     expect(interestYearTreatment(0).stroke).not.toBe(interestYearTreatment(1).stroke);
+  });
+
+  it('keeps debt-series colors distinct for the tested portfolio size', () => {
+    const fills = Array.from({ length: 12 }, (_, index) => debtSeriesColor(index));
+    expect(new Set(fills)).toHaveProperty('size', 12);
+    expect(debtSeriesColor(12)).toBe(debtSeriesColor(0));
   });
 
   it('builds readable chart scales with nice major units for short and long ranges', () => {
@@ -2101,11 +2249,44 @@ describe('debt maintenance application', () => {
         name: 'Projection and payoff scenarios',
       }),
     ).toBeVisible();
-    expect(screen.getByText('Generated avalanche scenario')).toBeVisible();
+    expect(screen.getAllByText('Generated avalanche scenario').length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getAllByText('$11,250.00').length).toBeGreaterThan(0);
     expect(
       screen.getByText(/do not create, edit, or post ledger transactions/i),
     ).toBeVisible();
+    expect(screen.getByText(/highest interest rate/i)).toBeVisible();
+    expect(screen.getByText(/Assumed total monthly cash requirement/i)).toBeVisible();
+    expect(
+      screen.getByRole('img', {
+        name: /Projected total principal balance by scenario/i,
+      }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByText('Payoff order summary'));
+    expect(screen.getByText('Interest saved')).toBeVisible();
+    fireEvent.click(screen.getByText('Monthly extra-payment allocation schedule'));
+    expect(screen.getByText('Extra payment debt')).toBeVisible();
+    expect(screen.getAllByText('$250.00').length).toBeGreaterThan(0);
+  });
+
+  it('uses debt names for custom payoff ordering instead of raw debt IDs', async () => {
+    const bridge = createBridge();
+    bridge.listDebts = vi.fn(async () => ({
+      ok: true as const,
+      value: [sampleDebtSummary],
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Payoff scenarios' }));
+    fireEvent.change(await screen.findByLabelText('Payoff strategy'), {
+      target: { value: 'custom' },
+    });
+
+    expect(screen.getByText('Custom payoff priority')).toBeVisible();
+    expect(screen.getAllByText('Fictional Equipment Note').length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText('Custom priority debt IDs')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Move up' })).toBeDisabled();
   });
 
   it('identifies unsupported payoff scenario debt results without precise interest totals', async () => {
@@ -2118,7 +2299,9 @@ describe('debt maintenance application', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Payoff scenarios' }));
 
-    expect(await screen.findByText('Generated unsupported scenario')).toBeVisible();
+    expect(
+      (await screen.findAllByText('Generated unsupported scenario')).length,
+    ).toBeGreaterThan(0);
     fireEvent.click(screen.getByText('Assumptions, debt results, and warnings'));
     expect(screen.getAllByText('Unsupported').length).toBeGreaterThan(0);
     expect(screen.getByText('Not reliable')).toBeVisible();

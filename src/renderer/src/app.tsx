@@ -42,6 +42,10 @@ import { formatLastChanged, formatTimestamp } from './components/display-format'
 import { PayoffScenarios } from './components/payoff-scenarios';
 import { RecordRefinanceForm } from './components/record-refinance-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
+import {
+  defaultReportSessionState,
+  type ReportSessionState,
+} from './components/report-session-state';
 
 type View =
   | 'dashboard'
@@ -139,6 +143,9 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [view, setView] = useState<View>('dashboard');
   const [dashboard, setDashboard] = useState<DashboardDto | null>(null);
   const [reports, setReports] = useState<DebtReportsDto | null>(null);
+  const [reportState, setReportState] = useState<ReportSessionState>(
+    defaultReportSessionState,
+  );
   const [dataManagementStatus, setDataManagementStatus] =
     useState<DataManagementStatusDto | null>(null);
   const [payoffScenarios, setPayoffScenarios] = useState<readonly PayoffScenarioDto[]>(
@@ -282,7 +289,15 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   ): Promise<void> => {
     setLoading(true);
     setError(null);
-    const result = await invokeBridge(() => bridge.getDebtReports(request));
+    const availableDebtIds = new Set(debts.map((debt) => debt.id));
+    const safeRequest =
+      request.debtId && debts.length > 0 && !availableDebtIds.has(request.debtId)
+        ? { ...request, debtId: null }
+        : request;
+    if (safeRequest.debtId !== request.debtId) {
+      setReportState((current) => ({ ...current, debtId: null }));
+    }
+    const result = await invokeBridge(() => bridge.getDebtReports(safeRequest));
 
     if (result.ok) {
       setReports(result.value);
@@ -385,6 +400,13 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setReverseTarget(null);
     setError(null);
     setFieldErrors(undefined);
+    if (debts.length === 0) {
+      void invokeBridge(() => bridge.listDebts({ includeArchived: false })).then(
+        (result) => {
+          if (result.ok) setDebts(result.value);
+        },
+      );
+    }
     void loadPayoffScenarios();
   };
 
@@ -396,7 +418,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setReverseTarget(null);
     setError(null);
     setFieldErrors(undefined);
-    void loadReports();
+    if (debts.length === 0) {
+      void invokeBridge(() => bridge.listDebts({ includeArchived: false })).then(
+        (result) => {
+          if (result.ok) setDebts(result.value);
+        },
+      );
+    }
+    if (!reports) {
+      void loadReports();
+    }
   };
 
   const showDataManagement = (): void => {
@@ -1174,6 +1205,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
           {view === 'payoff' ? (
             <PayoffScenarios
+              debts={debts}
               error={error}
               fieldErrors={fieldErrors}
               loading={loading}
@@ -1187,10 +1219,13 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
           {view === 'reports' ? (
             <AdvancedReports
+              debts={debts}
               loading={loading}
               onApplyFilters={(request) => void loadReports(request)}
               onSelectDebt={(id) => void selectDebt(id)}
+              onStateChange={setReportState}
               reports={reports}
+              state={reportState}
             />
           ) : null}
 

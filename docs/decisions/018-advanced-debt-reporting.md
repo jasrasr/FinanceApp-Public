@@ -47,9 +47,7 @@ Principal reduction + Principal adjustments = Ending principal. Cash payments
 and interest activity are retained only as supplemental columns; they do not
 drive the principal equation. Escrow deposits, escrow disbursements, escrow
 refunds, and escrow adjustments do not enter principal adjustments. Confirmed
-snapshots are displayed separately. Interest-rate and extra-payment sensitivity
-reports reuse the payoff scenario engine rather than duplicating projection
-logic. Unsupported payoff terms inherit the engine's warnings.
+snapshots are displayed separately.
 
 Debt balance history by obligation supersedes the separate total-only balance
 trend section. It visualizes application-calculated ending principal balances by
@@ -65,16 +63,15 @@ than limiting the chart to recent years. Interest charts use readable month-year
 or year labels and display interest as a positive user-facing expense that must
 reconcile to the tabular report detail.
 
-Interest-rate sensitivity is framed around variable-rate decision analysis and
-includes only debts where rate sensitivity is meaningful. Extra-payment
-sensitivity is framed around additional monthly payment scenarios. Both are
-derived from payoff-engine results and must show unavailable states when the
-current data cannot produce reliable output.
+Report filters, section expansion, and practical chart-series visibility are
+preserved only for the current renderer session. Reset Filters intentionally
+returns the report screen to its documented defaults.
 
-Actual-versus-plan variance uses saved payoff scenarios as the plan source. Since
-saved scenario records currently do not persist monthly planned balances, the
-report labels planned reduction and variance as limited when those amounts cannot
-be determined from saved results.
+Interest-rate sensitivity and actual-versus-plan variance are removed from the
+normal Reports screen until their analytical basis is clear. Actual-versus-plan
+analysis is deferred until saved scenarios intentionally persist period-level
+baseline balances. Extra-payment comparison is handled through payoff scenarios
+so warnings, allocation, and payoff order come from the payoff engine.
 
 ## Consequences
 
@@ -83,9 +80,8 @@ be determined from saved results.
 - Report output is reproducible from committed schema and current application
   services, but it is not a persisted report snapshot.
 - The narrow IPC model is preserved.
-- Sensitivity reporting stays aligned with the tested projection engine.
+- Payoff comparison stays aligned with the tested projection engine.
 - Balance and interest charting is renderer presentation of service-computed
   report rows; chart values must reconcile to accessible tables.
-- More precise actual-versus-plan reporting will require a future scenario
-  result shape that stores period-by-period plan balances or a separate planned
-  activity model.
+- Actual-versus-plan reporting will require a future scenario result shape that
+  stores period-by-period plan balances or a separate planned activity model.

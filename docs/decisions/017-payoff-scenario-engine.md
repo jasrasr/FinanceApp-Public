@@ -33,6 +33,11 @@ Phase-nine supported behavior is:
 - Required payments normalized to monthly equivalents.
 - Extra payments applied after scheduled payments by selected strategy.
 - Freed scheduled payments roll into the remaining prioritized debts.
+- Saved results include a monthly allocation schedule showing the debt receiving
+  the extra payment, required and extra payment amounts, ending projected
+  balance, payoff events, and the next priority debt.
+- Saved results include payoff-order summaries and total projected balance rows
+  suitable for scenario comparison charts.
 - Variable rates use explicit scenario overrides when supplied; without an
   override, the debt is marked unsupported.
 - Revolving debts assume no future draws.
@@ -50,6 +55,8 @@ Phase-nine supported behavior is:
 - Actual activity remains auditable and unaffected by planning workflows.
 - Rerunning a scenario updates the saved scenario result and audit trail but does
   not create ledger entries.
+- The renderer shows strategy explanations, included/excluded debt previews, and
+  debt-name custom ordering; raw debt IDs remain an internal contract detail.
 - More precise future features, such as lender-specific amortization, tax
   effects, irregular payment schedules, refinance analysis, and explicit
   balloon-payment modeling, require new documented engine versions.

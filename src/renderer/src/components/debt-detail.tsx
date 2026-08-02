@@ -257,20 +257,14 @@ export const DebtDetail = ({
       </section>
     </div>
 
-    <section
-      className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-      aria-labelledby="refinance-history-heading"
-    >
-      <h3 className="text-lg font-semibold" id="refinance-history-heading">
-        Refinance history
-      </h3>
-      {debt.refinanceEvents.length === 0 ? (
-        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-8 py-10 text-center">
-          <h4 className="text-base font-semibold text-slate-900">
-            No in-place refinances recorded
-          </h4>
-        </div>
-      ) : (
+    {debt.refinanceEvents.length > 0 ? (
+      <section
+        className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+        aria-labelledby="refinance-history-heading"
+      >
+        <h3 className="text-lg font-semibold" id="refinance-history-heading">
+          Refinance history
+        </h3>
         <div className="mt-5 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
@@ -336,8 +330,8 @@ export const DebtDetail = ({
             </tbody>
           </table>
         </div>
-      )}
-    </section>
+      </section>
+    ) : null}
 
     <section
       className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"

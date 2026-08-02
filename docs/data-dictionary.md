@@ -50,6 +50,10 @@ references, and financing-chain name.
 debt in the default list, while a timestamp preserves the record but hides it
 unless archived records are requested.
 
+Credit-card dashboard availability and utilization use active credit-card debts
+only. Active cards without a valid `credit_limit_cents` value remain readable and
+are flagged for review; they are excluded from utilization percentages.
+
 Legacy refinance references use `ON DELETE SET NULL` because they are
 presentation links between separate legal obligations created by prior versions.
 Normal refinance entry is now in-place through `refinance_events` and keeps one
@@ -417,6 +421,11 @@ Indexes cover status and start date. Scenario results are reproducible from the
 stored assumptions, engine version, and actual ledger state as of the scenario
 start date. They are not posted transactions and must not update debts,
 transactions, snapshots, or reconciliations.
+
+Current `result_json` includes scenario-level totals, per-debt payoff results,
+the monthly extra-payment allocation schedule, total projected balance by month,
+and payoff-order summaries. Older saved results without the newer schedule
+fields remain readable.
 
 ## Settings
 

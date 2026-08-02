@@ -25,14 +25,17 @@ for maintaining debts and supporting future debt-paydown analysis.
   adjustment postings, and void/supersede correction of incorrect
   reconciliations.
 - Basic dashboard with active-debt totals, year-to-date posted activity metrics,
-  current escrow balance, current-term payment and rate summaries, upcoming
-  maturities, open reconciliation attention items, and drill-through navigation
-  to debt and escrow detail.
+  credit-card availability and utilization, current escrow balance,
+  current-term payment and rate summaries, upcoming maturities, open
+  reconciliation attention items, and drill-through navigation to debt,
+  credit-card, and escrow detail.
 - Saved payoff scenarios using baseline, debt avalanche, debt snowball, and
-  custom-priority strategies, with rerun and archive support.
+  custom-priority strategies, with plain-language strategy explanations,
+  debt-name custom ordering, monthly extra-payment allocation schedules,
+  comparison charts, rerun, and archive support.
 - Advanced read-only debt reports for rollforwards, balance history, activity
-  trends, maturity and required-payment schedules, sensitivity analysis,
-  actual-versus-plan variance, and reconciliation/data-quality exceptions.
+  trends, maturity and required-payment schedules, interest analysis, and
+  reconciliation/data-quality exceptions.
 - Debt-history charts provide bounded wheel zoom and drag pan. Interest charts
   provide readable month/year labels, dynamic currency ticks, immediate compact
   hover details, and reconciled annual debt-source interest totals.
@@ -327,10 +330,11 @@ Electron user-data directory that it removes after the workflow.
   stated effective date.
 - Confirmed snapshots and saved scenario results are shown separately from
   calculated ledger balances.
-- Rollforward, trend, balance-history, maturity, sensitivity, variance, and
-  exception reports state their date range, effective date, balance basis, and
-  assumptions.
+- Rollforward, trend, balance-history, maturity, interest, and exception reports
+  state their date range, effective date, balance basis, and assumptions.
 - Filters support date range, debt, debt type, and status where relevant.
+- Active report filters and practical display state are preserved for the
+  current application session. Reset Filters returns the screen to defaults.
 - Date-range presets support current year, prior year, current month, prior
   month, year to date, last 12 months, all activity, and custom date ranges.
 - Report sections are collapsed by default and can be expanded independently.
@@ -360,11 +364,11 @@ Electron user-data directory that it removes after the workflow.
   stable and distinct. Annual interest uses debt-source stacked bars with
   toggles. Interest expense is displayed as a positive amount and reconciles to
   the underlying report table.
-- Interest-rate and extra-payment sensitivity reports reuse the payoff scenario
-  engine and inherit its unsupported-term warnings.
-- Actual-versus-plan variance uses saved payoff scenarios. Because saved
-  scenarios currently do not persist period-by-period planned balances, variance
-  detail is labeled as limited when planned reduction cannot be determined.
+- Interest-rate sensitivity and actual-versus-plan variance are not shown on the
+  normal Reports screen. Actual-versus-plan analysis is deferred until saved
+  scenario period-level baselines are intentionally supported.
+- Extra-payment comparison is handled through the payoff scenario workflow so
+  allocation, warnings, and payoff order remain tied to the payoff engine.
 - Charts are restrained and paired with tabular detail.
 
 ## Backup, Restore, and Export Rules

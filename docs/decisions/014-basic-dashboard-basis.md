@@ -31,10 +31,17 @@ represents the original borrowing. Subsequent borrowing/draw transactions
 continue to be counted by transaction effective date. Use current effective debt
 terms for required monthly payments and weighted average interest rate.
 
+Credit-card availability and utilization are dashboard-only calculated metrics
+for active credit-card debts. Cards without valid credit limits are flagged and
+excluded from utilization percentages. Available credit is displayed no lower
+than zero, with over-limit amounts identified separately.
+
 ## Consequences
 
 - Dashboard totals remain tied to an explicit effective date and basis.
 - Archived debts are excluded from dashboard metrics.
+- Credit-card portfolio metrics remain application-calculated current values and
+  do not become confirmed statement balances.
 - The renderer does not receive raw SQL, Drizzle objects, database connections,
   filesystem access, or generic IPC.
 - Later projection, payoff, refinance, and reporting features can add separate
