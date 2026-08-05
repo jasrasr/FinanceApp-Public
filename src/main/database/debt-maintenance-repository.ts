@@ -1654,3 +1654,39 @@ export const updatePayoffScenarioResultRecord = (
     transaction.insert(auditEvents).values(audit).run();
   });
 };
+
+export const updatePayoffScenarioNameRecord = (
+  database: AppDatabase,
+  input: {
+    readonly id: string;
+    readonly expectedUpdatedAtUtc: string;
+    readonly name: string;
+    readonly updatedAtUtc: string;
+    readonly audit: AuditEventInsert;
+  },
+): void => {
+  const audit = auditEventInsertSchema.parse(input.audit);
+  database.transaction((transaction) => {
+    const result = transaction
+      .update(payoffScenarios)
+      .set({ name: input.name, updatedAtUtc: input.updatedAtUtc })
+      .where(
+        and(
+          eq(payoffScenarios.id, input.id),
+          eq(payoffScenarios.updatedAtUtc, input.expectedUpdatedAtUtc),
+          eq(payoffScenarios.status, 'active'),
+        ),
+      )
+      .run();
+    if (result.changes !== 1) {
+      const existing = transaction
+        .select({ id: payoffScenarios.id })
+        .from(payoffScenarios)
+        .where(eq(payoffScenarios.id, input.id))
+        .get();
+      if (!existing) throw new RepositoryNotFoundError('Scenario was not found.');
+      throw new RepositoryConflictError('Scenario changed before rename.');
+    }
+    transaction.insert(auditEvents).values(audit).run();
+  });
+};

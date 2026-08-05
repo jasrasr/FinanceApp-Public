@@ -1,5 +1,16 @@
 # Project Progress
 
+## Phase 42: Payoff presentation and scenario naming refinement
+
+Completion date: 2026-08-05. Version: 1.2.2.
+
+- Renamed the extra-cash redirected-payment savings label and removed portfolio payoff date and Custom split from the normal comparison workflow; compatibility support remains for saved custom-split data.
+- Added adaptive month/year chart ticks, payoff markers, selected-scenario summaries, Select all/Select none controls, and explicit not-paid-off horizon text.
+- Added narrow typed payoff-scenario rename IPC with trimmed length-limited names, optimistic concurrency, and a non-sensitive audit event. Rename changes no assumptions, results, engine version, or scenario identity.
+- No ledger accounting, reconciliation, report, due-date, backup, or export behavior changed.
+- Validation: format, full check, packaged installer smoke, production audit, and diff checks passed; packaged smoke completed both install and upgrade-preservation workflows.
+- Recommended next phase: acceptance test saved-scenario comparisons and rename behavior with long projection spans.
+
 ## Phase 41: Extra-cash allocation transparency correction
 
 Completion date: 2026-08-05. Version: 1.2.1.

@@ -30,6 +30,7 @@ import type {
   GetPayoffScenarioRequest,
   RerunPayoffScenarioRequest,
   ArchivePayoffScenarioRequest,
+  RenamePayoffScenarioRequest,
   PayoffScenarioDto,
   PermanentDebtDeletionDto,
   RecordRefinanceRequest,
@@ -78,6 +79,9 @@ export interface DebtBridge {
   ): Promise<ApplicationResult<PayoffScenarioDto>>;
   archivePayoffScenario(
     request: ArchivePayoffScenarioRequest,
+  ): Promise<ApplicationResult<PayoffScenarioDto>>;
+  renamePayoffScenario(
+    request: RenamePayoffScenarioRequest,
   ): Promise<ApplicationResult<PayoffScenarioDto>>;
   calculateExtraCashAllocation(
     request: ExtraCashAllocationRequest,

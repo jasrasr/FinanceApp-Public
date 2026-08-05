@@ -679,3 +679,7 @@ other calculation conventions.
 
 This phase stores and validates those classifications but does not implement
 interest accrual or amortization calculations.
+
+Extra-cash comparison labels downstream savings as “Interest saved from
+redirected payments.” Saved scenario names are descriptive metadata only;
+renaming a scenario does not recalculate or alter projected activity.

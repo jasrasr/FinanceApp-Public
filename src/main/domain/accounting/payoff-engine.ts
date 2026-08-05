@@ -31,6 +31,7 @@ export interface PayoffAssumptions {
   readonly maxProjectionMonths: number;
   readonly initialLumpSumAllocationsCents?: Readonly<Record<string, number>>;
   readonly initialLumpSumDate?: string;
+  readonly initialLumpSumCents?: number;
 }
 
 export interface PayoffDebtResult {

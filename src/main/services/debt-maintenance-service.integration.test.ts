@@ -2430,6 +2430,30 @@ describe('debt maintenance', () => {
     });
   });
 
+  it('renames a saved payoff scenario without changing its calculation or identity', () => {
+    const debt = service.createDebt(validRequest('Generated Rename Debt'));
+    service.createDebtTransaction(validTransactionRequest(debt.id));
+    const original = service.createPayoffScenario({
+      name: 'Generated original scenario',
+      scenarioStartDate: '2026-07-28',
+      strategy: 'avalanche',
+      extraMonthlyPayment: '100.00',
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 360,
+    });
+    const renamed = service.renamePayoffScenario({
+      id: original.id,
+      expectedUpdatedAtUtc: original.updatedAtUtc,
+      name: '  Generated renamed scenario  ',
+    });
+    expect(renamed.id).toBe(original.id);
+    expect(renamed.name).toBe('Generated renamed scenario');
+    expect(renamed.result).toEqual(original.result);
+    expect(renamed.createdAtUtc).toBe(original.createdAtUtc);
+    expect(renamed.updatedAtUtc).not.toBe(original.updatedAtUtc);
+  });
+
   it('retrieves a debt through the application service', () => {
     const created = service.createDebt(validRequest());
     expect(service.getDebt({ id: created.id })).toMatchObject({

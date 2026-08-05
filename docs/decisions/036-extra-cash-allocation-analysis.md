@@ -23,3 +23,7 @@ The required-payment baseline is explicitly non-allocating. A zero-rate debt
 can produce portfolio savings only through required-payment rollover into later
 higher-rate debts; the result reports those savings separately from direct
 target savings. Custom splits must reconcile before projection.
+
+The normal extra-cash comparison presents baseline, rate, balance, selected,
+and custom-priority strategies. Custom-split engine compatibility remains
+available for previously saved data but is not a normal comparison row.

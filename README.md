@@ -5,7 +5,8 @@ for maintaining debts and supporting future debt-paydown analysis.
 
 ## Release Status
 
-Version 1.2.1 refines the extra-cash allocation analysis with explicit baseline,
+Version 1.2.2 refines saved payoff presentation and scenario naming while preserving
+the extra-cash allocation corrections. Version 1.2.1 refines the extra-cash allocation analysis with explicit baseline,
 rollover, custom-split, debt-level reconciliation, and payoff-horizon disclosures.
 Version 1.2.0 builds on the first stable production release with scheduled
 payment due-day tracking and occurrence-based unpaid upcoming-payment review. It is intended for

@@ -27,6 +27,7 @@ import type {
   VoidDebtTransactionRequest,
   ConfirmScheduledPaymentRequest,
   RemoveScheduledPaymentConfirmationRequest,
+  RenamePayoffScenarioRequest,
   ExtraCashAllocationRequest,
   ExtraCashAllocationResponse,
 } from '../../shared/debt-contracts';
@@ -573,6 +574,22 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       handleFailure(result.error);
     }
 
+    setSaving(false);
+  };
+
+  const renamePayoffScenario = async (
+    request: RenamePayoffScenarioRequest,
+  ): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() => bridge.renamePayoffScenario(request));
+    if (result.ok) {
+      setSuccessMessage('Payoff scenario was renamed.');
+      await loadPayoffScenarios();
+    } else {
+      handleFailure(result.error);
+    }
     setSaving(false);
   };
 
@@ -1418,6 +1435,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onArchive={(scenario) => void archivePayoffScenario(scenario)}
               onCreate={(request) => void createPayoffScenario(request)}
               onRerun={(scenario) => void rerunPayoffScenario(scenario)}
+              onRename={(request) => void renamePayoffScenario(request)}
               saving={saving}
               scenarios={payoffScenarios}
             />

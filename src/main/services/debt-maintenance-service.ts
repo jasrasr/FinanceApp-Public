@@ -28,6 +28,7 @@ import type {
   PayoffScenarioDto,
   RecordRefinanceRequest,
   RerunPayoffScenarioRequest,
+  RenamePayoffScenarioRequest,
   ReverseDebtTransactionRequest,
   RestoreDebtRequest,
   UpdateDebtRequest,
@@ -56,6 +57,7 @@ import {
   listDebtsRequestSchema,
   recordRefinanceRequestSchema,
   rerunPayoffScenarioRequestSchema,
+  renamePayoffScenarioRequestSchema,
   reverseDebtTransactionRequestSchema,
   restoreDebtRequestSchema,
   updateDebtRequestSchema,
@@ -92,6 +94,7 @@ import {
   setDebtArchivedState,
   updatePayoffScenarioArchiveState,
   updatePayoffScenarioResultRecord,
+  updatePayoffScenarioNameRecord,
   updateDebtDescriptiveRecord,
   voidBalanceReconciliationRecord,
   type DebtRecord,
@@ -161,6 +164,7 @@ export interface DebtMaintenanceService {
     request: ExtraCashAllocationRequest,
   ): ExtraCashAllocationResponse;
   rerunPayoffScenario(request: RerunPayoffScenarioRequest): PayoffScenarioDto;
+  renamePayoffScenario(request: RenamePayoffScenarioRequest): PayoffScenarioDto;
   archivePayoffScenario(request: ArchivePayoffScenarioRequest): PayoffScenarioDto;
   getDebt(request: GetDebtRequest): DebtDetailDto;
   createDebt(request: CreateDebtRequest): DebtDetailDto;
@@ -1633,6 +1637,13 @@ const mapPayoffScenario = (record: PayoffScenarioRecord): PayoffScenarioDto => {
     status: record.status,
     scenarioStartDate: record.scenarioStartDate,
     extraMonthlyPayment: centsToDollars(record.extraMonthlyPaymentCents),
+    lumpSum: centsToDollars(
+      assumptions.initialLumpSumCents ??
+        Object.values(assumptions.initialLumpSumAllocationsCents ?? {}).reduce(
+          (total, value) => total + value,
+          0,
+        ),
+    ),
     customPriority: JSON.parse(record.customPriorityJson) as string[],
     variableRateOverrides: Object.fromEntries(
       Object.entries(assumptions.variableRateOverrides).map(([debtId, rateMicros]) => [
@@ -1713,6 +1724,9 @@ const buildPayoffAssumptions = (
   maxProjectionMonths: request.maxProjectionMonths,
   initialLumpSumDate: request.lumpSumDate
     ? ensureCalendarDate('lumpSumDate', request.lumpSumDate)
+    : undefined,
+  initialLumpSumCents: request.lumpSum
+    ? convertMoney('lumpSum', request.lumpSum)
     : undefined,
   initialLumpSumAllocationsCents: request.initialLumpSumAllocations
     ? Object.fromEntries(
@@ -2559,7 +2573,6 @@ export const createDebtMaintenanceService = ({
           'lowest_balance',
           'selected_debt',
           'custom_priority',
-          'custom_split',
         ];
         const selectedDebtId = parsed.selectedDebtId ?? inputs[0]?.debtId;
         const comparisons = strategies.map((strategy) => {
@@ -2698,6 +2711,37 @@ export const createDebtMaintenanceService = ({
           ),
         });
 
+        return mapPayoffScenario(getScenarioOrThrow(parsed.id));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    renamePayoffScenario: (request) => {
+      try {
+        const parsed = renamePayoffScenarioRequestSchema.parse(request);
+        const existing = getScenarioOrThrow(parsed.id);
+        if (existing.status === 'archived') {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Archived payoff scenarios cannot be renamed.',
+          );
+        }
+        const timestamp = nextTimestamp(now, existing.updatedAtUtc);
+        updatePayoffScenarioNameRecord(database, {
+          id: parsed.id,
+          expectedUpdatedAtUtc: parsed.expectedUpdatedAtUtc,
+          name: parsed.name,
+          updatedAtUtc: timestamp,
+          audit: createPayoffScenarioAudit(
+            createId(),
+            parsed.id,
+            'payoff_scenario_renamed',
+            'rename',
+            timestamp,
+            'Payoff scenario name was changed without recalculating its assumptions or results.',
+          ),
+        });
         return mapPayoffScenario(getScenarioOrThrow(parsed.id));
       } catch (error) {
         return normalizeError(error);

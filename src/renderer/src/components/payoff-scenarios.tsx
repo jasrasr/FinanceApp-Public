@@ -4,6 +4,7 @@ import type {
   CreatePayoffScenarioRequest,
   DebtSummaryDto,
   PayoffScenarioDto,
+  RenamePayoffScenarioRequest,
 } from '../../../shared/debt-contracts';
 import { formatDollarString } from './display-format';
 
@@ -17,6 +18,7 @@ export interface PayoffScenariosProps {
   readonly onArchive: (scenario: PayoffScenarioDto) => void;
   readonly onCreate: (request: CreatePayoffScenarioRequest) => void;
   readonly onRerun: (scenario: PayoffScenarioDto) => void;
+  readonly onRename: (request: RenamePayoffScenarioRequest) => void;
 }
 
 interface DebtEligibility {
@@ -31,6 +33,13 @@ const formatFinancialDate = (value: string): string =>
   new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' }).format(
     new Date(`${value}T00:00:00.000Z`),
   );
+
+const formatMonthYear = (value: string): string =>
+  new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${value}T00:00:00.000Z`));
 
 const parseAmount = (value: string): number => {
   const parsed = Number(value.replaceAll(',', ''));
@@ -159,29 +168,62 @@ const ComparisonChart = ({
   if (eligibleScenarios.length === 0) return null;
 
   const colors = ['#1d4ed8', '#047857', '#b45309', '#7c3aed', '#be123c', '#0891b2'];
-  const width = 760;
-  const height = 260;
+  const width = 900;
+  const height = 330;
   const padding = { left: 70, right: 24, top: 20, bottom: 44 };
-  const points = selected.flatMap((scenario) =>
-    scenario.result.monthlySchedule.map((entry, index) => ({
-      scenario,
-      index,
-      date: entry.month,
-      value: parseAmount(entry.totalProjectedBalance),
-    })),
+  const points = selected.flatMap((scenario) => scenario.result.monthlySchedule);
+  const maxIndex = Math.max(
+    1,
+    ...selected.map((scenario) => scenario.result.monthlySchedule.length - 1),
   );
-  const maxIndex = Math.max(1, ...points.map((point) => point.index));
-  const maxValue = Math.max(1, ...points.map((point) => point.value));
+  const maxValue = Math.max(
+    1,
+    ...points.map((point) => parseAmount(point.totalProjectedBalance)),
+  );
   const xFor = (index: number): number =>
     padding.left + (index / maxIndex) * (width - padding.left - padding.right);
   const yFor = (value: number): number =>
     padding.top + (1 - value / maxValue) * (height - padding.top - padding.bottom);
+
+  const dateAt = (scenario: PayoffScenarioDto, index: number): string =>
+    scenario.result.monthlySchedule[index]?.month ?? scenario.scenarioStartDate;
+  const tickIndexes = Array.from(
+    new Set([
+      0,
+      ...Array.from({ length: 5 }, (_, index) => Math.round((maxIndex * index) / 4)),
+      maxIndex,
+    ]),
+  );
+  const tickScenario = selected[0] ?? eligibleScenarios[0]!;
+  const payoffIndex = (scenario: PayoffScenarioDto): number | null => {
+    if (!scenario.result.projectedPayoffDate) return null;
+    const index = scenario.result.monthlySchedule.findIndex(
+      (entry) => entry.month >= scenario.result.projectedPayoffDate!,
+    );
+    return index >= 0 ? index : null;
+  };
 
   return (
     <section className="rounded-lg border border-slate-200 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h4 className="font-semibold">Scenario balance comparison</h4>
         <div className="flex flex-wrap gap-2 text-sm">
+          <button
+            className="rounded-md border border-slate-300 px-2 py-1 font-semibold"
+            onClick={() =>
+              setSelectedIds(eligibleScenarios.map((scenario) => scenario.id))
+            }
+            type="button"
+          >
+            Select all
+          </button>
+          <button
+            className="rounded-md border border-slate-300 px-2 py-1 font-semibold"
+            onClick={() => setSelectedIds([])}
+            type="button"
+          >
+            Select none
+          </button>
           {eligibleScenarios.map((scenario, index) => {
             const active = activeSelectedIds.includes(scenario.id);
             return (
@@ -212,10 +254,34 @@ const ComparisonChart = ({
           })}
         </div>
       </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {selected.map((scenario) => (
+          <div
+            className="rounded-md border border-slate-200 p-3 text-sm"
+            key={`${scenario.id}-summary`}
+          >
+            <p className="font-semibold">{scenario.name}</p>
+            <p className="text-slate-600">
+              {scenario.strategy} · extra monthly{' '}
+              {formatDollarString(scenario.extraMonthlyPayment)}
+            </p>
+            <p className="text-slate-600">
+              Lump sum: {formatDollarString(scenario.lumpSum)} · payoff:{' '}
+              {scenario.result.projectedPayoffDate
+                ? formatMonthYear(scenario.result.projectedPayoffDate)
+                : 'Not paid off within projection horizon'}
+            </p>
+            <p className="text-slate-600">
+              Interest: {formatDollarString(scenario.result.totalProjectedInterest)} ·
+              saved vs baseline: {formatDollarString(scenario.result.interestSavings)}
+            </p>
+          </div>
+        ))}
+      </div>
       <div className="mt-4 overflow-x-auto">
         <svg
           aria-label="Projected total principal balance by scenario"
-          className="min-w-[760px]"
+          className="min-w-[900px]"
           role="img"
           viewBox={`0 0 ${width} ${height}`}
         >
@@ -247,7 +313,20 @@ const ComparisonChart = ({
                 ).toFixed(1)}`;
               })
               .join(' ');
-            return <path d={path} fill="none" key={scenario.id} stroke={color} />;
+            return (
+              <path
+                d={path}
+                fill="none"
+                key={scenario.id}
+                stroke={color}
+                strokeDasharray={
+                  eligibleScenarios.findIndex((item) => item.id === scenario.id) >=
+                  colors.length
+                    ? '6 4'
+                    : undefined
+                }
+              />
+            );
           })}
           {selected.map((scenario) =>
             scenario.result.monthlySchedule.map((entry, index) => {
@@ -264,15 +343,54 @@ const ComparisonChart = ({
                   key={`${scenario.id}-${entry.month}`}
                   r="3"
                 >
-                  <title>
-                    {`${formatFinancialDate(entry.month)} - ${scenario.name}: ${formatDollarString(entry.totalProjectedBalance)}`}
-                  </title>
+                  <title>{`${formatMonthYear(entry.month)} - ${scenario.name}: ${formatDollarString(entry.totalProjectedBalance)}`}</title>
                 </circle>
               );
             }),
           )}
-          <text fill="#475569" fontSize="12" x={padding.left} y={height - 14}>
-            Projection month
+          {selected.map((scenario) => {
+            const index = payoffIndex(scenario);
+            if (index === null) return null;
+            const color =
+              colors[
+                eligibleScenarios.findIndex((item) => item.id === scenario.id) %
+                  colors.length
+              ] ?? '#1d4ed8';
+            return (
+              <g key={`${scenario.id}-payoff-marker`}>
+                <circle
+                  cx={xFor(index)}
+                  cy={yFor(0)}
+                  fill="white"
+                  r="6"
+                  stroke={color}
+                  strokeWidth="3"
+                >
+                  <title>{`${formatMonthYear(dateAt(scenario, index))} - ${scenario.name}: $0.00 projected balance`}</title>
+                </circle>
+                <text
+                  fill={color}
+                  fontSize="11"
+                  x={xFor(index) + 6}
+                  y={yFor(0) - 8}
+                >{`${scenario.name} · ${formatMonthYear(dateAt(scenario, index))}`}</text>
+              </g>
+            );
+          })}
+          {tickIndexes.map((index) => (
+            <text
+              fill="#475569"
+              fontSize="11"
+              key={`tick-${index}`}
+              textAnchor="middle"
+              x={xFor(index)}
+              y={height - 14}
+            >
+              {formatMonthYear(dateAt(tickScenario, index))}
+            </text>
+          ))}
+          <text fill="#475569" fontSize="12" x={padding.left} y={height - 2}>
+            Projection month and year
           </text>
           <text fill="#475569" fontSize="12" x="6" y={padding.top + 8}>
             Balance
@@ -288,7 +406,7 @@ const ComparisonChart = ({
             <thead className="border-b border-slate-200 text-xs text-slate-500 uppercase">
               <tr>
                 <th className="py-2 pr-4">Scenario</th>
-                <th className="py-2 pr-4">Month</th>
+                <th className="py-2 pr-4">Month and year</th>
                 <th className="py-2 pr-4 text-right">Projected total balance</th>
               </tr>
             </thead>
@@ -300,7 +418,7 @@ const ComparisonChart = ({
                     key={`${scenario.id}-${entry.month}`}
                   >
                     <td className="py-2 pr-4">{scenario.name}</td>
-                    <td className="py-2 pr-4">{formatFinancialDate(entry.month)}</td>
+                    <td className="py-2 pr-4">{formatMonthYear(entry.month)}</td>
                     <td className="py-2 pr-4 text-right tabular-nums">
                       {formatDollarString(entry.totalProjectedBalance)}
                     </td>
@@ -325,6 +443,7 @@ export const PayoffScenarios = ({
   onArchive,
   onCreate,
   onRerun,
+  onRename,
 }: PayoffScenariosProps): React.JSX.Element => {
   const [name, setName] = useState('Generated payoff scenario');
   const [scenarioStartDate, setScenarioStartDate] = useState(today());
@@ -332,6 +451,9 @@ export const PayoffScenarios = ({
     useState<CreatePayoffScenarioRequest['strategy']>('avalanche');
   const [extraMonthlyPayment, setExtraMonthlyPayment] = useState('0.00');
   const [maxProjectionMonths, setMaxProjectionMonths] = useState(360);
+  const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   const eligibility = useMemo(() => debts.map(debtEligibility), [debts]);
   const includedDebts = eligibility
@@ -357,6 +479,24 @@ export const PayoffScenarios = ({
       variableRateOverrides: {},
       maxProjectionMonths,
     });
+  };
+  const submitRename = (scenario: PayoffScenarioDto): void => {
+    const nameValue = renameValue.trim();
+    if (!nameValue) {
+      setRenameError('Enter a scenario name.');
+      return;
+    }
+    if (nameValue.length > 200) {
+      setRenameError('Scenario names must be 200 characters or fewer.');
+      return;
+    }
+    onRename({
+      id: scenario.id,
+      expectedUpdatedAtUtc: scenario.updatedAtUtc,
+      name: nameValue,
+    });
+    setRenameTargetId(null);
+    setRenameError(null);
   };
 
   return (
@@ -572,7 +712,41 @@ export const PayoffScenarios = ({
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h4 className="font-semibold">{scenario.name}</h4>
+                  {renameTargetId === scenario.id ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        aria-label={`Rename ${scenario.name}`}
+                        className="rounded border border-slate-300 px-2 py-1 text-sm"
+                        maxLength={200}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                        value={renameValue}
+                      />
+                      <span className="sr-only" role="alert">
+                        {renameError ?? ''}
+                      </span>
+                      <button
+                        className="rounded border border-slate-300 px-2 py-1 text-xs font-semibold"
+                        onClick={() => submitRename(scenario)}
+                        type="button"
+                      >
+                        Save name
+                      </button>
+                      <button
+                        className="rounded border border-slate-300 px-2 py-1 text-xs"
+                        onClick={() => setRenameTargetId(null)}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <h4 className="font-semibold">{scenario.name}</h4>
+                  )}
+                  {renameTargetId === scenario.id && renameError ? (
+                    <p className="mt-1 text-sm font-medium text-red-700" role="alert">
+                      {renameError}
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-sm text-slate-600">
                     {scenario.strategy} strategy - start date{' '}
                     {formatFinancialDate(scenario.scenarioStartDate)} - engine{' '}
@@ -580,6 +754,16 @@ export const PayoffScenarios = ({
                   </p>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-50"
+                    onClick={() => {
+                      setRenameTargetId(scenario.id);
+                      setRenameValue(scenario.name);
+                    }}
+                    type="button"
+                  >
+                    Rename
+                  </button>
                   <button
                     className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-50"
                     onClick={() => onRerun(scenario)}

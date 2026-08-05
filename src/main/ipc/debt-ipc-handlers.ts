@@ -11,6 +11,7 @@ import {
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
   archivePayoffScenarioRequestSchema,
+  renamePayoffScenarioRequestSchema,
   createDebtRequestSchema,
   dashboardDtoSchema,
   dataExportDtoSchema,
@@ -304,6 +305,14 @@ export const registerDebtIpcHandlers = (
     payoffScenarioDtoSchema,
     isTrustedSender,
     (request) => service.archivePayoffScenario(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.renamePayoffScenario,
+    renamePayoffScenarioRequestSchema,
+    payoffScenarioDtoSchema,
+    isTrustedSender,
+    (request) => service.renamePayoffScenario(request),
   );
   registerHandler(
     ipcMain,

@@ -36,6 +36,7 @@ describe('typed preload bridge', () => {
       'listPayoffScenarios',
       'recordRefinance',
       'removeScheduledPaymentConfirmation',
+      'renamePayoffScenario',
       'rerunPayoffScenario',
       'restoreBackup',
       'restoreDebt',

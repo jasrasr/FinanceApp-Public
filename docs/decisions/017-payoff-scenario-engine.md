@@ -65,6 +65,9 @@ Phase-nine supported behavior is:
   not create ledger entries.
 - The renderer shows strategy explanations, included/excluded debt previews, and
   debt-name custom ordering; raw debt IDs remain an internal contract detail.
+- Version 1.2.2 adds metadata-only saved-scenario renaming and adaptive
+  month/year chart labels with payoff markers. Renaming preserves scenario IDs,
+  assumptions, engine version, results, and creation timestamps.
 - More precise future features, such as lender-specific amortization, tax
   effects, irregular payment schedules, refinance analysis, and explicit
   balloon-payment modeling, require new documented engine versions.

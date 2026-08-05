@@ -171,12 +171,20 @@ export const ExtraCashAllocation = ({
                     <th className="py-2 pr-4 text-right">Lump sum applied</th>
                     <th className="py-2 pr-4 text-right">Unused cash</th>
                     <th className="py-2 pr-4">First debt payoff</th>
-                    <th className="py-2 pr-4">Portfolio payoff date</th>
                     <th className="py-2 pr-4 text-right">Projected interest</th>
-                    <th className="py-2 pr-4 text-right">Direct saved</th>
-                    <th className="py-2 pr-4 text-right">Rollover saved</th>
-                    <th className="py-2 pr-4 text-right">Total saved</th>
+                    <th className="py-2 pr-4 text-right">
+                      <span title="Interest avoided on the initial debt receiving the lump sum or extra payment.">
+                        Direct interest saved
+                      </span>
+                    </th>
+                    <th className="py-2 pr-4 text-right">
+                      <span title="Additional portfolio interest avoided after a paid-off debt's former required payment is redirected to later priority debts.">
+                        Interest saved from redirected payments
+                      </span>
+                    </th>
+                    <th className="py-2 pr-4 text-right">Total interest saved</th>
                     <th className="py-2 pr-4">Status</th>
+                    <th className="py-2 pr-4">Save scenario</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -198,10 +206,6 @@ export const ExtraCashAllocation = ({
                         {row.firstDebtName
                           ? `${row.firstDebtName} (${row.firstDebtPayoffDate ?? 'not reached'})`
                           : '—'}
-                      </td>
-                      <td className="py-2 pr-4">
-                        {row.projectedPayoffDate ??
-                          `Not within horizon (${row.projectionHorizonMonths ?? '—'} months; through ${row.projectionHorizonDate ?? '—'})`}
                       </td>
                       <td className="py-2 pr-4 text-right">
                         {money(row.projectedTotalInterest)}
@@ -249,7 +253,7 @@ export const ExtraCashAllocation = ({
                                 )
                                 .map((debt) => debt.debtId),
                               variableRateOverrides: {},
-                              maxProjectionMonths: 360,
+                              maxProjectionMonths: 600,
                               lumpSum,
                               lumpSumDate: result.analysisDate,
                               initialLumpSumAllocations: Object.fromEntries(

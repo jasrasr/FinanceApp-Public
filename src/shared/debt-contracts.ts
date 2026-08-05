@@ -362,6 +362,14 @@ export const archivePayoffScenarioRequestSchema = z
   })
   .strict();
 
+export const renamePayoffScenarioRequestSchema = z
+  .object({
+    id: uuidSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+    name: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
 export const getDebtRequestSchema = z.object({ id: uuidSchema }).strict();
 
 export const archiveDebtRequestSchema = z
@@ -1088,6 +1096,7 @@ export const payoffScenarioDtoSchema = z
     status: z.enum(PAYOFF_SCENARIO_STATUSES),
     scenarioStartDate: financialDateInputSchema,
     extraMonthlyPayment: z.string(),
+    lumpSum: z.string(),
     customPriority: z.array(uuidSchema),
     variableRateOverrides: z.record(uuidSchema, z.string()),
     maxProjectionMonths: z.number().int().positive(),
@@ -1201,6 +1210,9 @@ export type RerunPayoffScenarioRequest = z.infer<
 >;
 export type ArchivePayoffScenarioRequest = z.infer<
   typeof archivePayoffScenarioRequestSchema
+>;
+export type RenamePayoffScenarioRequest = z.infer<
+  typeof renamePayoffScenarioRequestSchema
 >;
 export type GetDebtRequest = z.infer<typeof getDebtRequestSchema>;
 export type ArchiveDebtRequest = z.infer<typeof archiveDebtRequestSchema>;
