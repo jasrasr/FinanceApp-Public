@@ -1740,12 +1740,44 @@ const mapExtraCashResult = (
   extraMonthlyPaymentCents: number,
 ): ExtraCashAllocationResponse['baseline'] => {
   const projection = result.projection;
+  if (!projection) {
+    return {
+      strategy: result.strategy,
+      status: result.status,
+      configurationMessage: result.configurationMessage,
+      strategyName: extraStrategyNames[result.strategy],
+      initialDebtName: null,
+      lumpSumApplied: null,
+      unusedLumpSum: null,
+      extraMonthlyPayment: centsToDollars(extraMonthlyPaymentCents),
+      projectedPayoffDate: null,
+      projectionHorizonDate: null,
+      projectionHorizonMonths: null,
+      incompleteDebtNames: [],
+      monthsSaved: null,
+      projectedTotalInterest: null,
+      directInterestSaved: null,
+      rolloverInterestSaved: null,
+      interestSaved: null,
+      totalProjectedCashPaid: null,
+      firstDebtName: null,
+      firstDebtPayoffDate: null,
+      finalDebtName: null,
+      includedDebtCount: debts.length,
+      assumptions: [],
+      warnings: [],
+      debts: [],
+      monthlySchedule: [],
+    };
+  }
   const first = projection.payoffOrder[0];
   const priority = new Map(
     projection.payoffOrder.map((row) => [row.debtId, row.priority]),
   );
   return {
     strategy: result.strategy,
+    status: projection.incompleteDebtIds?.length ? 'partial' : result.status,
+    configurationMessage: result.configurationMessage,
     strategyName: extraStrategyNames[result.strategy],
     initialDebtName:
       debts.find((debt) => debt.debtId === result.initialDebtId)?.debtName ?? null,
@@ -1753,8 +1785,31 @@ const mapExtraCashResult = (
     unusedLumpSum: centsToDollars(result.unusedLumpSumCents),
     extraMonthlyPayment: centsToDollars(extraMonthlyPaymentCents),
     projectedPayoffDate: projection.projectedPayoffDate,
+    projectionHorizonDate: projection.projectionHorizonDate ?? null,
+    projectionHorizonMonths: projection.projectionHorizonMonths ?? null,
+    incompleteDebtNames: (projection.incompleteDebtIds ?? []).map(
+      (debtId) => debts.find((debt) => debt.debtId === debtId)?.debtName ?? debtId,
+    ),
     monthsSaved: projection.monthsSaved,
     projectedTotalInterest: centsToDollars(projection.totalProjectedInterestCents),
+    directInterestSaved: centsToDollars(
+      result.initialDebtId
+        ? (baseline.debts.find((debt) => debt.debtId === result.initialDebtId)
+            ?.projectedInterestCents ?? 0) -
+            (projection.debts.find((debt) => debt.debtId === result.initialDebtId)
+              ?.projectedInterestCents ?? 0)
+        : 0,
+    ),
+    rolloverInterestSaved: centsToDollars(
+      baseline.totalProjectedInterestCents -
+        projection.totalProjectedInterestCents -
+        (result.initialDebtId
+          ? (baseline.debts.find((debt) => debt.debtId === result.initialDebtId)
+              ?.projectedInterestCents ?? 0) -
+            (projection.debts.find((debt) => debt.debtId === result.initialDebtId)
+              ?.projectedInterestCents ?? 0)
+          : 0),
+    ),
     interestSaved: centsToDollars(
       baseline.totalProjectedInterestCents - projection.totalProjectedInterestCents,
     ),
@@ -1775,7 +1830,21 @@ const mapExtraCashResult = (
       currentBalance: centsToDollars(
         debts.find((item) => item.debtId === debt.debtId)?.startingBalanceCents ?? 0,
       ),
+      rate: `${((debts.find((item) => item.debtId === debt.debtId)?.terms.at(-1)?.interestRateMicros ?? 0) / 10000).toFixed(2)}%`,
       lumpSumApplied: centsToDollars(result.lumpSumByDebtCents[debt.debtId] ?? 0),
+      requiredPaymentRolloverReceived: centsToDollars(
+        projection.monthlySchedule
+          .filter((entry) => entry.freedPaymentRecipientName === debt.debtName)
+          .reduce((total, entry) => total + (entry.freedRequiredPaymentCents ?? 0), 0),
+      ),
+      baselineProjectedInterest:
+        baseline.debts.find((item) => item.debtId === debt.debtId)
+          ?.projectedInterestCents === null
+          ? null
+          : centsToDollars(
+              baseline.debts.find((item) => item.debtId === debt.debtId)
+                ?.projectedInterestCents ?? 0,
+            ),
       extraMonthlyPaymentAllocation: centsToDollars(
         projection.monthlySchedule.find((entry) => entry.debtId === debt.debtId)
           ?.extraPaymentCents ?? 0,
@@ -1786,13 +1855,55 @@ const mapExtraCashResult = (
         debt.projectedInterestCents === null
           ? null
           : centsToDollars(debt.projectedInterestCents),
-      interestSaved: null,
+      interestSaved:
+        baseline.debts.find((item) => item.debtId === debt.debtId)
+          ?.projectedInterestCents === null || debt.projectedInterestCents === null
+          ? null
+          : centsToDollars(
+              (baseline.debts.find((item) => item.debtId === debt.debtId)
+                ?.projectedInterestCents ?? 0) - debt.projectedInterestCents,
+            ),
+      baselinePayoffDate:
+        baseline.debts.find((item) => item.debtId === debt.debtId)
+          ?.projectedPayoffDate ?? null,
       priority: priority.get(debt.debtId) ?? null,
     })),
-    monthlySchedule: projection.monthlySchedule.map((entry) => ({
-      date: entry.month,
-      totalProjectedBalance: centsToDollars(entry.totalProjectedBalanceCents),
-    })),
+    monthlySchedule: projection.monthlySchedule.flatMap((entry) =>
+      (
+        entry.debtAllocations ?? [
+          {
+            debtId: entry.debtId ?? '',
+            requiredPaymentCents: entry.requiredPaymentCents,
+            extraPaymentCents: entry.extraPaymentCents,
+            interestCents: entry.interestCents ?? 0,
+            endingBalanceCents: entry.endingProjectedBalanceCents,
+            payoffEvent: Boolean(entry.paidOffDebtName),
+          },
+        ]
+      ).map((allocation) => ({
+        date: entry.month,
+        debtName:
+          debts.find((debt) => debt.debtId === allocation.debtId)?.debtName ??
+          entry.debtName,
+        requiredPayment: centsToDollars(allocation.requiredPaymentCents),
+        lumpSumApplied: centsToDollars(
+          result.lumpSumByDebtCents[allocation.debtId] ?? 0,
+        ),
+        extraMonthlyPayment: centsToDollars(allocation.extraPaymentCents),
+        freedPaymentRollover: centsToDollars(allocation.freedPaymentCents ?? 0),
+        totalPayment: centsToDollars(
+          allocation.requiredPaymentCents +
+            allocation.extraPaymentCents +
+            (allocation.freedPaymentCents ?? 0),
+        ),
+        endingBalance: centsToDollars(allocation.endingBalanceCents),
+        interest: centsToDollars(allocation.interestCents),
+        payoffEvent: allocation.payoffEvent
+          ? (debts.find((debt) => debt.debtId === allocation.debtId)?.debtName ?? null)
+          : null,
+        totalProjectedBalance: centsToDollars(entry.totalProjectedBalanceCents),
+      })),
+    ),
   };
 };
 
@@ -2433,29 +2544,16 @@ export const createDebtMaintenanceService = ({
           ),
           maxProjectionMonths: parsed.maxProjectionMonths,
         };
-        const requestedSplitCents = Object.values(parsed.customSplit).reduce(
-          (total, value) => total + convertMoney('customSplit', value),
-          0,
-        );
-        const requestedLumpSumCents = common.lumpSumCents;
-        if (
-          requestedSplitCents !== 0 &&
-          requestedSplitCents !== requestedLumpSumCents
-        ) {
-          throw new ApplicationServiceError(
-            'validation',
-            'Review the highlighted fields.',
-            {
-              customSplit: [
-                'Custom split allocations must reconcile exactly to the entered lump sum.',
-              ],
-            },
-          );
-        }
         const baselineProjection = calculateExtraCashAllocation({
           ...common,
           strategy: 'baseline',
         }).projection;
+        if (!baselineProjection) {
+          throw new ApplicationServiceError(
+            'internal',
+            'Baseline projection could not be calculated.',
+          );
+        }
         const strategies: readonly ExtraCashAllocationStrategy[] = [
           'highest_rate',
           'lowest_balance',

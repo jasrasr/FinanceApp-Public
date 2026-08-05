@@ -18,3 +18,8 @@ payoff-scenario architecture and preserve the assumptions and engine version.
 The ledger remains unchanged while users compare strategies. Unsupported or
 ambiguous debt terms are visible before analysis. Results remain projections,
 not confirmed balances or actual activity.
+
+The required-payment baseline is explicitly non-allocating. A zero-rate debt
+can produce portfolio savings only through required-payment rollover into later
+higher-rate debts; the result reports those savings separately from direct
+target savings. Custom splits must reconcile before projection.

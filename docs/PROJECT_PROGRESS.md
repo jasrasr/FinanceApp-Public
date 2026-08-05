@@ -1,5 +1,16 @@
 # Project Progress
 
+## Phase 41: Extra-cash allocation transparency correction
+
+Completion date: 2026-08-05. Version: 1.2.1.
+
+- Reproduced the generated HELOC/HVAC case and corrected baseline target labeling, selected-debt lump-sum reporting, zero-rate direct-versus-rollover savings attribution, and incomplete custom-split handling.
+- Added horizon dates, incomplete-debt disclosures, per-debt interest reconciliation, monthly allocation traces, released-payment trace fields, and explicit comparison statuses.
+- No ledger, reconciliation, migration, or actual-activity changes.
+- Added regression coverage for a $1,000 selected HELOC, zero-rate HVAC rollover, baseline non-application, custom split configuration, and scenario-only behavior.
+- Validation: format, full check, packaged installer smoke, production audit, and diff checks passed; packaged smoke emitted the existing temporary-directory cleanup warning.
+- Recommended next phase: acceptance test the detailed trace against generated lender statements.
+
 ## Phase 40: Extra-cash debt allocation calculator
 
 Completion date: 2026-08-05. Version: 1.2.0.

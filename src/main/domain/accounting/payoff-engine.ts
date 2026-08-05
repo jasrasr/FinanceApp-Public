@@ -56,6 +56,18 @@ export interface PayoffMonthlyAllocation {
   readonly totalProjectedBalanceCents: number;
   readonly paidOffDebtName: string | null;
   readonly nextPriorityDebtName: string | null;
+  readonly interestCents?: number;
+  readonly freedRequiredPaymentCents?: number;
+  readonly freedPaymentRecipientName?: string | null;
+  readonly debtAllocations?: readonly {
+    readonly debtId: string;
+    readonly requiredPaymentCents: number;
+    readonly extraPaymentCents: number;
+    readonly freedPaymentCents?: number;
+    readonly interestCents: number;
+    readonly endingBalanceCents: number;
+    readonly payoffEvent: boolean;
+  }[];
 }
 
 export interface PayoffOrderSummary {
@@ -82,6 +94,9 @@ export interface PayoffProjectionResult {
   readonly payoffOrder: readonly PayoffOrderSummary[];
   readonly monthsSaved: number | null;
   readonly warnings: readonly string[];
+  readonly projectionHorizonMonths?: number;
+  readonly projectionHorizonDate?: string;
+  readonly incompleteDebtIds?: readonly string[];
 }
 
 const MONTHS_PER_YEAR = 12;
@@ -372,6 +387,8 @@ const runProjection = (
   for (let month = 0; month < assumptions.maxProjectionMonths; month += 1) {
     const date = addMonths(assumptions.scenarioStartDate, month);
     const nextDate = addMonths(assumptions.scenarioStartDate, month + 1);
+    const interestByPeriod = new Map<string, number>();
+    const requiredPaidByDebt = new Map<string, number>();
     const activeIds = debts
       .map((debt) => debt.debtId)
       .filter((id) => (balances.get(id) ?? 0) > 0 && !unsupportedDebtIds.has(id));
@@ -416,6 +433,7 @@ const runProjection = (
         date,
         nextDate,
       );
+      interestByPeriod.set(debt.debtId, interest.interestCents);
       if (interest.unsupportedReason) {
         unsupportedDebtIds.add(debt.debtId);
         warningsByDebt.get(debt.debtId)?.add(interest.unsupportedReason);
@@ -442,14 +460,19 @@ const runProjection = (
 
     let available = includeExtra ? monthlyCashRequirementCents : baseCash;
     let extraTargetDebtId: string | null = null;
-    let extraPaidCents = 0;
+    const extraPaidByDebt = new Map<string, number>();
+    const userExtraPaidByDebt = new Map<string, number>();
+    const freedPaymentByDebt = new Map<string, number>();
     let requiredPaidToTargetCents = 0;
     let paidOffDebtName: string | null = null;
+    let scheduledTotalCents = 0;
     for (const debtId of activeIds.filter((id) => !unsupportedDebtIds.has(id))) {
       const scheduled = Math.min(
         monthlyRequirements.get(debtId) ?? 0,
         balances.get(debtId) ?? 0,
       );
+      requiredPaidByDebt.set(debtId, scheduled);
+      scheduledTotalCents += scheduled;
       balances.set(debtId, (balances.get(debtId) ?? 0) - scheduled);
       available -= scheduled;
       if ((balances.get(debtId) ?? 0) === 0 && payoffDateByDebt.get(debtId) === null) {
@@ -459,6 +482,7 @@ const runProjection = (
       }
     }
 
+    let freedAvailableCents = Math.max(0, baseCash - scheduledTotalCents);
     if (includeExtra && available > 0) {
       for (const debtId of priorityOrder(
         debts,
@@ -471,6 +495,8 @@ const runProjection = (
         const balance = balances.get(debtId) ?? 0;
         if (balance <= 0) continue;
         const extra = Math.min(balance, available);
+        const freedApplied = Math.min(extra, freedAvailableCents);
+        const userExtraApplied = extra - freedApplied;
         if (!extraTargetDebtId) {
           extraTargetDebtId = debtId;
           requiredPaidToTargetCents = Math.min(
@@ -478,7 +504,16 @@ const runProjection = (
             balance + (monthlyRequirements.get(debtId) ?? 0),
           );
         }
-        if (extraTargetDebtId === debtId) extraPaidCents += extra;
+        extraPaidByDebt.set(debtId, (extraPaidByDebt.get(debtId) ?? 0) + extra);
+        userExtraPaidByDebt.set(
+          debtId,
+          (userExtraPaidByDebt.get(debtId) ?? 0) + userExtraApplied,
+        );
+        freedPaymentByDebt.set(
+          debtId,
+          (freedPaymentByDebt.get(debtId) ?? 0) + freedApplied,
+        );
+        freedAvailableCents -= freedApplied;
         balances.set(debtId, balance - extra);
         available -= extra;
         if (
@@ -501,13 +536,33 @@ const runProjection = (
         (total, debt) => total + (balances.get(debt.debtId) ?? 0),
         0,
       );
+      const freedRequiredPaymentCents = debts
+        .filter((debt) => !activeIds.includes(debt.debtId))
+        .reduce(
+          (total, debt) => total + (monthlyRequirements.get(debt.debtId) ?? 0),
+          0,
+        );
+      const debtAllocations = debts.map((debt) => ({
+        debtId: debt.debtId,
+        requiredPaymentCents: requiredPaidByDebt.get(debt.debtId) ?? 0,
+        extraPaymentCents: userExtraPaidByDebt.get(debt.debtId) ?? 0,
+        freedPaymentCents: freedPaymentByDebt.get(debt.debtId) ?? 0,
+        interestCents: interestByPeriod.get(debt.debtId) ?? 0,
+        endingBalanceCents: Math.max(0, balances.get(debt.debtId) ?? 0),
+        payoffEvent: paidOffDebtName === debt.debtName,
+      }));
       monthlySchedule.push({
         month: date,
         debtId: extraTargetDebtId,
         debtName: targetDebt?.debtName ?? null,
         requiredPaymentCents: requiredPaidToTargetCents,
-        extraPaymentCents: extraPaidCents,
-        totalPaymentCents: requiredPaidToTargetCents + extraPaidCents,
+        extraPaymentCents: [...extraPaidByDebt.values()].reduce(
+          (total, value) => total + value,
+          0,
+        ),
+        totalPaymentCents:
+          requiredPaidToTargetCents +
+          [...extraPaidByDebt.values()].reduce((total, value) => total + value, 0),
         endingProjectedBalanceCents: extraTargetDebtId
           ? (balances.get(extraTargetDebtId) ?? 0)
           : activeIds.reduce((total, id) => total + (balances.get(id) ?? 0), 0),
@@ -515,6 +570,14 @@ const runProjection = (
         paidOffDebtName,
         nextPriorityDebtName:
           debts.find((debt) => debt.debtId === nextPriorityDebtId)?.debtName ?? null,
+        interestCents: [...interestByPeriod.values()].reduce(
+          (total, value) => total + value,
+          0,
+        ),
+        freedRequiredPaymentCents,
+        freedPaymentRecipientName:
+          debts.find((debt) => debt.debtId === nextPriorityDebtId)?.debtName ?? null,
+        debtAllocations,
       });
     }
   }
@@ -604,6 +667,14 @@ const runProjection = (
     payoffOrder,
     monthsSaved: null,
     warnings: [...globalWarnings],
+    projectionHorizonMonths: assumptions.maxProjectionMonths,
+    projectionHorizonDate: addMonths(
+      assumptions.scenarioStartDate,
+      assumptions.maxProjectionMonths,
+    ),
+    incompleteDebtIds: debtResults
+      .filter((debt) => debt.projectedPayoffDate === null)
+      .map((debt) => debt.debtId),
   };
 };
 

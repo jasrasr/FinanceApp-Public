@@ -36,12 +36,77 @@ const base = (
 });
 
 describe('extra-cash allocation', () => {
+  it('keeps the baseline unapplied and fully applies a $1,000 selected HELOC', () => {
+    const debts = [
+      {
+        ...debt('heloc', 200000, 180000),
+        debtName: 'HELOC',
+      },
+      {
+        ...debt('hvac', 50000, 0),
+        debtName: 'HVAC',
+      },
+    ];
+    const baseline = calculateExtraCashAllocation({
+      ...base('baseline'),
+      debts,
+      lumpSumCents: 100000,
+    });
+    const selected = calculateExtraCashAllocation({
+      ...base('selected_debt'),
+      debts,
+      lumpSumCents: 100000,
+      selectedDebtId: 'heloc',
+    });
+    expect(baseline.initialDebtId).toBeNull();
+    expect(baseline.lumpSumAppliedCents).toBe(0);
+    expect(baseline.unusedLumpSumCents).toBe(100000);
+    expect(selected.initialDebtId).toBe('heloc');
+    expect(selected.lumpSumAppliedCents).toBe(100000);
+    expect(selected.unusedLumpSumCents).toBe(0);
+    expect(
+      selected.projection?.debts.find((item) => item.debtId === 'heloc')
+        ?.startingBalanceCents,
+    ).toBe(100000);
+  });
+
+  it('attributes zero-rate target savings to downstream rollover', () => {
+    const result = calculateExtraCashAllocation({
+      ...base('lowest_balance'),
+      debts: [debt('hvac', 50000, 0), debt('heloc', 200000, 180000)],
+      lumpSumCents: 100000,
+      extraMonthlyPaymentCents: 0,
+      maxProjectionMonths: 600,
+    });
+    expect(result.initialDebtId).toBe('hvac');
+    expect(
+      result.projection?.payoffOrder.find((item) => item.debtId === 'hvac')
+        ?.projectedPayoffDate,
+    ).toBe('2026-08-05');
+    expect(
+      result.projection?.monthlySchedule.some(
+        (entry) => (entry.freedRequiredPaymentCents ?? 0) > 0,
+      ),
+    ).toBe(true);
+  });
+
+  it('does not project an incomplete custom split', () => {
+    const result = calculateExtraCashAllocation({
+      ...base('custom_split'),
+      lumpSumCents: 100000,
+      splitCents: { a: 25000 },
+    });
+    expect(result.status).toBe('not_configured');
+    expect(result.projection).toBeNull();
+    expect(result.configurationMessage).toContain('remain unallocated');
+  });
+
   it('uses the highest-rate debt first without negative balances', () => {
     const result = calculateExtraCashAllocation(base('highest_rate'));
     expect(result.initialDebtId).toBe('b');
     expect(result.lumpSumAppliedCents).toBe(50000);
     expect(
-      result.projection.debts.every((item) => item.startingBalanceCents >= 0),
+      result.projection!.debts.every((item) => item.startingBalanceCents >= 0),
     ).toBe(true);
   });
 
@@ -69,6 +134,6 @@ describe('extra-cash allocation', () => {
       splitCents: { a: 25000, b: 25000 },
     });
     expect(result.lumpSumAppliedCents).toBe(50000);
-    expect(result.projection.monthlySchedule.length).toBeGreaterThan(0);
+    expect(result.projection!.monthlySchedule.length).toBeGreaterThan(0);
   });
 });

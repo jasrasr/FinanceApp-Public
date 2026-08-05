@@ -51,6 +51,10 @@ Phase-nine supported behavior is:
   reuses this engine after applying an in-memory lump-sum allocation and never
   writes projected payments to the ledger. Explicit scenario saving remains the
   only persistence path.
+- Version 1.2.1 adds explicit allocation trace records, horizon disclosures,
+  debt-level interest reconciliation, and direct-versus-rollover savings fields.
+  An incomplete custom split is a not-configured result and is never presented
+  as a precise projection.
 
 ## Consequences
 

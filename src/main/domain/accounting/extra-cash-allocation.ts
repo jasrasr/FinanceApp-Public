@@ -30,8 +30,10 @@ export interface ExtraCashAllocationResult {
   readonly initialDebtId: string | null;
   readonly lumpSumAppliedCents: number;
   readonly unusedLumpSumCents: number;
-  readonly projection: PayoffProjectionResult;
+  readonly projection: PayoffProjectionResult | null;
   readonly lumpSumByDebtCents: Readonly<Record<string, number>>;
+  readonly status: 'reliable' | 'not_configured' | 'partial';
+  readonly configurationMessage: string | null;
 }
 
 const termAt = (debt: PayoffDebtInput, date: string) =>
@@ -110,6 +112,24 @@ export const calculateExtraCashAllocation = (
   input: ExtraCashAllocationInput,
 ): ExtraCashAllocationResult => {
   const lump = lumpAllocations(input);
+  if (
+    input.strategy === 'custom_split' &&
+    Object.values(input.splitCents ?? {}).reduce(
+      (total, value) => total + Math.max(0, value),
+      0,
+    ) !== Math.max(0, input.lumpSumCents)
+  ) {
+    return {
+      strategy: input.strategy,
+      initialDebtId: null,
+      lumpSumAppliedCents: 0,
+      unusedLumpSumCents: 0,
+      projection: null,
+      lumpSumByDebtCents: {},
+      status: 'not_configured',
+      configurationMessage: `Custom split must allocate the full entered lump sum; ${Math.max(0, input.lumpSumCents - Object.values(input.splitCents ?? {}).reduce((total, value) => total + Math.max(0, value), 0))} cents remain unallocated.`,
+    };
+  }
   const debts = input.debts.map((debt) => ({
     ...debt,
     startingBalanceCents: Math.max(
@@ -134,12 +154,28 @@ export const calculateExtraCashAllocation = (
     maxProjectionMonths: input.maxProjectionMonths,
   };
   const projection = projectPayoffScenario(debts, assumptions);
+  const allocationOrder = orderedIds(input);
+  const orderedPayoff = allocationOrder.map((debtId, index) => {
+    const debt = projection.debts.find((item) => item.debtId === debtId);
+    return {
+      debtId,
+      debtName: debt?.debtName ?? 'Debt',
+      priority: index + 1,
+      projectedPayoffDate: debt?.projectedPayoffDate ?? null,
+      monthsToPayoff: null,
+      projectedInterestCents: debt?.projectedInterestCents ?? null,
+      interestSavedCents: null,
+    };
+  });
   return {
     strategy: input.strategy,
-    initialDebtId: orderedIds(input)[0] ?? null,
+    initialDebtId:
+      input.strategy === 'baseline' ? null : (orderedIds(input)[0] ?? null),
     lumpSumAppliedCents: input.lumpSumCents - lump.unused,
     unusedLumpSumCents: lump.unused,
-    projection,
+    projection: { ...projection, payoffOrder: orderedPayoff },
     lumpSumByDebtCents: lump.allocations,
+    status: 'reliable',
+    configurationMessage: null,
   };
 };

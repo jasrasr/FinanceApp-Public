@@ -17,6 +17,8 @@ export interface ExtraCashAllocationProps {
 }
 
 const today = (): string => new Date().toISOString().slice(0, 10);
+const money = (value: string | null): string =>
+  value === null ? '—' : formatDollarString(value);
 
 export const ExtraCashAllocation = ({
   debts,
@@ -41,7 +43,7 @@ export const ExtraCashAllocation = ({
       selectedDebtId: selectedDebtId || null,
       customPriority: [],
       customSplit: {},
-      maxProjectionMonths: 360,
+      maxProjectionMonths: 600,
     });
   };
   return (
@@ -165,29 +167,62 @@ export const ExtraCashAllocation = ({
                 <thead className="border-b text-xs uppercase text-slate-500">
                   <tr>
                     <th className="py-2 pr-4">Strategy</th>
-                    <th className="py-2 pr-4">Initial debt</th>
-                    <th className="py-2 pr-4">Payoff date</th>
-                    <th className="py-2 pr-4 text-right">Interest</th>
-                    <th className="py-2 pr-4 text-right">Interest saved</th>
-                    <th className="py-2 pr-4 text-right">Unused lump sum</th>
+                    <th className="py-2 pr-4">Initial target</th>
+                    <th className="py-2 pr-4 text-right">Lump sum applied</th>
+                    <th className="py-2 pr-4 text-right">Unused cash</th>
+                    <th className="py-2 pr-4">First debt payoff</th>
+                    <th className="py-2 pr-4">Portfolio payoff date</th>
+                    <th className="py-2 pr-4 text-right">Projected interest</th>
+                    <th className="py-2 pr-4 text-right">Direct saved</th>
+                    <th className="py-2 pr-4 text-right">Rollover saved</th>
+                    <th className="py-2 pr-4 text-right">Total saved</th>
+                    <th className="py-2 pr-4">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[result.baseline, ...result.comparisons].map((row) => (
                     <tr className="border-b border-slate-100" key={row.strategy}>
                       <td className="py-2 pr-4 font-semibold">{row.strategyName}</td>
-                      <td className="py-2 pr-4">{row.initialDebtName ?? '—'}</td>
+                      <td className="py-2 pr-4">{row.initialDebtName ?? 'None'}</td>
+                      <td className="py-2 pr-4 text-right">
+                        {row.strategy === 'baseline'
+                          ? '$0.00'
+                          : money(row.lumpSumApplied)}
+                      </td>
+                      <td className="py-2 pr-4 text-right">
+                        {row.strategy === 'baseline'
+                          ? 'Not applied — baseline'
+                          : money(row.unusedLumpSum)}
+                      </td>
                       <td className="py-2 pr-4">
-                        {row.projectedPayoffDate ?? 'Not within horizon'}
+                        {row.firstDebtName
+                          ? `${row.firstDebtName} (${row.firstDebtPayoffDate ?? 'not reached'})`
+                          : '—'}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {row.projectedPayoffDate ??
+                          `Not within horizon (${row.projectionHorizonMonths ?? '—'} months; through ${row.projectionHorizonDate ?? '—'})`}
                       </td>
                       <td className="py-2 pr-4 text-right">
-                        {formatDollarString(row.projectedTotalInterest)}
+                        {money(row.projectedTotalInterest)}
                       </td>
                       <td className="py-2 pr-4 text-right">
-                        {formatDollarString(row.interestSaved)}
+                        {money(row.directInterestSaved)}
                       </td>
                       <td className="py-2 pr-4 text-right">
-                        {formatDollarString(row.unusedLumpSum)}
+                        {money(row.rolloverInterestSaved)}
+                      </td>
+                      <td className="py-2 pr-4 text-right">
+                        {money(row.interestSaved)}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {row.strategy === 'baseline'
+                          ? 'Baseline comparison'
+                          : row.status === 'partial'
+                            ? `Partial — ${row.incompleteDebtNames.join(', ')}`
+                            : row.status === 'not_configured'
+                              ? `Not configured — ${row.configurationMessage ?? ''}`
+                              : 'Projected'}
                       </td>
                       <td className="py-2 pr-4">
                         <button
@@ -235,6 +270,131 @@ export const ExtraCashAllocation = ({
               </table>
             </div>
           </section>
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold">Debt-level reconciliation</h3>
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="py-2 pr-4">Debt</th>
+                    <th className="py-2 pr-4 text-right">Current balance</th>
+                    <th className="py-2 pr-4">Rate</th>
+                    <th className="py-2 pr-4 text-right">Lump sum</th>
+                    <th className="py-2 pr-4 text-right">Rollover received</th>
+                    <th className="py-2 pr-4 text-right">Baseline interest</th>
+                    <th className="py-2 pr-4 text-right">Strategy interest</th>
+                    <th className="py-2 pr-4 text-right">Interest saved</th>
+                    <th className="py-2 pr-4">Baseline payoff</th>
+                    <th className="py-2 pr-4">Strategy payoff</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.comparisons[0]?.debts.map((debt) => {
+                    const strategyDebt = result.comparisons[0]?.debts.find(
+                      (item) => item.debtId === debt.debtId,
+                    );
+                    return (
+                      <tr className="border-b border-slate-100" key={debt.debtId}>
+                        <td className="py-2 pr-4">{debt.debtName}</td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(debt.currentBalance)}
+                        </td>
+                        <td className="py-2 pr-4">{debt.rate}</td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(debt.lumpSumApplied)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(debt.requiredPaymentRolloverReceived)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(debt.baselineProjectedInterest)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(strategyDebt?.projectedInterest ?? null)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(debt.interestSaved)}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {debt.baselinePayoffDate ?? 'Not reached'}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {debt.projectedPayoffDate ?? 'Not reached'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          {[result.baseline, ...result.comparisons].map((row) => (
+            <details
+              className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+              key={`${row.strategy}-trace`}
+            >
+              <summary className="cursor-pointer text-lg font-semibold">
+                View allocation details — {row.strategyName}
+              </summary>
+              <p className="mt-2 text-sm text-slate-600">
+                {row.strategy === 'baseline'
+                  ? 'Required payments only; the lump sum is deliberately not applied.'
+                  : (row.configurationMessage ??
+                    `Projection horizon: ${row.projectionHorizonMonths ?? '—'} months through ${row.projectionHorizonDate ?? '—'}.`)}
+              </p>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="py-2 pr-4">Month</th>
+                      <th className="py-2 pr-4">Debt</th>
+                      <th className="py-2 pr-4 text-right">Required</th>
+                      <th className="py-2 pr-4 text-right">Lump sum</th>
+                      <th className="py-2 pr-4 text-right">Extra</th>
+                      <th className="py-2 pr-4 text-right">Freed rollover</th>
+                      <th className="py-2 pr-4 text-right">Total payment</th>
+                      <th className="py-2 pr-4 text-right">Ending balance</th>
+                      <th className="py-2 pr-4 text-right">Interest</th>
+                      <th className="py-2 pr-4">Payoff</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {row.monthlySchedule.map((entry, index) => (
+                      <tr
+                        className="border-b border-slate-100"
+                        key={`${row.strategy}-${entry.date}-${entry.debtName ?? 'portfolio'}-${index}`}
+                      >
+                        <td className="py-2 pr-4">{entry.date}</td>
+                        <td className="py-2 pr-4">{entry.debtName ?? 'Portfolio'}</td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(entry.requiredPayment)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(entry.lumpSumApplied)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(entry.extraMonthlyPayment)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(entry.freedPaymentRollover)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(entry.totalPayment)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(entry.endingBalance)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {money(entry.interest)}
+                        </td>
+                        <td className="py-2 pr-4">{entry.payoffEvent ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          ))}
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">Projected total principal balance</h3>
             <div className="mt-4 grid gap-2 md:grid-cols-2">

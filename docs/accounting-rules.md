@@ -468,6 +468,13 @@ actual debts, transactions, allocations, snapshots, and reconciliations.
   scenario balance on its selected analysis date. Unused funds are reported,
   custom split inputs must reconcile to the entered lump sum, and no analysis
   result posts a transaction or changes a reconciliation.
+- The required-payment baseline deliberately does not apply the lump sum and is
+  labeled as a comparison baseline, not as unused cash. Savings on a zero-rate
+  initial target are split into direct target savings and downstream rollover
+  savings; portfolio savings must reconcile to the sum of debt-level savings.
+- Custom split comparisons are not projected until their allocations equal the
+  full entered lump sum. Projection horizons disclose the end date and each debt
+  preventing a complete payoff result.
 - Scenario assumptions, results, and calculation-engine version are saved so
   results remain reviewable and rerunnable.
 - Projected transactions are never written to the posted actual ledger.
