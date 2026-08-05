@@ -318,6 +318,31 @@ export const createPayoffScenarioRequestSchema = z
     customPriority: z.array(uuidSchema),
     variableRateOverrides: z.record(uuidSchema, requiredTextSchema),
     maxProjectionMonths: z.number().int().min(1).max(600),
+    lumpSum: moneyInputSchema.optional(),
+    lumpSumDate: financialDateInputSchema.optional(),
+    initialLumpSumAllocations: z.record(uuidSchema, moneyInputSchema).optional(),
+  })
+  .strict();
+
+const extraCashStrategySchema = z.enum([
+  'highest_rate',
+  'lowest_balance',
+  'selected_debt',
+  'custom_priority',
+  'custom_split',
+  'baseline',
+]);
+
+export const extraCashAllocationRequestSchema = z
+  .object({
+    analysisDate: financialDateInputSchema,
+    lumpSum: moneyInputSchema,
+    extraMonthlyPayment: moneyInputSchema,
+    excludedDebtIds: z.array(uuidSchema),
+    selectedDebtId: uuidSchema.nullable(),
+    customPriority: z.array(uuidSchema),
+    customSplit: z.record(uuidSchema, moneyInputSchema),
+    maxProjectionMonths: z.number().int().min(1).max(600),
   })
   .strict();
 
@@ -972,6 +997,69 @@ export const payoffScenarioResultDtoSchema = z
   })
   .strict();
 
+export const extraCashAllocationResultDtoSchema = z
+  .object({
+    strategy: extraCashStrategySchema,
+    strategyName: z.string(),
+    initialDebtName: z.string().nullable(),
+    lumpSumApplied: z.string(),
+    unusedLumpSum: z.string(),
+    extraMonthlyPayment: z.string(),
+    projectedPayoffDate: financialDateInputSchema.nullable(),
+    monthsSaved: z.number().int().nullable(),
+    projectedTotalInterest: z.string(),
+    interestSaved: z.string(),
+    totalProjectedCashPaid: z.string(),
+    firstDebtName: z.string().nullable(),
+    firstDebtPayoffDate: financialDateInputSchema.nullable(),
+    finalDebtName: z.string().nullable(),
+    includedDebtCount: z.number().int().nonnegative(),
+    assumptions: z.array(z.string()),
+    warnings: z.array(z.string()),
+    debts: z.array(
+      z
+        .object({
+          debtId: uuidSchema,
+          debtName: z.string(),
+          currentBalance: z.string(),
+          lumpSumApplied: z.string(),
+          extraMonthlyPaymentAllocation: z.string(),
+          projectedPayoffDate: financialDateInputSchema.nullable(),
+          monthsSaved: z.number().int().nullable(),
+          projectedInterest: z.string().nullable(),
+          interestSaved: z.string().nullable(),
+          priority: z.number().int().positive().nullable(),
+        })
+        .strict(),
+    ),
+    monthlySchedule: z.array(
+      z
+        .object({
+          date: financialDateInputSchema,
+          totalProjectedBalance: z.string(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export const extraCashAllocationResponseSchema = z
+  .object({
+    analysisDate: financialDateInputSchema,
+    baseline: extraCashAllocationResultDtoSchema,
+    comparisons: z.array(extraCashAllocationResultDtoSchema),
+    eligibleDebts: z.array(
+      z
+        .object({
+          debtName: z.string(),
+          included: z.boolean(),
+          reason: z.string().nullable(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
 export const payoffScenarioDtoSchema = z
   .object({
     id: uuidSchema,
@@ -1011,6 +1099,10 @@ export const applicationResultSchema = <T extends z.ZodType>(valueSchema: T) =>
     z.object({ ok: z.literal(true), value: valueSchema }).strict(),
     z.object({ ok: z.literal(false), error: applicationErrorSchema }).strict(),
   ]);
+
+export const extraCashAllocationResultSchema = applicationResultSchema(
+  extraCashAllocationResponseSchema,
+);
 
 export const debtSummaryListSchema = z.array(debtSummaryDtoSchema);
 export const debtListResultSchema = applicationResultSchema(debtSummaryListSchema);
@@ -1077,6 +1169,9 @@ export type GetDebtReportsRequest = z.infer<typeof getDebtReportsRequestSchema>;
 export type CreatePayoffScenarioRequest = z.infer<
   typeof createPayoffScenarioRequestSchema
 >;
+export type ExtraCashAllocationRequest = z.infer<
+  typeof extraCashAllocationRequestSchema
+>;
 export type ListPayoffScenariosRequest = z.infer<
   typeof listPayoffScenariosRequestSchema
 >;
@@ -1117,6 +1212,9 @@ export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;
 export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
 export type PayoffScenarioDto = z.infer<typeof payoffScenarioDtoSchema>;
 export type PayoffScenarioResultDto = z.infer<typeof payoffScenarioResultDtoSchema>;
+export type ExtraCashAllocationResponse = z.infer<
+  typeof extraCashAllocationResponseSchema
+>;
 export type ApplicationError = z.infer<typeof applicationErrorSchema>;
 export type ApplicationResult<T> =
   | { readonly ok: true; readonly value: T }

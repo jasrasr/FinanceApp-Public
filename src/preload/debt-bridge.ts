@@ -7,6 +7,7 @@ import {
   editDebtTransactionRequestSchema,
   createManualBackupRequestSchema,
   createPayoffScenarioRequestSchema,
+  extraCashAllocationRequestSchema,
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
   archivePayoffScenarioRequestSchema,
@@ -31,6 +32,7 @@ import {
   listDebtsRequestSchema,
   payoffScenarioListResultSchema,
   payoffScenarioResultSchema,
+  extraCashAllocationResultSchema,
   permanentDebtDeletionResultSchema,
   recordRefinanceRequestSchema,
   reverseDebtTransactionRequestSchema,
@@ -47,6 +49,7 @@ import {
   type EditDebtTransactionRequest,
   type CreateManualBackupRequest,
   type CreatePayoffScenarioRequest,
+  type ExtraCashAllocationRequest,
   type ArchiveDebtRequest,
   type ArchivePayoffScenarioRequest,
   type CreateDebtRequest,
@@ -167,6 +170,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.archivePayoffScenario,
           archivePayoffScenarioRequestSchema.parse(request),
+        ),
+      ),
+    calculateExtraCashAllocation: async (request: ExtraCashAllocationRequest) =>
+      extraCashAllocationResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.calculateExtraCashAllocation,
+          extraCashAllocationRequestSchema.parse(request),
         ),
       ),
     getDebt: async (request: GetDebtRequest) =>

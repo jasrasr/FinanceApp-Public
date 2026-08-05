@@ -10,6 +10,8 @@ import type {
   ArchiveDebtRequest,
   CreateDebtRequest,
   CreatePayoffScenarioRequest,
+  ExtraCashAllocationRequest,
+  ExtraCashAllocationResponse,
   DashboardDto,
   DeleteDebtPermanentlyRequest,
   ConfirmScheduledPaymentRequest,
@@ -42,6 +44,7 @@ import {
   editDebtTransactionRequestSchema,
   createDebtRequestSchema,
   createPayoffScenarioRequestSchema,
+  extraCashAllocationRequestSchema,
   deleteDebtPermanentlyRequestSchema,
   confirmScheduledPaymentRequestSchema,
   removeScheduledPaymentConfirmationRequestSchema,
@@ -135,6 +138,10 @@ import {
   type PayoffProjectionResult,
 } from '../domain/accounting/payoff-engine';
 import {
+  calculateExtraCashAllocation,
+  type ExtraCashAllocationStrategy,
+} from '../domain/accounting/extra-cash-allocation';
+import {
   calculateScheduledPayments,
   type ScheduledPaymentResult,
 } from '../domain/accounting/payment-schedule';
@@ -150,6 +157,9 @@ export interface DebtMaintenanceService {
   ): readonly PayoffScenarioDto[];
   getPayoffScenario(request: GetPayoffScenarioRequest): PayoffScenarioDto;
   createPayoffScenario(request: CreatePayoffScenarioRequest): PayoffScenarioDto;
+  calculateExtraCashAllocation(
+    request: ExtraCashAllocationRequest,
+  ): ExtraCashAllocationResponse;
   rerunPayoffScenario(request: RerunPayoffScenarioRequest): PayoffScenarioDto;
   archivePayoffScenario(request: ArchivePayoffScenarioRequest): PayoffScenarioDto;
   getDebt(request: GetDebtRequest): DebtDetailDto;
@@ -1701,7 +1711,90 @@ const buildPayoffAssumptions = (
     ]),
   ),
   maxProjectionMonths: request.maxProjectionMonths,
+  initialLumpSumDate: request.lumpSumDate
+    ? ensureCalendarDate('lumpSumDate', request.lumpSumDate)
+    : undefined,
+  initialLumpSumAllocationsCents: request.initialLumpSumAllocations
+    ? Object.fromEntries(
+        Object.entries(request.initialLumpSumAllocations).map(([debtId, amount]) => [
+          debtId,
+          convertMoney(`initialLumpSumAllocations.${debtId}`, amount),
+        ]),
+      )
+    : undefined,
 });
+
+const extraStrategyNames: Record<ExtraCashAllocationStrategy, string> = {
+  highest_rate: 'Highest interest rate',
+  lowest_balance: 'Lowest current balance',
+  selected_debt: 'Selected debt',
+  custom_priority: 'Custom ordered priority',
+  custom_split: 'Custom split',
+  baseline: 'Required payments only',
+};
+
+const mapExtraCashResult = (
+  result: ReturnType<typeof calculateExtraCashAllocation>,
+  debts: readonly PayoffDebtInput[],
+  baseline: PayoffProjectionResult,
+  extraMonthlyPaymentCents: number,
+): ExtraCashAllocationResponse['baseline'] => {
+  const projection = result.projection;
+  const first = projection.payoffOrder[0];
+  const priority = new Map(
+    projection.payoffOrder.map((row) => [row.debtId, row.priority]),
+  );
+  return {
+    strategy: result.strategy,
+    strategyName: extraStrategyNames[result.strategy],
+    initialDebtName:
+      debts.find((debt) => debt.debtId === result.initialDebtId)?.debtName ?? null,
+    lumpSumApplied: centsToDollars(result.lumpSumAppliedCents),
+    unusedLumpSum: centsToDollars(result.unusedLumpSumCents),
+    extraMonthlyPayment: centsToDollars(extraMonthlyPaymentCents),
+    projectedPayoffDate: projection.projectedPayoffDate,
+    monthsSaved: projection.monthsSaved,
+    projectedTotalInterest: centsToDollars(projection.totalProjectedInterestCents),
+    interestSaved: centsToDollars(
+      baseline.totalProjectedInterestCents - projection.totalProjectedInterestCents,
+    ),
+    totalProjectedCashPaid: centsToDollars(
+      debts.reduce((sum, debt) => sum + debt.startingBalanceCents, 0) +
+        result.lumpSumAppliedCents +
+        projection.totalProjectedInterestCents,
+    ),
+    firstDebtName: first?.debtName ?? null,
+    firstDebtPayoffDate: first?.projectedPayoffDate ?? null,
+    finalDebtName: projection.payoffOrder.at(-1)?.debtName ?? null,
+    includedDebtCount: debts.length,
+    assumptions: [...projection.assumptions],
+    warnings: [...projection.warnings],
+    debts: projection.debts.map((debt) => ({
+      debtId: debt.debtId,
+      debtName: debt.debtName,
+      currentBalance: centsToDollars(
+        debts.find((item) => item.debtId === debt.debtId)?.startingBalanceCents ?? 0,
+      ),
+      lumpSumApplied: centsToDollars(result.lumpSumByDebtCents[debt.debtId] ?? 0),
+      extraMonthlyPaymentAllocation: centsToDollars(
+        projection.monthlySchedule.find((entry) => entry.debtId === debt.debtId)
+          ?.extraPaymentCents ?? 0,
+      ),
+      projectedPayoffDate: debt.projectedPayoffDate,
+      monthsSaved: debt.projectedPayoffDate ? null : null,
+      projectedInterest:
+        debt.projectedInterestCents === null
+          ? null
+          : centsToDollars(debt.projectedInterestCents),
+      interestSaved: null,
+      priority: priority.get(debt.debtId) ?? null,
+    })),
+    monthlySchedule: projection.monthlySchedule.map((entry) => ({
+      date: entry.month,
+      totalProjectedBalance: centsToDollars(entry.totalProjectedBalanceCents),
+    })),
+  };
+};
 
 const monthKey = (financialDate: string): string => financialDate.slice(0, 7);
 
@@ -2256,6 +2349,157 @@ export const createDebtMaintenanceService = ({
       try {
         const parsed = getPayoffScenarioRequestSchema.parse(request);
         return mapPayoffScenario(getScenarioOrThrow(parsed.id));
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    calculateExtraCashAllocation: (request) => {
+      try {
+        const parsed = extraCashAllocationRequestSchema.parse(request);
+        const analysisDate = ensureCalendarDate('analysisDate', parsed.analysisDate);
+        const records = listActiveDebtActivityRecords(database);
+        const eligibleDebts: ExtraCashAllocationResponse['eligibleDebts'][number][] =
+          [];
+        const inputs: PayoffDebtInput[] = [];
+        for (const record of records) {
+          const balance = calculateLedgerBalanceThroughDate(
+            database,
+            record.debt.id,
+            analysisDate,
+          );
+          const term = [...record.terms]
+            .filter(
+              (candidate) =>
+                candidate.effectiveStartDate <= analysisDate &&
+                (candidate.effectiveEndDate === null ||
+                  candidate.effectiveEndDate >= analysisDate),
+            )
+            .sort((left, right) =>
+              right.effectiveStartDate.localeCompare(left.effectiveStartDate),
+            )[0];
+          let reason: string | null = null;
+          if (parsed.excludedDebtIds.includes(record.debt.id))
+            reason = 'Manually excluded.';
+          else if (balance <= 0) reason = 'Current balance is zero or below.';
+          else if (!term) reason = 'No current term exists as of the analysis date.';
+          else if (
+            term.paymentFrequency === 'irregular' ||
+            term.paymentFrequency === 'other'
+          )
+            reason = 'Payment frequency is unsupported.';
+          else if (term.requiredPaymentCents <= 0)
+            reason = 'Required payment is invalid.';
+          else if (term.interestRateType === 'variable')
+            reason = 'Variable-rate debt requires an explicit rate assumption.';
+          eligibleDebts.push({
+            debtName: record.debt.name,
+            included: reason === null,
+            reason,
+          });
+          if (reason === null && term) {
+            inputs.push({
+              debtId: record.debt.id,
+              debtName: record.debt.name,
+              creditor: record.debt.creditor,
+              debtType: record.debt.debtType,
+              startingBalanceCents: balance,
+              maturityDate: record.debt.maturityDate,
+              terms: record.terms.map((item) => ({
+                effectiveStartDate: item.effectiveStartDate,
+                effectiveEndDate: item.effectiveEndDate,
+                interestRateType: item.interestRateType,
+                interestRateMicros: item.interestRateMicros,
+                requiredPaymentCents: item.requiredPaymentCents,
+                paymentFrequency: item.paymentFrequency,
+                dayCountConvention: item.dayCountConvention,
+                calculationConvention: item.calculationConvention,
+              })),
+            });
+          }
+        }
+        if (inputs.length === 0)
+          throw new ApplicationServiceError(
+            'validation',
+            'No eligible debts are available for analysis.',
+          );
+        const common = {
+          debts: inputs,
+          analysisDate,
+          lumpSumCents: convertMoney('lumpSum', parsed.lumpSum),
+          extraMonthlyPaymentCents: convertMoney(
+            'extraMonthlyPayment',
+            parsed.extraMonthlyPayment,
+          ),
+          maxProjectionMonths: parsed.maxProjectionMonths,
+        };
+        const requestedSplitCents = Object.values(parsed.customSplit).reduce(
+          (total, value) => total + convertMoney('customSplit', value),
+          0,
+        );
+        const requestedLumpSumCents = common.lumpSumCents;
+        if (
+          requestedSplitCents !== 0 &&
+          requestedSplitCents !== requestedLumpSumCents
+        ) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Review the highlighted fields.',
+            {
+              customSplit: [
+                'Custom split allocations must reconcile exactly to the entered lump sum.',
+              ],
+            },
+          );
+        }
+        const baselineProjection = calculateExtraCashAllocation({
+          ...common,
+          strategy: 'baseline',
+        }).projection;
+        const strategies: readonly ExtraCashAllocationStrategy[] = [
+          'highest_rate',
+          'lowest_balance',
+          'selected_debt',
+          'custom_priority',
+          'custom_split',
+        ];
+        const selectedDebtId = parsed.selectedDebtId ?? inputs[0]?.debtId;
+        const comparisons = strategies.map((strategy) => {
+          const splitCents = Object.fromEntries(
+            Object.entries(parsed.customSplit).map(([id, value]) => [
+              id,
+              convertMoney(`customSplit.${id}`, value),
+            ]),
+          );
+          const calculation = calculateExtraCashAllocation({
+            ...common,
+            strategy,
+            selectedDebtId,
+            priority: parsed.customPriority,
+            splitCents,
+          });
+          return mapExtraCashResult(
+            calculation,
+            inputs,
+            baselineProjection,
+            common.extraMonthlyPaymentCents,
+          );
+        });
+        const baselineCalculation = calculateExtraCashAllocation({
+          ...common,
+          strategy: 'baseline',
+        });
+        return {
+          analysisDate,
+          baseline: mapExtraCashResult(
+            baselineCalculation,
+            inputs,
+            baselineProjection,
+            0,
+          ),
+          comparisons,
+          eligibleDebts,
+        };
       } catch (error) {
         return normalizeError(error);
       }

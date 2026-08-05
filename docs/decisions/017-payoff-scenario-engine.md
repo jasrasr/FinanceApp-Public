@@ -47,6 +47,10 @@ Phase-nine supported behavior is:
   calculation-convention combinations are marked unsupported.
 - Unsupported debts are excluded from scenario totals and receive debt-level and
   scenario-level warnings.
+- Version 1.2.0 adds an ephemeral extra-cash allocation analysis boundary. It
+  reuses this engine after applying an in-memory lump-sum allocation and never
+  writes projected payments to the ledger. Explicit scenario saving remains the
+  only persistence path.
 
 ## Consequences
 

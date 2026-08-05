@@ -5,7 +5,7 @@ for maintaining debts and supporting future debt-paydown analysis.
 
 ## Release Status
 
-Version 1.1.2 builds on the first stable production release with scheduled
+Version 1.2.0 builds on the first stable production release with scheduled
 payment due-day tracking and occurrence-based unpaid upcoming-payment review. It is intended for
 local, single-user debt tracking with entered debts, historical activity,
 reconciliations, reports, backups, and payoff scenarios already validated through
@@ -60,6 +60,10 @@ Known non-blocking limitations:
   custom-priority strategies, with plain-language strategy explanations,
   debt-name custom ordering, monthly extra-payment allocation schedules,
   comparison charts, rerun, and archive support.
+- Extra-cash allocation analysis for lump sums and additional monthly payments
+  across rate, balance, selected-debt, custom-priority, custom-split, and
+  required-payment baseline approaches. Analysis is scenario-only until
+  explicitly saved.
 - Advanced read-only debt reports for rollforwards, balance history, activity
   trends, maturity and required-payment schedules, interest analysis, and
   reconciliation/data-quality exceptions.

@@ -77,6 +77,7 @@ const createBridge = (): AppBridge => ({
     ok: true as const,
     value: samplePayoffScenario,
   })),
+  calculateExtraCashAllocation: vi.fn(),
   listPayoffScenarios: vi.fn(async () => ({ ok: true as const, value: [] })),
   getPayoffScenario: vi.fn(async () => ({
     ok: true as const,

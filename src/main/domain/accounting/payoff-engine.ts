@@ -29,6 +29,8 @@ export interface PayoffAssumptions {
   readonly customPriority: readonly string[];
   readonly variableRateOverrides: Readonly<Record<string, number>>;
   readonly maxProjectionMonths: number;
+  readonly initialLumpSumAllocationsCents?: Readonly<Record<string, number>>;
+  readonly initialLumpSumDate?: string;
 }
 
 export interface PayoffDebtResult {
@@ -323,7 +325,14 @@ const runProjection = (
   includeExtra: boolean,
 ): Omit<PayoffProjectionResult, 'baselineInterestCents' | 'interestSavingsCents'> => {
   const balances = new Map(
-    debts.map((debt) => [debt.debtId, debt.startingBalanceCents]),
+    debts.map((debt) => [
+      debt.debtId,
+      Math.max(
+        0,
+        debt.startingBalanceCents -
+          (assumptions.initialLumpSumAllocationsCents?.[debt.debtId] ?? 0),
+      ),
+    ]),
   );
   const interestByDebt = new Map(debts.map((debt) => [debt.debtId, 0]));
   const payoffDateByDebt = new Map<string, string | null>(

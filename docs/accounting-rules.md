@@ -464,6 +464,10 @@ actual debts, transactions, allocations, snapshots, and reconciliations.
 - Insufficient payments, including periods where required payments do not cover
   projected interest, are shown as negative-amortization warnings.
 - Negative projected balances are prevented and interest stops after payoff.
+- Extra-cash allocation analysis applies a lump sum only to the in-memory
+  scenario balance on its selected analysis date. Unused funds are reported,
+  custom split inputs must reconcile to the entered lump sum, and no analysis
+  result posts a transaction or changes a reconciliation.
 - Scenario assumptions, results, and calculation-engine version are saved so
   results remain reviewable and rerunnable.
 - Projected transactions are never written to the posted actual ledger.

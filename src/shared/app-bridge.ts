@@ -39,6 +39,8 @@ import type {
   UpdateDebtRequest,
   VoidBalanceReconciliationRequest,
   VoidDebtTransactionRequest,
+  ExtraCashAllocationRequest,
+  ExtraCashAllocationResponse,
 } from './debt-contracts';
 
 export interface DebtBridge {
@@ -77,6 +79,9 @@ export interface DebtBridge {
   archivePayoffScenario(
     request: ArchivePayoffScenarioRequest,
   ): Promise<ApplicationResult<PayoffScenarioDto>>;
+  calculateExtraCashAllocation(
+    request: ExtraCashAllocationRequest,
+  ): Promise<ApplicationResult<ExtraCashAllocationResponse>>;
   getDebt(request: GetDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   createDebt(request: CreateDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;
   updateDebt(request: UpdateDebtRequest): Promise<ApplicationResult<DebtDetailDto>>;

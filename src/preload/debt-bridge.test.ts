@@ -15,6 +15,7 @@ describe('typed preload bridge', () => {
       'archiveDebt',
       'archivePayoffScenario',
       'bridgeVersion',
+      'calculateExtraCashAllocation',
       'confirmScheduledPayment',
       'createBalanceReconciliation',
       'createBalanceSnapshot',

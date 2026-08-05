@@ -27,6 +27,8 @@ import type {
   VoidDebtTransactionRequest,
   ConfirmScheduledPaymentRequest,
   RemoveScheduledPaymentConfirmationRequest,
+  ExtraCashAllocationRequest,
+  ExtraCashAllocationResponse,
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
 import { AdvancedReports } from './components/advanced-reports';
@@ -42,6 +44,7 @@ import { EditDebtForm } from './components/edit-debt-form';
 import { EscrowDetail } from './components/escrow-detail';
 import { formatLastChanged, formatTimestamp } from './components/display-format';
 import { PayoffScenarios } from './components/payoff-scenarios';
+import { ExtraCashAllocation } from './components/extra-cash-allocation';
 import { RecordRefinanceForm } from './components/record-refinance-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
 import {
@@ -57,6 +60,7 @@ type View =
   | 'edit'
   | 'add-term'
   | 'payoff'
+  | 'allocation'
   | 'reports'
   | 'escrow-detail'
   | 'data-management';
@@ -153,6 +157,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [payoffScenarios, setPayoffScenarios] = useState<readonly PayoffScenarioDto[]>(
     [],
   );
+  const [allocationResult, setAllocationResult] =
+    useState<ExtraCashAllocationResponse | null>(null);
   const [debts, setDebts] = useState<readonly DebtSummaryDto[]>([]);
   const [escrowDebts, setEscrowDebts] = useState<readonly DebtDetailDto[]>([]);
   const [selectedDebt, setSelectedDebt] = useState<DebtDetailDto | null>(null);
@@ -444,6 +450,32 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       );
     }
     void loadPayoffScenarios();
+  };
+
+  const showAllocation = (): void => {
+    setView('allocation');
+    setSelectedDebt(null);
+    setError(null);
+    setFieldErrors(undefined);
+    if (debts.length === 0)
+      void invokeBridge(() => bridge.listDebts({ includeArchived: false })).then(
+        (result) => {
+          if (result.ok) setDebts(result.value);
+        },
+      );
+  };
+
+  const calculateAllocation = async (
+    request: ExtraCashAllocationRequest,
+  ): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.calculateExtraCashAllocation(request),
+    );
+    if (result.ok) setAllocationResult(result.value);
+    else setError(result.error);
+    setLoading(false);
   };
 
   const showReports = (): void => {
@@ -1219,6 +1251,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'allocation' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'allocation')}
+                onClick={showAllocation}
+                type="button"
+              >
+                Extra-cash allocation
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-current={view === 'list' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'list')}
                 onClick={showList}
@@ -1378,6 +1420,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onRerun={(scenario) => void rerunPayoffScenario(scenario)}
               saving={saving}
               scenarios={payoffScenarios}
+            />
+          ) : null}
+
+          {view === 'allocation' ? (
+            <ExtraCashAllocation
+              debts={debts}
+              error={error?.message ?? null}
+              loading={loading}
+              onCalculate={(request) => void calculateAllocation(request)}
+              onSave={(request) => void createPayoffScenario(request)}
+              result={allocationResult}
             />
           ) : null}
 

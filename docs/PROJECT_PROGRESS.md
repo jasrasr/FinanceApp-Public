@@ -1,5 +1,17 @@
 # Project Progress
 
+## Phase 40: Extra-cash debt allocation calculator
+
+Completion date: 2026-08-05. Version: 1.2.0.
+
+- Added a typed, read-only main-process allocation analysis using application-calculated balances and the existing payoff engine.
+- Compared highest-rate, lowest-balance, selected-debt, custom-priority, custom-split, and required-payment baseline strategies with lump-sum and monthly-extra inputs.
+- Added eligibility review, manual exclusions, projected comparison results, debt-level details, and collapsed chart data.
+- Added a narrow `calculateExtraCashAllocation` IPC operation. No migration was required; analysis is not persisted or posted.
+- Validation is pending completion of the requested format, check, packaging smoke, audit, and diff checks.
+- Known limitation: saved-scenario conversion and full interactive zoom/pan controls remain follow-up work.
+- Recommended next phase: complete acceptance testing for allocation assumptions and scenario-save integration.
+
 ## Phase 39: Scheduled-payment boundary and navigation repair
 
 Completion date: 2026-08-02. Version: 1.1.2.

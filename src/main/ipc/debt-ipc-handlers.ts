@@ -7,6 +7,7 @@ import {
   editDebtTransactionRequestSchema,
   createManualBackupRequestSchema,
   createPayoffScenarioRequestSchema,
+  extraCashAllocationRequestSchema,
   addDebtTermRequestSchema,
   archiveDebtRequestSchema,
   archivePayoffScenarioRequestSchema,
@@ -30,6 +31,7 @@ import {
   listDebtsRequestSchema,
   listPayoffScenariosRequestSchema,
   payoffScenarioDtoSchema,
+  extraCashAllocationResponseSchema,
   permanentDebtDeletionDtoSchema,
   recordRefinanceRequestSchema,
   reverseDebtTransactionRequestSchema,
@@ -262,6 +264,14 @@ export const registerDebtIpcHandlers = (
     payoffScenarioDtoSchema,
     isTrustedSender,
     (request) => service.createPayoffScenario(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.calculateExtraCashAllocation,
+    extraCashAllocationRequestSchema,
+    extraCashAllocationResponseSchema,
+    isTrustedSender,
+    (request) => service.calculateExtraCashAllocation(request),
   );
   registerHandler(
     ipcMain,
