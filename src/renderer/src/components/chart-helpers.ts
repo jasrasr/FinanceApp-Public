@@ -149,3 +149,41 @@ export const buildChartScale = ({
     formattedLabels: tickValues.map(formatLabel),
   };
 };
+
+export const buildPayoffPrincipalBalanceScale = ({
+  chartHeight,
+  formatLabel,
+  values,
+}: {
+  readonly chartHeight: number;
+  readonly formatLabel: (value: number) => string;
+  readonly values: readonly number[];
+}): ChartScale => {
+  const finiteValues = values.filter(Number.isFinite);
+  const rawMaximum = finiteValues.length > 0 ? Math.max(...finiteValues) : 1;
+  const targetTicks = localTickTarget(chartHeight);
+  const paddedMaximum = Math.max(1, rawMaximum * 1.05);
+  let majorUnit = niceMajorUnit(paddedMaximum / Math.max(1, targetTicks - 1));
+  let maximum = Math.ceil(paddedMaximum / majorUnit) * majorUnit;
+  let tickValues = Array.from(
+    { length: Math.round(maximum / majorUnit) + 1 },
+    (_, index) => index * majorUnit,
+  );
+
+  while (tickValues.length > 7) {
+    majorUnit = niceMajorUnit(majorUnit * 1.01);
+    maximum = Math.ceil(paddedMaximum / majorUnit) * majorUnit;
+    tickValues = Array.from(
+      { length: Math.round(maximum / majorUnit) + 1 },
+      (_, index) => index * majorUnit,
+    );
+  }
+
+  return {
+    minimum: 0,
+    maximum,
+    majorUnit,
+    tickValues,
+    formattedLabels: tickValues.map(formatLabel),
+  };
+};

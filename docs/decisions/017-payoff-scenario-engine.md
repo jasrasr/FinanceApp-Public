@@ -72,6 +72,10 @@ Phase-nine supported behavior is:
   charts. Series points retain their actual dates even when series lengths
   differ; the existing dynamic financial scale supplies rounded principal
   balance ticks without changing payoff calculations.
+- Version 1.2.4 keeps the saved payoff chart principal scale anchored at zero,
+  derives its upper bound from visible balances, and prefers the Required
+  payments only series in the default visible set. Horizon endpoints remain
+  actual projection rows; no synthetic zero is added for incomplete scenarios.
 - More precise future features, such as lender-specific amortization, tax
   effects, irregular payment schedules, refinance analysis, and explicit
   balloon-payment modeling, require new documented engine versions.

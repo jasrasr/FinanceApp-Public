@@ -1,5 +1,18 @@
 # Project Progress
 
+## Phase 44: Payoff chart scale and horizon refinement
+
+Completion date: 2026-08-05. Version: 1.2.4.
+
+- Kept the payoff comparison Y-axis at zero and rounded its maximum from visible balances with restrained headroom and multiple major gridlines.
+- Made the default visible saved-scenario set prefer Required payments only, while preserving explicit legend selection behavior.
+- Kept non-paid-off series at their actual final projected balance and restricted payoff markers to dates present within the visible projection horizon.
+- Increased chart left spacing so principal-balance labels and the vertical axis title remain distinct.
+- No payoff calculations, saved scenario values, ledger activity, or IPC operations changed.
+- Added generated-data regression tests for zero minimum, sensible $600,000 scaling for mid-$500,000 balances, and multiple major ticks.
+- Validation: format, full check, and packaged installer smoke passed.
+- Recommended next phase: visual acceptance testing with baseline and mixed-horizon saved scenarios.
+
 ## Phase 43: Saved payoff chart axis correction
 
 Completion date: 2026-08-05. Version: 1.2.3.

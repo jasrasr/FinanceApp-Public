@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildChartScale,
   buildPayoffChartDateDomain,
   buildPayoffChartTickIndexes,
+  buildPayoffPrincipalBalanceScale,
 } from './chart-helpers';
 
 describe('payoff scenario chart domain', () => {
@@ -38,17 +38,30 @@ describe('payoff scenario chart domain', () => {
   });
 
   it('uses rounded major currency units and multiple labels for balances', () => {
-    const scale = buildChartScale({
+    const scale = buildPayoffPrincipalBalanceScale({
       values: [250_000, 300_000, 350_000],
       chartHeight: 266,
-      includeZero: false,
-      allowExcludeZero: true,
       formatLabel: (value) => `$${value.toFixed(0)}`,
     });
 
+    expect(scale.minimum).toBe(0);
+    expect(scale.maximum).toBe(400_000);
     expect(scale.tickValues.length).toBeGreaterThanOrEqual(4);
     expect(scale.tickValues.length).toBeLessThanOrEqual(7);
     expect(scale.majorUnit).toBeGreaterThan(0);
     expect(scale.formattedLabels).toContain('$300000');
+  });
+
+  it('tops a mid-$500,000 range at a sensible $600,000', () => {
+    const scale = buildPayoffPrincipalBalanceScale({
+      values: [520_000, 550_000],
+      chartHeight: 266,
+      formatLabel: (value) => `$${value.toFixed(0)}`,
+    });
+
+    expect(scale.minimum).toBe(0);
+    expect(scale.maximum).toBe(600_000);
+    expect(scale.tickValues).toContain(0);
+    expect(scale.tickValues).toContain(600_000);
   });
 });

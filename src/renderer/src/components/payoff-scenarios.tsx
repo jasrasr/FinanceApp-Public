@@ -7,7 +7,7 @@ import type {
   RenamePayoffScenarioRequest,
 } from '../../../shared/debt-contracts';
 import {
-  buildChartScale,
+  buildPayoffPrincipalBalanceScale,
   buildPayoffChartDateDomain,
   buildPayoffChartTickIndexes,
 } from './chart-helpers';
@@ -165,8 +165,12 @@ const ComparisonChart = ({
     (scenario) => scenario.result.monthlySchedule.length > 0,
   );
   const [selectedIds, setSelectedIds] = useState<readonly string[] | null>(null);
+  const defaultVisibleScenarios = [
+    ...eligibleScenarios.filter((scenario) => scenario.strategy === 'baseline'),
+    ...eligibleScenarios.filter((scenario) => scenario.strategy !== 'baseline'),
+  ].slice(0, 4);
   const activeSelectedIds =
-    selectedIds ?? eligibleScenarios.slice(0, 4).map((scenario) => scenario.id);
+    selectedIds ?? defaultVisibleScenarios.map((scenario) => scenario.id);
   const selected = eligibleScenarios.filter((scenario) =>
     activeSelectedIds.includes(scenario.id),
   );
@@ -175,7 +179,7 @@ const ComparisonChart = ({
   const colors = ['#1d4ed8', '#047857', '#b45309', '#7c3aed', '#be123c', '#0891b2'];
   const width = 900;
   const height = 330;
-  const padding = { left: 70, right: 24, top: 20, bottom: 44 };
+  const padding = { left: 112, right: 24, top: 20, bottom: 44 };
   const domainScenarios = selected.length > 0 ? selected : eligibleScenarios;
   const projectionDates = buildPayoffChartDateDomain(
     domainScenarios.map((scenario) => ({
@@ -184,19 +188,13 @@ const ComparisonChart = ({
   );
   const dateIndexes = new Map(projectionDates.map((date, index) => [date, index]));
   const chartHeight = height - padding.top - padding.bottom;
-  const scale = buildChartScale({
+  const scale = buildPayoffPrincipalBalanceScale({
     values: selected.flatMap((scenario) =>
       scenario.result.monthlySchedule.map((entry) =>
         parseAmount(entry.totalProjectedBalance),
       ),
     ),
     chartHeight,
-    includeZero: selected.some(
-      (scenario) =>
-        scenario.result.projectedPayoffDate !== null &&
-        projectionDates.includes(scenario.result.projectedPayoffDate),
-    ),
-    allowExcludeZero: true,
     formatLabel: (value) => formatDollarString(value.toFixed(0)),
   });
   const xFor = (date: string): number => {
