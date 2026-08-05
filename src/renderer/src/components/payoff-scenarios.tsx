@@ -6,6 +6,11 @@ import type {
   PayoffScenarioDto,
   RenamePayoffScenarioRequest,
 } from '../../../shared/debt-contracts';
+import {
+  buildChartScale,
+  buildPayoffChartDateDomain,
+  buildPayoffChartTickIndexes,
+} from './chart-helpers';
 import { formatDollarString } from './display-format';
 
 export interface PayoffScenariosProps {
@@ -171,36 +176,41 @@ const ComparisonChart = ({
   const width = 900;
   const height = 330;
   const padding = { left: 70, right: 24, top: 20, bottom: 44 };
-  const points = selected.flatMap((scenario) => scenario.result.monthlySchedule);
-  const maxIndex = Math.max(
-    1,
-    ...selected.map((scenario) => scenario.result.monthlySchedule.length - 1),
+  const domainScenarios = selected.length > 0 ? selected : eligibleScenarios;
+  const projectionDates = buildPayoffChartDateDomain(
+    domainScenarios.map((scenario) => ({
+      monthlySchedule: scenario.result.monthlySchedule,
+    })),
   );
-  const maxValue = Math.max(
-    1,
-    ...points.map((point) => parseAmount(point.totalProjectedBalance)),
-  );
-  const xFor = (index: number): number =>
-    padding.left + (index / maxIndex) * (width - padding.left - padding.right);
+  const dateIndexes = new Map(projectionDates.map((date, index) => [date, index]));
+  const chartHeight = height - padding.top - padding.bottom;
+  const scale = buildChartScale({
+    values: selected.flatMap((scenario) =>
+      scenario.result.monthlySchedule.map((entry) =>
+        parseAmount(entry.totalProjectedBalance),
+      ),
+    ),
+    chartHeight,
+    includeZero: selected.some(
+      (scenario) =>
+        scenario.result.projectedPayoffDate !== null &&
+        projectionDates.includes(scenario.result.projectedPayoffDate),
+    ),
+    allowExcludeZero: true,
+    formatLabel: (value) => formatDollarString(value.toFixed(0)),
+  });
+  const xFor = (date: string): number => {
+    const index = dateIndexes.get(date) ?? 0;
+    const lastIndex = Math.max(1, projectionDates.length - 1);
+    return padding.left + (index / lastIndex) * (width - padding.left - padding.right);
+  };
   const yFor = (value: number): number =>
-    padding.top + (1 - value / maxValue) * (height - padding.top - padding.bottom);
-
-  const dateAt = (scenario: PayoffScenarioDto, index: number): string =>
-    scenario.result.monthlySchedule[index]?.month ?? scenario.scenarioStartDate;
-  const tickIndexes = Array.from(
-    new Set([
-      0,
-      ...Array.from({ length: 5 }, (_, index) => Math.round((maxIndex * index) / 4)),
-      maxIndex,
-    ]),
-  );
-  const tickScenario = selected[0] ?? eligibleScenarios[0]!;
-  const payoffIndex = (scenario: PayoffScenarioDto): number | null => {
-    if (!scenario.result.projectedPayoffDate) return null;
-    const index = scenario.result.monthlySchedule.findIndex(
-      (entry) => entry.month >= scenario.result.projectedPayoffDate!,
-    );
-    return index >= 0 ? index : null;
+    padding.top +
+    (1 - (value - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
+  const tickIndexes = buildPayoffChartTickIndexes(projectionDates);
+  const payoffDate = (scenario: PayoffScenarioDto): string | null => {
+    const date = scenario.result.projectedPayoffDate;
+    return date && dateIndexes.has(date) ? date : null;
   };
 
   return (
@@ -308,7 +318,7 @@ const ComparisonChart = ({
             const path = scenario.result.monthlySchedule
               .map((entry, index) => {
                 const command = index === 0 ? 'M' : 'L';
-                return `${command} ${xFor(index).toFixed(1)} ${yFor(
+                return `${command} ${xFor(entry.month).toFixed(1)} ${yFor(
                   parseAmount(entry.totalProjectedBalance),
                 ).toFixed(1)}`;
               })
@@ -329,7 +339,7 @@ const ComparisonChart = ({
             );
           })}
           {selected.map((scenario) =>
-            scenario.result.monthlySchedule.map((entry, index) => {
+            scenario.result.monthlySchedule.map((entry) => {
               const color =
                 colors[
                   eligibleScenarios.findIndex((item) => item.id === scenario.id) %
@@ -337,7 +347,7 @@ const ComparisonChart = ({
                 ] ?? '#1d4ed8';
               return (
                 <circle
-                  cx={xFor(index)}
+                  cx={xFor(entry.month)}
                   cy={yFor(parseAmount(entry.totalProjectedBalance))}
                   fill={color}
                   key={`${scenario.id}-${entry.month}`}
@@ -349,8 +359,8 @@ const ComparisonChart = ({
             }),
           )}
           {selected.map((scenario) => {
-            const index = payoffIndex(scenario);
-            if (index === null) return null;
+            const date = payoffDate(scenario);
+            if (date === null) return null;
             const color =
               colors[
                 eligibleScenarios.findIndex((item) => item.id === scenario.id) %
@@ -359,21 +369,44 @@ const ComparisonChart = ({
             return (
               <g key={`${scenario.id}-payoff-marker`}>
                 <circle
-                  cx={xFor(index)}
+                  cx={xFor(date)}
                   cy={yFor(0)}
                   fill="white"
                   r="6"
                   stroke={color}
                   strokeWidth="3"
                 >
-                  <title>{`${formatMonthYear(dateAt(scenario, index))} - ${scenario.name}: $0.00 projected balance`}</title>
+                  <title>{`${formatMonthYear(date)} - ${scenario.name}: $0.00 projected balance`}</title>
                 </circle>
                 <text
                   fill={color}
                   fontSize="11"
-                  x={xFor(index) + 6}
+                  x={xFor(date) + 6}
                   y={yFor(0) - 8}
-                >{`${scenario.name} · ${formatMonthYear(dateAt(scenario, index))}`}</text>
+                >{`${scenario.name} · ${formatMonthYear(date)}`}</text>
+              </g>
+            );
+          })}
+          {scale.tickValues.map((value) => {
+            const y = yFor(value);
+            return (
+              <g key={`y-tick-${value}`}>
+                <line
+                  stroke="#e2e8f0"
+                  x1={padding.left}
+                  x2={width - padding.right}
+                  y1={y}
+                  y2={y}
+                />
+                <text
+                  fill="#475569"
+                  fontSize="11"
+                  textAnchor="end"
+                  x={padding.left - 8}
+                  y={y + 4}
+                >
+                  {formatDollarString(value.toFixed(0))}
+                </text>
               </g>
             );
           })}
@@ -383,17 +416,24 @@ const ComparisonChart = ({
               fontSize="11"
               key={`tick-${index}`}
               textAnchor="middle"
-              x={xFor(index)}
+              x={xFor(projectionDates[index] ?? projectionDates[0] ?? '')}
               y={height - 14}
             >
-              {formatMonthYear(dateAt(tickScenario, index))}
+              {formatMonthYear(projectionDates[index] ?? projectionDates[0] ?? '')}
             </text>
           ))}
           <text fill="#475569" fontSize="12" x={padding.left} y={height - 2}>
             Projection month and year
           </text>
-          <text fill="#475569" fontSize="12" x="6" y={padding.top + 8}>
-            Balance
+          <text
+            fill="#475569"
+            fontSize="12"
+            textAnchor="middle"
+            transform={`rotate(-90 14 ${padding.top + chartHeight / 2})`}
+            x="14"
+            y={padding.top + chartHeight / 2}
+          >
+            Projected principal balance
           </text>
         </svg>
       </div>

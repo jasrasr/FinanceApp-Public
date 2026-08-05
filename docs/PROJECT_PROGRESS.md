@@ -1,5 +1,17 @@
 # Project Progress
 
+## Phase 43: Saved payoff chart axis correction
+
+Completion date: 2026-08-05. Version: 1.2.3.
+
+- Reproduced the final-date wraparound: tick indexes were labeled through the first selected series, whose missing final row fell back to its scenario start date.
+- Replaced index-derived labels and positions with one sorted visible projection-date domain shared by all selected series, preserving actual dates for paths, markers, ticks, and tooltips.
+- Applied the shared dynamic financial chart scale to projected principal balances with rounded major units, adaptive headroom, and zero inclusion when payoff is visible.
+- No payoff calculations, saved scenario values, ledger activity, or IPC operations changed.
+- Added generated-data tests for shared date domains, different series lengths, chronological endpoint ticks, and readable balance scale units.
+- Validation: format, full check, packaged installer smoke, production audit, and diff checks passed.
+- Recommended next phase: visual acceptance testing with long and mixed-length scenario projections.
+
 ## Phase 42: Payoff presentation and scenario naming refinement
 
 Completion date: 2026-08-05. Version: 1.2.2.

@@ -68,6 +68,10 @@ Phase-nine supported behavior is:
 - Version 1.2.2 adds metadata-only saved-scenario renaming and adaptive
   month/year chart labels with payoff markers. Renaming preserves scenario IDs,
   assumptions, engine version, results, and creation timestamps.
+- Version 1.2.3 uses a shared sorted projection-date domain for saved scenario
+  charts. Series points retain their actual dates even when series lengths
+  differ; the existing dynamic financial scale supplies rounded principal
+  balance ticks without changing payoff calculations.
 - More precise future features, such as lender-specific amortization, tax
   effects, irregular payment schedules, refinance analysis, and explicit
   balloon-payment modeling, require new documented engine versions.

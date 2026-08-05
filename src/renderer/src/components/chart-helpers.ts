@@ -36,6 +36,42 @@ const debtSeriesColors = [
 export const debtSeriesColor = (index: number): string =>
   debtSeriesColors[index % debtSeriesColors.length] ?? '#1d4ed8';
 
+export interface PayoffChartDateSeries {
+  readonly monthlySchedule: readonly { readonly month: string }[];
+}
+
+export const buildPayoffChartDateDomain = (
+  scenarios: readonly PayoffChartDateSeries[],
+): readonly string[] =>
+  [
+    ...new Set(
+      scenarios.flatMap((scenario) =>
+        scenario.monthlySchedule.map((entry) => entry.month),
+      ),
+    ),
+  ].sort();
+
+export const buildPayoffChartTickIndexes = (
+  projectionDates: readonly string[],
+): readonly number[] => {
+  if (projectionDates.length <= 1) return [0];
+  const maxTicks =
+    projectionDates.length > 36
+      ? 7
+      : projectionDates.length > 18
+        ? 6
+        : Math.min(7, projectionDates.length);
+  const step = Math.max(
+    1,
+    Math.ceil((projectionDates.length - 1) / Math.max(1, maxTicks - 1)),
+  );
+  const indexes = new Set<number>([0, projectionDates.length - 1]);
+  for (let index = step; index < projectionDates.length - 1; index += step) {
+    indexes.add(index);
+  }
+  return [...indexes].sort((left, right) => left - right);
+};
+
 export interface ChartScaleOptions {
   readonly values: readonly number[];
   readonly chartHeight: number;
