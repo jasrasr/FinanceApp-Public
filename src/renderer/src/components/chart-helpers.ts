@@ -161,23 +161,41 @@ export const buildPayoffPrincipalBalanceScale = ({
 }): ChartScale => {
   const finiteValues = values.filter(Number.isFinite);
   const rawMaximum = finiteValues.length > 0 ? Math.max(...finiteValues) : 1;
-  const targetTicks = localTickTarget(chartHeight);
-  const paddedMaximum = Math.max(1, rawMaximum * 1.05);
-  let majorUnit = niceMajorUnit(paddedMaximum / Math.max(1, targetTicks - 1));
-  let maximum = Math.ceil(paddedMaximum / majorUnit) * majorUnit;
-  let tickValues = Array.from(
+  const targetIntervals = Math.max(5, Math.min(7, localTickTarget(chartHeight)));
+  const power = Math.floor(Math.log10(Math.max(rawMaximum, 1)));
+  const candidateUnits = [
+    ...new Set(
+      Array.from({ length: 5 }, (_, offset) => power - 2 + offset).flatMap((exponent) =>
+        niceSteps.map((step) => step * Math.pow(10, exponent)),
+      ),
+    ),
+  ];
+  const candidates = candidateUnits.map((majorUnit) => {
+    const maximum = Math.ceil(rawMaximum / majorUnit) * majorUnit;
+    const intervals = Math.round(maximum / majorUnit);
+    return {
+      majorUnit,
+      maximum,
+      intervals,
+      headroom: maximum - rawMaximum,
+    };
+  });
+  const preferred = candidates.filter(
+    (candidate) => candidate.intervals >= 5 && candidate.intervals <= 7,
+  );
+  const [choice] = [...(preferred.length > 0 ? preferred : candidates)].sort(
+    (left, right) =>
+      left.headroom - right.headroom ||
+      Math.abs(left.intervals - targetIntervals) -
+        Math.abs(right.intervals - targetIntervals) ||
+      left.majorUnit - right.majorUnit,
+  );
+  const majorUnit = choice?.majorUnit ?? 1;
+  const maximum = choice?.maximum ?? 1;
+  const tickValues = Array.from(
     { length: Math.round(maximum / majorUnit) + 1 },
     (_, index) => index * majorUnit,
   );
-
-  while (tickValues.length > 7) {
-    majorUnit = niceMajorUnit(majorUnit * 1.01);
-    maximum = Math.ceil(paddedMaximum / majorUnit) * majorUnit;
-    tickValues = Array.from(
-      { length: Math.round(maximum / majorUnit) + 1 },
-      (_, index) => index * majorUnit,
-    );
-  }
 
   return {
     minimum: 0,

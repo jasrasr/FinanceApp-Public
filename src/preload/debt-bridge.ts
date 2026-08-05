@@ -30,9 +30,11 @@ import {
   getDebtRequestSchema,
   getPayoffScenarioRequestSchema,
   listPayoffScenariosRequestSchema,
+  calculatePayoffBaselineRequestSchema,
   listDebtsRequestSchema,
   payoffScenarioListResultSchema,
   payoffScenarioResultSchema,
+  payoffBaselineResultSchema,
   extraCashAllocationResultSchema,
   permanentDebtDeletionResultSchema,
   recordRefinanceRequestSchema,
@@ -67,6 +69,7 @@ import {
   type GetPayoffScenarioRequest,
   type ListDebtsRequest,
   type ListPayoffScenariosRequest,
+  type CalculatePayoffBaselineRequest,
   type RerunPayoffScenarioRequest,
   type RecordRefinanceRequest,
   type ReverseDebtTransactionRequest,
@@ -151,6 +154,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.listPayoffScenarios,
           listPayoffScenariosRequestSchema.parse(request),
+        ),
+      ),
+    calculatePayoffBaseline: async (request: CalculatePayoffBaselineRequest) =>
+      payoffBaselineResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.calculatePayoffBaseline,
+          calculatePayoffBaselineRequestSchema.parse(request),
         ),
       ),
     getPayoffScenario: async (request: GetPayoffScenarioRequest) =>

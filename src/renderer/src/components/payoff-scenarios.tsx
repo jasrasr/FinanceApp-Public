@@ -3,6 +3,7 @@ import type {
   ApplicationError,
   CreatePayoffScenarioRequest,
   DebtSummaryDto,
+  PayoffBaselineDto,
   PayoffScenarioDto,
   RenamePayoffScenarioRequest,
 } from '../../../shared/debt-contracts';
@@ -16,6 +17,7 @@ import { formatDollarString } from './display-format';
 export interface PayoffScenariosProps {
   readonly debts: readonly DebtSummaryDto[];
   readonly scenarios: readonly PayoffScenarioDto[];
+  readonly baseline: PayoffBaselineDto | null;
   readonly loading: boolean;
   readonly saving: boolean;
   readonly fieldErrors?: Readonly<Record<string, readonly string[]>>;
@@ -31,6 +33,8 @@ interface DebtEligibility {
   readonly included: boolean;
   readonly reason: string | null;
 }
+
+type ComparisonScenario = PayoffScenarioDto | PayoffBaselineDto;
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -157,11 +161,16 @@ const moveItem = (
 };
 
 const ComparisonChart = ({
+  baseline,
   scenarios,
 }: {
+  readonly baseline: PayoffBaselineDto | null;
   readonly scenarios: readonly PayoffScenarioDto[];
 }): React.JSX.Element | null => {
-  const eligibleScenarios = scenarios.filter(
+  const chartScenarios: readonly ComparisonScenario[] = baseline
+    ? [baseline, ...scenarios]
+    : scenarios;
+  const eligibleScenarios = chartScenarios.filter(
     (scenario) => scenario.result.monthlySchedule.length > 0,
   );
   const [selectedIds, setSelectedIds] = useState<readonly string[] | null>(null);
@@ -206,9 +215,17 @@ const ComparisonChart = ({
     padding.top +
     (1 - (value - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
   const tickIndexes = buildPayoffChartTickIndexes(projectionDates);
-  const payoffDate = (scenario: PayoffScenarioDto): string | null => {
+  const payoffDate = (scenario: ComparisonScenario): string | null => {
     const date = scenario.result.projectedPayoffDate;
     return date && dateIndexes.has(date) ? date : null;
+  };
+
+  const interestSavedAgainstBaseline = (scenario: ComparisonScenario): string => {
+    if (scenario.strategy === 'baseline' || !baseline) return '0.00';
+    return (
+      parseAmount(baseline.result.totalProjectedInterest) -
+      parseAmount(scenario.result.totalProjectedInterest)
+    ).toFixed(2);
   };
 
   return (
@@ -281,7 +298,8 @@ const ComparisonChart = ({
             </p>
             <p className="text-slate-600">
               Interest: {formatDollarString(scenario.result.totalProjectedInterest)} ·
-              saved vs baseline: {formatDollarString(scenario.result.interestSavings)}
+              saved vs baseline:{' '}
+              {formatDollarString(interestSavedAgainstBaseline(scenario))}
             </p>
           </div>
         ))}
@@ -472,6 +490,7 @@ const ComparisonChart = ({
 };
 
 export const PayoffScenarios = ({
+  baseline,
   debts,
   scenarios,
   loading,
@@ -724,7 +743,7 @@ export const PayoffScenarios = ({
         ) : null}
       </section>
 
-      <ComparisonChart scenarios={scenarios} />
+      <ComparisonChart baseline={baseline} scenarios={scenarios} />
 
       <section
         className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"

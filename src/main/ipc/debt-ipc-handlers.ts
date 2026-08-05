@@ -31,7 +31,9 @@ import {
   getPayoffScenarioRequestSchema,
   listDebtsRequestSchema,
   listPayoffScenariosRequestSchema,
+  calculatePayoffBaselineRequestSchema,
   payoffScenarioDtoSchema,
+  payoffBaselineDtoSchema,
   extraCashAllocationResponseSchema,
   permanentDebtDeletionDtoSchema,
   recordRefinanceRequestSchema,
@@ -281,6 +283,14 @@ export const registerDebtIpcHandlers = (
     payoffScenarioDtoSchema.array(),
     isTrustedSender,
     (request) => service.listPayoffScenarios(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.calculatePayoffBaseline,
+    calculatePayoffBaselineRequestSchema,
+    payoffBaselineDtoSchema,
+    isTrustedSender,
+    (request) => service.calculatePayoffBaseline(request),
   );
   registerHandler(
     ipcMain,

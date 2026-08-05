@@ -10,6 +10,7 @@ import type {
   ArchiveDebtRequest,
   CreateDebtRequest,
   CreatePayoffScenarioRequest,
+  CalculatePayoffBaselineRequest,
   ExtraCashAllocationRequest,
   ExtraCashAllocationResponse,
   DashboardDto,
@@ -26,6 +27,7 @@ import type {
   ListDebtsRequest,
   ListPayoffScenariosRequest,
   PayoffScenarioDto,
+  PayoffBaselineDto,
   RecordRefinanceRequest,
   RerunPayoffScenarioRequest,
   RenamePayoffScenarioRequest,
@@ -54,6 +56,7 @@ import {
   getDebtRequestSchema,
   getPayoffScenarioRequestSchema,
   listPayoffScenariosRequestSchema,
+  calculatePayoffBaselineRequestSchema,
   listDebtsRequestSchema,
   recordRefinanceRequestSchema,
   rerunPayoffScenarioRequestSchema,
@@ -158,6 +161,7 @@ export interface DebtMaintenanceService {
   listPayoffScenarios(
     request: ListPayoffScenariosRequest,
   ): readonly PayoffScenarioDto[];
+  calculatePayoffBaseline(request: CalculatePayoffBaselineRequest): PayoffBaselineDto;
   getPayoffScenario(request: GetPayoffScenarioRequest): PayoffScenarioDto;
   createPayoffScenario(request: CreatePayoffScenarioRequest): PayoffScenarioDto;
   calculateExtraCashAllocation(
@@ -2465,6 +2469,38 @@ export const createDebtMaintenanceService = ({
         return listPayoffScenarioRecords(database, parsed.includeArchived).map(
           mapPayoffScenario,
         );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    calculatePayoffBaseline: (request) => {
+      try {
+        const parsed = calculatePayoffBaselineRequestSchema.parse(request);
+        const scenarioStartDate = ensureCalendarDate(
+          'scenarioStartDate',
+          parsed.scenarioStartDate,
+        );
+        const assumptions: PayoffAssumptions = {
+          scenarioStartDate,
+          strategy: 'baseline',
+          extraMonthlyPaymentCents: 0,
+          customPriority: [],
+          variableRateOverrides: {},
+          maxProjectionMonths: parsed.maxProjectionMonths,
+        };
+        const result = calculatePayoffResult(assumptions);
+        return {
+          id: 'generated-required-payments-baseline',
+          name: 'Required payments only',
+          strategy: 'baseline',
+          scenarioStartDate,
+          extraMonthlyPayment: '0.00',
+          lumpSum: '0.00',
+          maxProjectionMonths: parsed.maxProjectionMonths,
+          result: mapPayoffResult(result),
+          calculationEngineVersion: PAYOFF_ENGINE_VERSION,
+        };
       } catch (error) {
         return normalizeError(error);
       }

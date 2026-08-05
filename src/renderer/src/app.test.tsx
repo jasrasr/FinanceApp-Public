@@ -8,6 +8,7 @@ import type {
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
+  PayoffBaselineDto,
   PayoffScenarioDto,
 } from '../../shared/debt-contracts';
 import { App } from './app';
@@ -78,6 +79,17 @@ const createBridge = (): AppBridge => ({
     value: samplePayoffScenario,
   })),
   calculateExtraCashAllocation: vi.fn(),
+  calculatePayoffBaseline: vi.fn(async () => ({
+    ok: true as const,
+    value: {
+      ...samplePayoffScenario,
+      id: 'generated-required-payments-baseline' as const,
+      name: 'Required payments only' as const,
+      strategy: 'baseline' as const,
+      extraMonthlyPayment: '0.00' as const,
+      lumpSum: '0.00' as const,
+    } as PayoffBaselineDto,
+  })),
   listPayoffScenarios: vi.fn(async () => ({ ok: true as const, value: [] })),
   getPayoffScenario: vi.fn(async () => ({
     ok: true as const,
@@ -2386,7 +2398,13 @@ describe('debt maintenance application', () => {
     expect(screen.getAllByText('Generated avalanche scenario').length).toBeGreaterThan(
       0,
     );
+    expect(screen.getAllByText('Required payments only').length).toBeGreaterThan(0);
     expect(screen.getAllByText('$11,250.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('$1,250.00').length).toBeGreaterThan(0);
+    expect(bridge.calculatePayoffBaseline).toHaveBeenCalledWith({
+      scenarioStartDate: '2026-07-28',
+      maxProjectionMonths: 360,
+    });
     expect(
       screen.getByText(/do not create, edit, or post ledger transactions/i),
     ).toBeVisible();

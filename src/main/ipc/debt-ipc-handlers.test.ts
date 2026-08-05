@@ -13,6 +13,7 @@ const createService = (): DebtMaintenanceService => ({
   getDashboard: vi.fn(),
   getDebtReports: vi.fn(),
   listPayoffScenarios: vi.fn(() => []),
+  calculatePayoffBaseline: vi.fn(),
   getPayoffScenario: vi.fn(),
   createPayoffScenario: vi.fn(),
   calculateExtraCashAllocation: vi.fn(),

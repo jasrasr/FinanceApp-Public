@@ -17,6 +17,7 @@ export const DEBT_IPC_CHANNELS = {
   reports: 'debt:reports',
   createPayoffScenario: 'debt:payoff:create-scenario',
   listPayoffScenarios: 'debt:payoff:list-scenarios',
+  calculatePayoffBaseline: 'debt:payoff:calculate-baseline',
   getPayoffScenario: 'debt:payoff:get-scenario',
   rerunPayoffScenario: 'debt:payoff:rerun-scenario',
   archivePayoffScenario: 'debt:payoff:archive-scenario',

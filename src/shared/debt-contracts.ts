@@ -350,6 +350,13 @@ export const listPayoffScenariosRequestSchema = z
   .object({ includeArchived: z.boolean() })
   .strict();
 
+export const calculatePayoffBaselineRequestSchema = z
+  .object({
+    scenarioStartDate: financialDateInputSchema,
+    maxProjectionMonths: z.number().int().positive().max(600),
+  })
+  .strict();
+
 export const getPayoffScenarioRequestSchema = z.object({ id: uuidSchema }).strict();
 
 export const rerunPayoffScenarioRequestSchema = z.object({ id: uuidSchema }).strict();
@@ -1108,6 +1115,20 @@ export const payoffScenarioDtoSchema = z
   })
   .strict();
 
+export const payoffBaselineDtoSchema = z
+  .object({
+    id: z.literal('generated-required-payments-baseline'),
+    name: z.literal('Required payments only'),
+    strategy: z.literal('baseline'),
+    scenarioStartDate: financialDateInputSchema,
+    extraMonthlyPayment: z.literal('0.00'),
+    lumpSum: z.literal('0.00'),
+    maxProjectionMonths: z.number().int().positive(),
+    result: payoffScenarioResultDtoSchema,
+    calculationEngineVersion: z.string(),
+  })
+  .strict();
+
 export const applicationErrorSchema = z
   .object({
     code: z.enum([
@@ -1154,6 +1175,9 @@ export const dataExportResultSchema = applicationResultSchema(dataExportDtoSchem
 export const debtReportsResultSchema = applicationResultSchema(debtReportsDtoSchema);
 export const payoffScenarioResultSchema = applicationResultSchema(
   payoffScenarioDtoSchema,
+);
+export const payoffBaselineResultSchema = applicationResultSchema(
+  payoffBaselineDtoSchema,
 );
 export const payoffScenarioListResultSchema = applicationResultSchema(
   z.array(payoffScenarioDtoSchema),
@@ -1204,6 +1228,9 @@ export type ExtraCashAllocationRequest = z.infer<
 export type ListPayoffScenariosRequest = z.infer<
   typeof listPayoffScenariosRequestSchema
 >;
+export type CalculatePayoffBaselineRequest = z.infer<
+  typeof calculatePayoffBaselineRequestSchema
+>;
 export type GetPayoffScenarioRequest = z.infer<typeof getPayoffScenarioRequestSchema>;
 export type RerunPayoffScenarioRequest = z.infer<
   typeof rerunPayoffScenarioRequestSchema
@@ -1243,6 +1270,7 @@ export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;
 export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
 export type PayoffScenarioDto = z.infer<typeof payoffScenarioDtoSchema>;
+export type PayoffBaselineDto = z.infer<typeof payoffBaselineDtoSchema>;
 export type PayoffScenarioResultDto = z.infer<typeof payoffScenarioResultDtoSchema>;
 export type ExtraCashAllocationResponse = z.infer<
   typeof extraCashAllocationResponseSchema

@@ -76,6 +76,10 @@ Phase-nine supported behavior is:
   derives its upper bound from visible balances, and prefers the Required
   payments only series in the default visible set. Horizon endpoints remain
   actual projection rows; no synthetic zero is added for incomplete scenarios.
+- Version 1.2.5 calculates a transient Required payments only baseline through
+  a narrow read-only IPC operation using the existing payoff engine. The result
+  is kept separate from saved scenario records and actual activity; comparison
+  savings use that generated baseline result.
 - More precise future features, such as lender-specific amortization, tax
   effects, irregular payment schedules, refinance analysis, and explicit
   balloon-payment modeling, require new documented engine versions.

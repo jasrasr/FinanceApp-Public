@@ -20,6 +20,7 @@ import type {
   DebtTransactionDto,
   GetDebtReportsRequest,
   PayoffScenarioDto,
+  PayoffBaselineDto,
   RecordRefinanceRequest,
   UpdateDebtRequest,
   ReverseDebtTransactionRequest,
@@ -158,6 +159,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [payoffScenarios, setPayoffScenarios] = useState<readonly PayoffScenarioDto[]>(
     [],
   );
+  const [payoffBaseline, setPayoffBaseline] = useState<PayoffBaselineDto | null>(null);
   const [allocationResult, setAllocationResult] =
     useState<ExtraCashAllocationResponse | null>(null);
   const [debts, setDebts] = useState<readonly DebtSummaryDto[]>([]);
@@ -341,8 +343,25 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
     if (result.ok) {
       setPayoffScenarios(result.value);
+      const baselineResult = await invokeBridge(() =>
+        bridge.calculatePayoffBaseline({
+          scenarioStartDate:
+            result.value[0]?.scenarioStartDate ?? new Date().toISOString().slice(0, 10),
+          maxProjectionMonths: Math.max(
+            360,
+            ...result.value.map((scenario) => scenario.maxProjectionMonths),
+          ),
+        }),
+      );
+      if (baselineResult.ok) {
+        setPayoffBaseline(baselineResult.value);
+      } else {
+        setPayoffBaseline(null);
+        setError(baselineResult.error);
+      }
     } else {
       setError(result.error);
+      setPayoffBaseline(null);
     }
 
     setLoading(false);
@@ -1428,6 +1447,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
           {view === 'payoff' ? (
             <PayoffScenarios
+              baseline={payoffBaseline}
               debts={debts}
               error={error}
               fieldErrors={fieldErrors}

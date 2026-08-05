@@ -27,11 +27,13 @@ import type {
   ListDebtsRequest,
   ListPayoffScenariosRequest,
   CreatePayoffScenarioRequest,
+  CalculatePayoffBaselineRequest,
   GetPayoffScenarioRequest,
   RerunPayoffScenarioRequest,
   ArchivePayoffScenarioRequest,
   RenamePayoffScenarioRequest,
   PayoffScenarioDto,
+  PayoffBaselineDto,
   PermanentDebtDeletionDto,
   RecordRefinanceRequest,
   ReverseDebtTransactionRequest,
@@ -71,6 +73,9 @@ export interface DebtBridge {
   listPayoffScenarios(
     request: ListPayoffScenariosRequest,
   ): Promise<ApplicationResult<readonly PayoffScenarioDto[]>>;
+  calculatePayoffBaseline(
+    request: CalculatePayoffBaselineRequest,
+  ): Promise<ApplicationResult<PayoffBaselineDto>>;
   getPayoffScenario(
     request: GetPayoffScenarioRequest,
   ): Promise<ApplicationResult<PayoffScenarioDto>>;

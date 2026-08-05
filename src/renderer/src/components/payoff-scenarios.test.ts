@@ -45,9 +45,9 @@ describe('payoff scenario chart domain', () => {
     });
 
     expect(scale.minimum).toBe(0);
-    expect(scale.maximum).toBe(400_000);
+    expect(scale.maximum).toBe(350_000);
     expect(scale.tickValues.length).toBeGreaterThanOrEqual(4);
-    expect(scale.tickValues.length).toBeLessThanOrEqual(7);
+    expect(scale.tickValues.length).toBeLessThanOrEqual(8);
     expect(scale.majorUnit).toBeGreaterThan(0);
     expect(scale.formattedLabels).toContain('$300000');
   });
@@ -61,7 +61,27 @@ describe('payoff scenario chart domain', () => {
 
     expect(scale.minimum).toBe(0);
     expect(scale.maximum).toBe(600_000);
+    expect(scale.tickValues).toEqual([
+      0, 100_000, 200_000, 300_000, 400_000, 500_000, 600_000,
+    ]);
     expect(scale.tickValues).toContain(0);
     expect(scale.tickValues).toContain(600_000);
+  });
+
+  it('recalculates when the highest-balance series is hidden', () => {
+    const visibleScale = buildPayoffPrincipalBalanceScale({
+      values: [580_000, 300_000],
+      chartHeight: 266,
+      formatLabel: (value) => `$${value.toFixed(0)}`,
+    });
+    const hiddenScale = buildPayoffPrincipalBalanceScale({
+      values: [300_000],
+      chartHeight: 266,
+      formatLabel: (value) => `$${value.toFixed(0)}`,
+    });
+
+    expect(visibleScale.maximum).toBe(600_000);
+    expect(hiddenScale.maximum).toBeLessThan(visibleScale.maximum);
+    expect(hiddenScale.minimum).toBe(0);
   });
 });

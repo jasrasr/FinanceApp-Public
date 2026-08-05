@@ -1,5 +1,17 @@
 # Project Progress
 
+## Phase 45: Generated payoff baseline and scale correction
+
+Completion date: 2026-08-05. Version: 1.2.5.
+
+- Added a read-only typed payoff-baseline operation that runs the existing engine with $0 lump sum and $0 extra monthly payment; it is never saved or posted.
+- The comparison chart always includes the generated Required payments only series, includes it in legend controls, and derives displayed savings from its projected interest.
+- Reworked visible principal scale selection to choose the least-headroom 5–7 interval nice unit; a visible $580,000 maximum now produces $0–$600,000 in $100,000 increments.
+- Added exact regression coverage for baseline generation metadata, savings comparison, visibility recalculation, and the $580,000 scale.
+- No payoff calculations, saved scenario records, ledger activity, or accounting behavior changed.
+- Validation: format, lint, type checking, 177 tests, and database check passed; Electron build and packaged smoke were blocked by the restricted sandbox denying esbuild access to the project path.
+- Recommended next phase: visual acceptance testing with no saved scenarios and multiple baseline start dates.
+
 ## Phase 44: Payoff chart scale and horizon refinement
 
 Completion date: 2026-08-05. Version: 1.2.4.
