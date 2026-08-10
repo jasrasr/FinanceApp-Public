@@ -1240,6 +1240,65 @@ describe('debt outlook', () => {
   });
 });
 
+describe('interest analysis', () => {
+  it('reconciles YTD interest, baseline shares, rankings, and extra-payment savings', () => {
+    const interestBearing = validRequest('Generated Interest Concentration Debt');
+    interestBearing.debt.originalPrincipal = '20000.00';
+    interestBearing.debt.minimumPayment = '1000.00';
+    interestBearing.debt.paymentDueDay = 15;
+    interestBearing.debt.paymentScheduleStartDate = '2026-01-01';
+    interestBearing.initialTerm.requiredPayment = '1000.00';
+    const interestDebt = service.createDebt(interestBearing);
+    service.createDebtTransaction(validTransactionRequest(interestDebt.id));
+
+    const zeroRate = validRequest('Generated Zero Rate Debt');
+    zeroRate.debt.originalPrincipal = '10000.00';
+    zeroRate.debt.minimumPayment = '500.00';
+    zeroRate.debt.paymentDueDay = 15;
+    zeroRate.debt.paymentScheduleStartDate = '2026-01-01';
+    zeroRate.initialTerm.requiredPayment = '500.00';
+    zeroRate.initialTerm.interestRateType = 'zero';
+    zeroRate.initialTerm.annualInterestRatePercent = '0.00%';
+    const zeroDebt = service.createDebt(zeroRate);
+
+    const analysis = service.getInterestAnalysis!({ debtType: null, segment: 'all' });
+    const interestRow = analysis.rows.find((row) => row.debtId === interestDebt.id)!;
+    const zeroRow = analysis.rows.find((row) => row.debtId === zeroDebt.id)!;
+    const shareTotal = analysis.rows.reduce(
+      (total, row) => total + Number(row.shareOfPortfolioInterest.replace('%', '')),
+      0,
+    );
+
+    expect(interestRow.interestPaidYtd).toBe('100.00');
+    expect(Number(analysis.baselinePortfolioInterest)).toBeGreaterThan(0);
+    expect(shareTotal).toBeGreaterThanOrEqual(99.9);
+    expect(shareTotal).toBeLessThanOrEqual(100.1);
+    expect(zeroRow.lumpSumSavings.directInterestSaved).toBe('0.00');
+    expect(zeroRow.monthlySavings.directInterestSaved).toBe('0.00');
+    expect(analysis.interpretations.map((item) => item.debtName)).toContain(
+      'Generated Interest Concentration Debt',
+    );
+    expect(
+      Number(interestRow.lumpSumSavings.totalInterestSaved) >=
+        Number(zeroRow.lumpSumSavings.totalInterestSaved),
+    ).toBe(true);
+  });
+
+  it('excludes zero-balance and inactive debts from the analysis', () => {
+    const active = validRequest('Generated Included Interest Debt');
+    active.debt.paymentDueDay = 15;
+    active.debt.paymentScheduleStartDate = '2026-01-01';
+    service.createDebt(active);
+    const inactive = validRequest('Generated Closed Interest Debt');
+    inactive.debt.status = 'closed';
+    service.createDebt(inactive);
+    const analysis = service.getInterestAnalysis!({ debtType: null, segment: 'all' });
+    expect(analysis.rows.map((row) => row.debtName)).toEqual([
+      'Generated Included Interest Debt',
+    ]);
+  });
+});
+
 describe('payoff scenarios', () => {
   it('returns a complete required-payments-only monthly baseline schedule', () => {
     const request = validRequest('Generated Baseline Schedule Note');

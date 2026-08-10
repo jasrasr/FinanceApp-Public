@@ -13,6 +13,7 @@ import type {
   DataHealthDto,
   MilestonesDto,
   DebtOutlookDto,
+  InterestAnalysisDto,
   DataExportDto,
   DataManagementStatusDto,
   DeleteBackupRequest,
@@ -27,6 +28,7 @@ import type {
   GetDataHealthRequest,
   GetMilestonesRequest,
   GetDebtOutlookRequest,
+  GetInterestAnalysisRequest,
   AcceptCurrentBalanceRequest,
   GetDataManagementStatusRequest,
   GetDebtReportsRequest,
@@ -71,6 +73,9 @@ export interface DebtBridge {
   getDebtOutlook?(
     request: GetDebtOutlookRequest,
   ): Promise<ApplicationResult<DebtOutlookDto>>;
+  getInterestAnalysis?(
+    request: GetInterestAnalysisRequest,
+  ): Promise<ApplicationResult<InterestAnalysisDto>>;
   acceptCurrentBalance?(
     request: AcceptCurrentBalanceRequest,
   ): Promise<ApplicationResult<DebtDetailDto>>;
@@ -172,6 +177,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 25;
+  readonly bridgeVersion: 26;
   readonly appMetadata: AppMetadataDto;
 }

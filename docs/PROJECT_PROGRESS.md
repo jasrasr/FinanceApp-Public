@@ -2177,3 +2177,25 @@ year`.
   warning and does not produce an invented payment obligation.
 - Recommended next phase: first-user review of monthly debt-service detail and
   scenario event presentation.
+
+## Phase 53: Interest-Cost Concentration Analysis
+
+- Completion date: 2026-08-10. Application version: 1.7.0.
+- Added Interest analysis with active-debt interest table, baseline portfolio
+  shares, rankings, interpretation callouts, three horizontal savings/cost
+  charts, debt-type and mortgage/revolving/installment filters, and debt
+  drill-through.
+- Reused report YTD interest, the generated required-payments-only baseline,
+  and existing selected-debt extra-cash/payoff logic for $1,000 lump-sum and
+  $100/month tests. Direct and redirected interest savings remain separate;
+  no ledger, migration, or saved-scenario mutation was introduced.
+- Added typed IPC/bridge contracts, ADR 040, README notes, service and
+  renderer tests, and release metadata.
+- Validation: `npm run format`, `npm run check`, and `npm run package:smoke`
+  passed; check completed 194 tests, the 15-table database check, production
+  build, and Electron E2E (one passed and two expected skips). Package smoke
+  passed installer launch and upgrade preservation.
+- Known limitation: unsupported debt projection inputs retain the existing
+  payoff-engine warning behavior and may show unavailable debt-level interest.
+- Recommended next phase: first-user review of ranking interpretation and
+  filter behavior.

@@ -274,6 +274,12 @@ export const getMilestonesRequestSchema = z
 export const getDebtOutlookRequestSchema = z
   .object({ scenarioId: uuidSchema.nullable() })
   .strict();
+export const getInterestAnalysisRequestSchema = z
+  .object({
+    debtType: z.enum(DEBT_TYPES).nullable(),
+    segment: z.enum(['all', 'mortgage', 'nonmortgage', 'revolving', 'installment']),
+  })
+  .strict();
 export const acceptCurrentBalanceRequestSchema = z
   .object({
     debtId: uuidSchema,
@@ -1376,6 +1382,61 @@ export const debtOutlookDtoSchema = z
   })
   .strict();
 export const debtOutlookResultSchema = applicationResultSchema(debtOutlookDtoSchema);
+const interestSavingsDtoSchema = z
+  .object({
+    appliedAmount: z.string(),
+    directInterestSaved: z.string().nullable(),
+    redirectedInterestSaved: z.string().nullable(),
+    totalInterestSaved: z.string().nullable(),
+  })
+  .strict();
+const interestAnalysisRowDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    debtType: z.enum(DEBT_TYPES),
+    currentBalance: z.string(),
+    currentInterestRate: z.string(),
+    interestPaidYtd: z.string(),
+    projectedRemainingInterest: z.string().nullable(),
+    shareOfPortfolioInterest: z.string(),
+    lumpSumSavings: interestSavingsDtoSchema,
+    monthlySavings: interestSavingsDtoSchema.extend({
+      monthsSaved: z.number().int().nullable(),
+    }),
+    baselinePayoffDate: financialDateInputSchema.nullable(),
+    lumpSumPayoffDate: financialDateInputSchema.nullable(),
+    monthlyPayoffDate: financialDateInputSchema.nullable(),
+  })
+  .strict();
+export const interestAnalysisDtoSchema = z
+  .object({
+    effectiveDate: financialDateInputSchema,
+    filters: z
+      .object({
+        debtType: z.enum(DEBT_TYPES).nullable(),
+        segment: z.enum(['all', 'mortgage', 'nonmortgage', 'revolving', 'installment']),
+      })
+      .strict(),
+    rows: z.array(interestAnalysisRowDtoSchema),
+    baselinePortfolioInterest: z.string(),
+    baselinePortfolioPayoffDate: financialDateInputSchema.nullable(),
+    interpretations: z.array(
+      z
+        .object({
+          label: z.string(),
+          debtId: uuidSchema.nullable(),
+          debtName: z.string().nullable(),
+          value: z.string(),
+        })
+        .strict(),
+    ),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+export const interestAnalysisResultSchema = applicationResultSchema(
+  interestAnalysisDtoSchema,
+);
 export const payoffScenarioResultSchema = applicationResultSchema(
   payoffScenarioDtoSchema,
 );
@@ -1417,6 +1478,9 @@ export type GetDashboardRequest = z.infer<typeof getDashboardRequestSchema>;
 export type GetDataHealthRequest = z.infer<typeof getDataHealthRequestSchema>;
 export type GetMilestonesRequest = z.infer<typeof getMilestonesRequestSchema>;
 export type GetDebtOutlookRequest = z.infer<typeof getDebtOutlookRequestSchema>;
+export type GetInterestAnalysisRequest = z.infer<
+  typeof getInterestAnalysisRequestSchema
+>;
 export type AcceptCurrentBalanceRequest = z.infer<
   typeof acceptCurrentBalanceRequestSchema
 >;
@@ -1481,6 +1545,7 @@ export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
 export type DataHealthDto = z.infer<typeof dataHealthDtoSchema>;
 export type MilestonesDto = z.infer<typeof milestonesDtoSchema>;
 export type DebtOutlookDto = z.infer<typeof debtOutlookDtoSchema>;
+export type InterestAnalysisDto = z.infer<typeof interestAnalysisDtoSchema>;
 export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSchema>;
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;

@@ -10,6 +10,12 @@ drill-through monthly detail. Revolving-debt outlooks use recorded required
 payments only; future purchases, draws, and changing statement minimums are
 not forecast.
 
+Version 1.7.0 adds Interest analysis, which ranks active debts by current rate,
+YTD interest, projected required-payment interest, portfolio share, and tested
+$1,000 lump-sum or $100/month interest savings. Direct savings and redirected
+savings are shown separately; the analysis is read-only and does not alter the
+ledger or saved payoff scenarios.
+
 ## Release Status
 
 Version 1.2.5 adds an engine-generated Required payments only comparison baseline
@@ -98,6 +104,10 @@ Known non-blocking limitations:
   warnings, projected payoff events, maturities, rate/payment changes, and
   refinance events. The outlook is read-only and does not alter saved
   scenarios or the actual ledger.
+- Interest-cost concentration analysis with baseline interest rankings,
+  portfolio-share charts, individually tested lump-sum and monthly savings,
+  direct-versus-redirected savings disclosures, and debt-type/portfolio
+  segment filters.
 - Debt-history charts provide bounded wheel zoom and drag pan. Interest charts
   provide readable month/year labels, dynamic currency ticks, immediate compact
   hover details, and reconciled annual debt-source interest totals.

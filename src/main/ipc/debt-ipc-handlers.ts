@@ -17,6 +17,7 @@ import {
   dataHealthDtoSchema,
   milestonesDtoSchema,
   debtOutlookDtoSchema,
+  interestAnalysisDtoSchema,
   dataExportDtoSchema,
   dataManagementStatusDtoSchema,
   deleteBackupRequestSchema,
@@ -31,6 +32,7 @@ import {
   getDataHealthRequestSchema,
   getMilestonesRequestSchema,
   getDebtOutlookRequestSchema,
+  getInterestAnalysisRequestSchema,
   acceptCurrentBalanceRequestSchema,
   getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
@@ -290,6 +292,14 @@ export const registerDebtIpcHandlers = (
     debtOutlookDtoSchema,
     isTrustedSender,
     (request) => service.getDebtOutlook!(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.interestAnalysis,
+    getInterestAnalysisRequestSchema,
+    interestAnalysisDtoSchema,
+    isTrustedSender,
+    (request) => service.getInterestAnalysis!(request),
   );
   registerHandler(
     ipcMain,

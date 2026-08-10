@@ -14,6 +14,7 @@ import type {
   DashboardDto,
   DataHealthDto,
   DebtOutlookDto,
+  InterestAnalysisDto,
   MilestonesDto,
   BalanceReconciliationDto,
   DataManagementStatusDto,
@@ -22,6 +23,7 @@ import type {
   DebtSummaryDto,
   DebtTransactionDto,
   GetDebtReportsRequest,
+  GetInterestAnalysisRequest,
   PayoffScenarioDto,
   PayoffBaselineDto,
   RecordRefinanceRequest,
@@ -45,6 +47,7 @@ import { DataManagement } from './components/data-management';
 import { DataHealth } from './components/data-health';
 import { Milestones } from './components/milestones';
 import { DebtOutlook } from './components/debt-outlook';
+import { InterestAnalysis } from './components/interest-analysis';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { combinedDebtLabel } from './components/debt-label';
@@ -74,7 +77,8 @@ type View =
   | 'data-management'
   | 'data-health'
   | 'milestones'
-  | 'debt-outlook';
+  | 'debt-outlook'
+  | 'interest-analysis';
 type DetailPanel =
   'overview' | 'transaction' | 'transaction-edit' | 'reconciliation' | 'refinance';
 type Confirmation =
@@ -168,6 +172,14 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [dataHealth, setDataHealth] = useState<DataHealthDto | null>(null);
   const [milestones, setMilestones] = useState<MilestonesDto | null>(null);
   const [debtOutlook, setDebtOutlook] = useState<DebtOutlookDto | null>(null);
+  const [interestAnalysis, setInterestAnalysis] = useState<InterestAnalysisDto | null>(
+    null,
+  );
+  const [interestAnalysisFilters, setInterestAnalysisFilters] =
+    useState<GetInterestAnalysisRequest>({
+      debtType: null,
+      segment: 'all',
+    });
   const [selectedMilestoneScenarioId, setSelectedMilestoneScenarioId] = useState<
     string | null
   >(null);
@@ -394,6 +406,19 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     else setError(scenariosResult.error);
     if (outlookResult.ok) setDebtOutlook(outlookResult.value);
     else setError(outlookResult.error);
+    setLoading(false);
+  };
+
+  const loadInterestAnalysis = async (
+    filters = interestAnalysisFilters,
+  ): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.getInterestAnalysis!({ ...filters }),
+    );
+    if (result.ok) setInterestAnalysis(result.value);
+    else setError(result.error);
     setLoading(false);
   };
 
@@ -667,6 +692,26 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     void loadDebtOutlook();
   };
 
+  const showInterestAnalysis = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'interest-analysis',
+        },
+        '',
+        '#interest-analysis',
+      );
+    }
+    setView('interest-analysis');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setError(null);
+    setFieldErrors(undefined);
+    void loadInterestAnalysis();
+  };
+
   const selectMilestoneScenario = (scenarioId: string | null): void => {
     setSelectedMilestoneScenarioId(scenarioId);
     void loadMilestones(scenarioId);
@@ -675,6 +720,11 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const selectDebtOutlookScenario = (scenarioId: string | null): void => {
     setSelectedDebtOutlookScenarioId(scenarioId);
     void loadDebtOutlook(scenarioId);
+  };
+
+  const selectInterestAnalysisFilters = (filters: GetInterestAnalysisRequest): void => {
+    setInterestAnalysisFilters(filters);
+    void loadInterestAnalysis(filters);
   };
 
   const createPayoffScenario = async (
@@ -942,6 +992,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       if (nextView === 'reports' && !reports) void loadReports();
       if (nextView === 'milestones') void loadMilestones();
       if (nextView === 'debt-outlook') void loadDebtOutlook();
+      if (nextView === 'interest-analysis') void loadInterestAnalysis();
       suppressNavigationPushRef.current = false;
     };
     if (window.history.state?.app !== 'debt-tracker') {
@@ -1488,6 +1539,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'interest-analysis' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'interest-analysis')}
+                onClick={showInterestAnalysis}
+                type="button"
+              >
+                Interest analysis
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-current={view === 'list' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'list')}
                 onClick={showList}
@@ -1741,6 +1802,14 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               outlook={debtOutlook}
               scenarios={payoffScenarios}
               selectedScenarioId={selectedDebtOutlookScenarioId}
+            />
+          ) : null}
+
+          {!loading && view === 'interest-analysis' && interestAnalysis ? (
+            <InterestAnalysis
+              analysis={interestAnalysis}
+              onFiltersChange={selectInterestAnalysisFilters}
+              onSelectDebt={(id) => void selectDebt(id)}
             />
           ) : null}
 

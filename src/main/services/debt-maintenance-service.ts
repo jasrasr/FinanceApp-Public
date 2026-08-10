@@ -15,6 +15,7 @@ import type {
   ExtraCashAllocationResponse,
   DashboardDto,
   DebtOutlookDto,
+  InterestAnalysisDto,
   DataHealthDto,
   MilestonesDto,
   AcceptCurrentBalanceRequest,
@@ -28,6 +29,7 @@ import type {
   GetDataHealthRequest,
   GetMilestonesRequest,
   GetDebtOutlookRequest,
+  GetInterestAnalysisRequest,
   GetDebtReportsRequest,
   GetDebtRequest,
   GetPayoffScenarioRequest,
@@ -62,6 +64,7 @@ import {
   getDataHealthRequestSchema,
   getMilestonesRequestSchema,
   getDebtOutlookRequestSchema,
+  getInterestAnalysisRequestSchema,
   acceptCurrentBalanceRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -172,6 +175,7 @@ export interface DebtMaintenanceService {
   getDataHealth?(request: GetDataHealthRequest): DataHealthDto;
   getMilestones?(request: GetMilestonesRequest): MilestonesDto;
   getDebtOutlook?(request: GetDebtOutlookRequest): DebtOutlookDto;
+  getInterestAnalysis?(request: GetInterestAnalysisRequest): InterestAnalysisDto;
   acceptCurrentBalance?(request: AcceptCurrentBalanceRequest): DebtDetailDto;
   getDebtReports(request: GetDebtReportsRequest): DebtReportsDto;
   listPayoffScenarios(
@@ -3057,6 +3061,219 @@ const createDebtOutlook = (
   };
 };
 
+const createInterestAnalysis = (
+  database: AppDatabase,
+  effectiveDate: string,
+  request: GetInterestAnalysisRequest,
+  calculateResult: (assumptions: PayoffAssumptions) => PayoffProjectionResult,
+): InterestAnalysisDto => {
+  const parsed = getInterestAnalysisRequestSchema.parse(request);
+  const records = listActiveDebtActivityRecords(database).filter((record) => {
+    const balance = calculateLedgerBalanceThroughDate(
+      database,
+      record.debt.id,
+      effectiveDate,
+    );
+    if (record.debt.status !== 'active' || balance <= 0) return false;
+    if (parsed.debtType && record.debt.debtType !== parsed.debtType) return false;
+    if (parsed.segment === 'mortgage' && record.debt.debtType !== 'mortgage')
+      return false;
+    if (parsed.segment === 'nonmortgage' && record.debt.debtType === 'mortgage')
+      return false;
+    if (
+      parsed.segment === 'revolving' &&
+      !['credit_card', 'heloc'].includes(record.debt.debtType)
+    )
+      return false;
+    if (
+      parsed.segment === 'installment' &&
+      ['credit_card', 'heloc'].includes(record.debt.debtType)
+    )
+      return false;
+    return true;
+  });
+  if (records.length === 0) {
+    throw new ApplicationServiceError(
+      'validation',
+      'No active positive-balance debts match the selected filters.',
+    );
+  }
+  const activeIds = new Set(records.map((record) => record.debt.id));
+  const inputs = buildPayoffDebtInputs(database, effectiveDate).filter((input) =>
+    activeIds.has(input.debtId),
+  );
+  const baseline = calculateResult({
+    scenarioStartDate: effectiveDate,
+    strategy: 'baseline',
+    extraMonthlyPaymentCents: 0,
+    customPriority: [],
+    variableRateOverrides: {},
+    maxProjectionMonths: 600,
+  });
+  const reports = createDebtReports(
+    database,
+    {
+      startDate: `${effectiveDate.slice(0, 4)}-01-01`,
+      endDate: effectiveDate,
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: 'active',
+    },
+    () => `${effectiveDate}T00:00:00.000Z`,
+  );
+  const ytdInterestByDebt = new Map<string, number>();
+  for (const row of reports.activityTrends.annualInterestByDebt) {
+    ytdInterestByDebt.set(row.debtId, signedCurrencyInputToCents(row.interestExpense));
+  }
+  const baselineInterest = new Map(
+    baseline.debts.map((debt) => [debt.debtId, debt.projectedInterestCents]),
+  );
+  const portfolioInterestCents = baseline.totalProjectedInterestCents;
+  const compare = (
+    debtId: string,
+    lumpSumCents: number,
+    extraMonthlyPaymentCents: number,
+  ): {
+    readonly appliedAmount: string;
+    readonly directInterestSaved: string | null;
+    readonly redirectedInterestSaved: string | null;
+    readonly totalInterestSaved: string | null;
+    readonly projectedPayoffDate: string | null;
+    readonly monthsSaved: number | null;
+  } => {
+    const calculation = calculateExtraCashAllocation({
+      debts: inputs,
+      analysisDate: effectiveDate,
+      lumpSumCents,
+      extraMonthlyPaymentCents,
+      strategy: 'selected_debt',
+      selectedDebtId: debtId,
+      priority: [],
+      maxProjectionMonths: 600,
+    });
+    const projection = calculation.projection;
+    const baselineDebtInterest = baselineInterest.get(debtId);
+    const scenarioDebt = projection?.debts.find((debt) => debt.debtId === debtId);
+    const directInterestSaved =
+      baselineDebtInterest === null ||
+      baselineDebtInterest === undefined ||
+      scenarioDebt?.projectedInterestCents === null ||
+      scenarioDebt?.projectedInterestCents === undefined
+        ? null
+        : baselineDebtInterest - scenarioDebt.projectedInterestCents;
+    const totalInterestSaved = projection
+      ? portfolioInterestCents - projection.totalProjectedInterestCents
+      : null;
+    const redirectedInterestSaved =
+      totalInterestSaved === null || directInterestSaved === null
+        ? null
+        : totalInterestSaved - directInterestSaved;
+    return {
+      appliedAmount: centsToDollars(calculation.lumpSumAppliedCents),
+      directInterestSaved:
+        directInterestSaved === null ? null : centsToDollars(directInterestSaved),
+      redirectedInterestSaved:
+        redirectedInterestSaved === null
+          ? null
+          : centsToDollars(redirectedInterestSaved),
+      totalInterestSaved:
+        totalInterestSaved === null ? null : centsToDollars(totalInterestSaved),
+      projectedPayoffDate: scenarioDebt?.projectedPayoffDate ?? null,
+      monthsSaved: projection?.monthsSaved ?? null,
+    };
+  };
+  const rows = records.map((record) => {
+    const debtId = record.debt.id;
+    const currentBalance = calculateLedgerBalanceThroughDate(
+      database,
+      debtId,
+      effectiveDate,
+    );
+    const term = currentTermForDate(record.terms, effectiveDate);
+    const baselineDebt = baseline.debts.find((debt) => debt.debtId === debtId);
+    const lump = compare(debtId, 100_000, 0);
+    const monthly = compare(debtId, 0, 10_000);
+    const projectedInterest = baselineInterest.get(debtId);
+    return {
+      debtId,
+      debtName: record.debt.name,
+      debtType: record.debt.debtType,
+      currentBalance: centsToDollars(currentBalance),
+      currentInterestRate: rateMicrosToPercentString(term.interestRateMicros),
+      interestPaidYtd: centsToDollars(ytdInterestByDebt.get(debtId) ?? 0),
+      projectedRemainingInterest:
+        projectedInterest === null || projectedInterest === undefined
+          ? null
+          : centsToDollars(projectedInterest),
+      shareOfPortfolioInterest:
+        portfolioInterestCents > 0 &&
+        projectedInterest !== null &&
+        projectedInterest !== undefined
+          ? `${((projectedInterest / portfolioInterestCents) * 100).toFixed(1)}%`
+          : '0.0%',
+      lumpSumSavings: {
+        appliedAmount: lump.appliedAmount,
+        directInterestSaved: lump.directInterestSaved,
+        redirectedInterestSaved: lump.redirectedInterestSaved,
+        totalInterestSaved: lump.totalInterestSaved,
+      },
+      monthlySavings: {
+        appliedAmount: '100.00',
+        directInterestSaved: monthly.directInterestSaved,
+        redirectedInterestSaved: monthly.redirectedInterestSaved,
+        totalInterestSaved: monthly.totalInterestSaved,
+        monthsSaved: monthly.monthsSaved,
+      },
+      baselinePayoffDate: baselineDebt?.projectedPayoffDate ?? null,
+      lumpSumPayoffDate: lump.projectedPayoffDate,
+      monthlyPayoffDate: monthly.projectedPayoffDate,
+    };
+  });
+  const best = (
+    selector: (row: (typeof rows)[number]) => number,
+    label: string,
+    formatter: (row: (typeof rows)[number]) => string,
+  ) => {
+    const row = [...rows].sort((left, right) => selector(right) - selector(left))[0];
+    return row
+      ? { label, debtId: row.debtId, debtName: row.debtName, value: formatter(row) }
+      : { label, debtId: null, debtName: null, value: 'Not available' };
+  };
+  const numeric = (value: string | null): number =>
+    value === null ? 0 : signedCurrencyInputToCents(value);
+  return {
+    effectiveDate,
+    filters: { debtType: parsed.debtType, segment: parsed.segment },
+    rows,
+    baselinePortfolioInterest: centsToDollars(portfolioInterestCents),
+    baselinePortfolioPayoffDate: baseline.projectedPayoffDate,
+    interpretations: [
+      best(
+        (row) => Number(row.currentInterestRate.replace('%', '')),
+        'Highest current rate',
+        (row) => row.currentInterestRate,
+      ),
+      best(
+        (row) => numeric(row.projectedRemainingInterest),
+        'Largest projected interest cost',
+        (row) => row.projectedRemainingInterest ?? 'Not available',
+      ),
+      best(
+        (row) => numeric(row.lumpSumSavings.totalInterestSaved),
+        'Best $1,000 lump-sum savings',
+        (row) => row.lumpSumSavings.totalInterestSaved ?? 'Not available',
+      ),
+      best(
+        (row) => numeric(row.monthlySavings.totalInterestSaved),
+        'Best $100/month savings',
+        (row) => row.monthlySavings.totalInterestSaved ?? 'Not available',
+      ),
+    ],
+    warnings: [...new Set(baseline.warnings)],
+  };
+};
+
 const normalizeError = (error: unknown): never => {
   if (error instanceof ApplicationServiceError) {
     throw error;
@@ -3222,6 +3439,20 @@ export const createDebtMaintenanceService = ({
           parsed.scenarioId,
           calculatePayoffResult,
           getScenarioOrThrow,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getInterestAnalysis: (request) => {
+      try {
+        const parsed = getInterestAnalysisRequestSchema.parse(request);
+        return createInterestAnalysis(
+          database,
+          currentFinancialDate(now),
+          parsed,
+          calculatePayoffResult,
         );
       } catch (error) {
         return normalizeError(error);
