@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for version 1.7.0.
+Accepted for version 1.7.1.
 
 ## Context
 
@@ -22,9 +22,13 @@ existing extra-cash allocation and payoff engine path: a $1,000 selected-debt
 lump sum and a $100/month selected-debt payment. Both tests use the same
 baseline inputs and preserve required payments on all debts. The existing
 selected-debt rollover behavior is retained. Direct savings are the tested
-debt's interest difference; redirected savings are the remaining portfolio
-interest difference. This keeps 0% debt direct savings at $0 while exposing
-downstream redirected savings separately.
+debt's interest difference; interest saved from freed-up payments is the
+remaining portfolio interest difference. This keeps 0% debt direct savings at
+$0 while exposing downstream freed-up-payment savings separately.
+
+Version 1.7.1 refines only the presentation: rates include `%`, money values use
+standard dollar formatting, and the freed-up-payment term is explained in the
+renderer. No calculation or ranking behavior changes.
 
 ## Consequences
 

@@ -16,6 +16,10 @@ const amount = (value: string | null): number =>
   value === null ? 0 : Number(value.replaceAll(',', '')) || 0;
 const money = (value: string | null): string =>
   value === null ? '—' : formatDollarString(value);
+const rate = (value: string): string =>
+  value.trim().endsWith('%') ? value.trim() : `${value.trim()}%`;
+const freedUpPaymentsExplanation =
+  'Interest saved from freed-up payments is additional interest avoided on later debts when required payments from paid-off debts are redirected.';
 
 type SortKey =
   | 'projectedRemainingInterest'
@@ -159,6 +163,10 @@ export const InterestAnalysis = ({
       segment: event.target.value as GetInterestAnalysisRequest['segment'],
     });
   };
+  const interpretationValue = (
+    item: InterestAnalysisDto['interpretations'][number],
+  ): string =>
+    item.label === 'Highest current rate' ? rate(item.value) : money(item.value);
   return (
     <section aria-labelledby="interest-analysis-heading" className="space-y-6">
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
@@ -242,9 +250,9 @@ export const InterestAnalysis = ({
                 {item.debtName}
               </button>
             ) : (
-              <p className="mt-2 text-lg font-semibold">{item.value}</p>
+              <p className="mt-2 text-lg font-semibold">{interpretationValue(item)}</p>
             )}
-            <p className="mt-1 text-sm text-slate-600">{item.value}</p>
+            <p className="mt-1 text-sm text-slate-600">{interpretationValue(item)}</p>
           </div>
         ))}
       </section>
@@ -253,7 +261,7 @@ export const InterestAnalysis = ({
         rows={rows}
         title="Projected remaining interest"
         tooltip={(row) =>
-          `${row.debtName} — Current rate ${row.currentInterestRate}; Projected remaining interest ${money(row.projectedRemainingInterest)}; Share ${row.shareOfPortfolioInterest}`
+          `${row.debtName} — Current rate ${rate(row.currentInterestRate)}; Projected remaining interest ${money(row.projectedRemainingInterest)}; Share ${row.shareOfPortfolioInterest}`
         }
         value={(row) => amount(row.projectedRemainingInterest)}
       />
@@ -265,7 +273,7 @@ export const InterestAnalysis = ({
         )}
         title="$1,000 lump-sum interest savings"
         tooltip={(row) =>
-          `${row.debtName} — Lump sum applied ${money(row.lumpSumSavings.appliedAmount)}; Direct interest saved ${money(row.lumpSumSavings.directInterestSaved)}; Redirected interest saved ${money(row.lumpSumSavings.redirectedInterestSaved)}; Total interest saved ${money(row.lumpSumSavings.totalInterestSaved)}`
+          `${row.debtName} — Lump sum applied ${money(row.lumpSumSavings.appliedAmount)}; Direct interest saved ${money(row.lumpSumSavings.directInterestSaved)}; Interest saved from freed-up payments ${money(row.lumpSumSavings.redirectedInterestSaved)}; Total interest saved ${money(row.lumpSumSavings.totalInterestSaved)}`
         }
         value={(row) => amount(row.lumpSumSavings.totalInterestSaved)}
       />
@@ -277,7 +285,7 @@ export const InterestAnalysis = ({
         )}
         title="$100/month interest savings"
         tooltip={(row) =>
-          `${row.debtName} — Monthly extra $${row.monthlySavings.appliedAmount}; Direct interest saved ${money(row.monthlySavings.directInterestSaved)}; Redirected interest saved ${money(row.monthlySavings.redirectedInterestSaved)}; Total interest saved ${money(row.monthlySavings.totalInterestSaved)}; Months saved ${row.monthlySavings.monthsSaved ?? 'not available'}`
+          `${row.debtName} — Monthly extra ${money(row.monthlySavings.appliedAmount)}; Direct interest saved ${money(row.monthlySavings.directInterestSaved)}; Interest saved from freed-up payments ${money(row.monthlySavings.redirectedInterestSaved)}; Total interest saved ${money(row.monthlySavings.totalInterestSaved)}; Months saved ${row.monthlySavings.monthsSaved ?? 'not available'}`
         }
         value={(row) => amount(row.monthlySavings.totalInterestSaved)}
       />
@@ -344,7 +352,7 @@ export const InterestAnalysis = ({
                     {money(row.currentBalance)}
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">
-                    {row.currentInterestRate}
+                    {rate(row.currentInterestRate)}
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">
                     {money(row.interestPaidYtd)}
@@ -360,7 +368,9 @@ export const InterestAnalysis = ({
                     <br />
                     <span className="text-xs text-slate-500">
                       direct {money(row.lumpSumSavings.directInterestSaved)} /
-                      redirected {money(row.lumpSumSavings.redirectedInterestSaved)}
+                      <span title={freedUpPaymentsExplanation}>
+                        freed-up {money(row.lumpSumSavings.redirectedInterestSaved)}
+                      </span>
                     </span>
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">
@@ -368,7 +378,9 @@ export const InterestAnalysis = ({
                     <br />
                     <span className="text-xs text-slate-500">
                       direct {money(row.monthlySavings.directInterestSaved)} /
-                      redirected {money(row.monthlySavings.redirectedInterestSaved)}
+                      <span title={freedUpPaymentsExplanation}>
+                        freed-up {money(row.monthlySavings.redirectedInterestSaved)}
+                      </span>
                     </span>
                   </td>
                   <td className="px-2 py-2">
@@ -398,8 +410,12 @@ export const InterestAnalysis = ({
       <p className="text-xs text-slate-500">
         $100/month comparisons continue required payments on every debt and use the
         existing selected-debt rollover behavior after the tested debt is paid off.
-        Direct savings describe the tested debt; redirected savings describe interest
-        avoided on other debts.
+        <span title={freedUpPaymentsExplanation}>
+          Interest saved from freed-up payments
+        </span>{' '}
+        means additional interest avoided on later debts because required payments from
+        paid-off debts are redirected. Direct savings describe the tested debt; total
+        interest saved is direct savings plus freed-up-payment savings.
       </p>
     </section>
   );

@@ -102,7 +102,12 @@ describe('InterestAnalysis', () => {
     expect(
       screen.getByRole('img', { name: /\$100\/month interest savings/i }),
     ).toBeVisible();
-    expect(screen.getAllByText(/redirected/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/freed-up/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('8.00%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('$9,000.00').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByTitle(/additional interest avoided on later debts/i).length,
+    ).toBeGreaterThan(0);
     fireEvent.click(
       screen.getAllByRole('button', { name: 'Generated High Interest Debt' })[0]!,
     );

@@ -3200,7 +3200,7 @@ const createInterestAnalysis = (
       debtName: record.debt.name,
       debtType: record.debt.debtType,
       currentBalance: centsToDollars(currentBalance),
-      currentInterestRate: rateMicrosToPercentString(term.interestRateMicros),
+      currentInterestRate: `${rateMicrosToPercentString(term.interestRateMicros)}%`,
       interestPaidYtd: centsToDollars(ytdInterestByDebt.get(debtId) ?? 0),
       projectedRemainingInterest:
         projectedInterest === null || projectedInterest === undefined
