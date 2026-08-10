@@ -18,3 +18,11 @@ The screen uses the existing chart scale and payoff date helpers, with concise
 hover details and optional series toggles. Debt and next-payoff items retain
 drill-through to debt detail. No database migration or accounting rule change
 is required.
+
+The payoff outlook uses three series: historical Actual, Required payments only,
+and Selected scenario. Both projected series are recalculated from the exact
+current effective-date balance and branch from that same date; future baseline
+values are never labeled actual. Payoff dates are shown as chart markers when
+they fall within the projection horizon. Balance milestones use descending
+$10,000 target balances and report the dollars remaining to the target rather
+than an abstract reduction amount.

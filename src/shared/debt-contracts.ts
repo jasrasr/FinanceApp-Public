@@ -1264,7 +1264,8 @@ const milestoneScenarioPointDtoSchema = z
   .object({
     date: financialDateInputSchema,
     actualPrincipalBalance: z.string().nullable(),
-    projectedPrincipalBalance: z.string().nullable(),
+    baselinePrincipalBalance: z.string().nullable(),
+    selectedScenarioPrincipalBalance: z.string().nullable(),
   })
   .strict();
 export const milestonesDtoSchema = z
@@ -1286,13 +1287,13 @@ export const milestonesDtoSchema = z
       })
       .strict()
       .nullable(),
-    nextDebtReductionMilestone: z.string(),
-    nextDebtReductionMilestoneDate: financialDateInputSchema.nullable(),
+    nextDebtBalanceMilestone: z.string(),
+    dollarsRemainingToNextDebtBalanceMilestone: z.string(),
+    percentProgressFromPriorDebtBalanceMilestone: z.string().nullable(),
     interestPaidYtd: z.string(),
     interestSavedFromSelectedScenario: z.string().nullable(),
     currentCreditUtilization: z.string().nullable(),
     priorYearCreditUtilization: z.string().nullable(),
-    creditUtilizationChange: z.string().nullable(),
     selectedScenario: z
       .object({ id: uuidSchema, name: z.string() })
       .strict()
@@ -1300,6 +1301,8 @@ export const milestonesDtoSchema = z
     balanceHistory: z.array(milestoneBalancePointDtoSchema),
     annualPrincipalReduction: z.array(milestoneAnnualPointDtoSchema),
     annualInterestPaid: z.array(milestoneAnnualPointDtoSchema),
+    baselinePayoffDate: financialDateInputSchema.nullable(),
+    selectedScenarioPayoffDate: financialDateInputSchema.nullable(),
     scenarioComparison: z.array(milestoneScenarioPointDtoSchema),
   })
   .strict();

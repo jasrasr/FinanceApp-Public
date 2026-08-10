@@ -27,7 +27,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 24,
   appMetadata: {
-    version: '1.5.0',
+    version: '1.5.1',
     lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -242,17 +242,19 @@ const sampleMilestones: MilestonesDto = {
   mortgageDebtReduced: '0.00',
   nonmortgageDebtReduced: '400.00',
   nextProjectedDebtPayoff: null,
-  nextDebtReductionMilestone: '10000.00',
-  nextDebtReductionMilestoneDate: null,
+  nextDebtBalanceMilestone: '120000.00',
+  dollarsRemainingToNextDebtBalanceMilestone: '4600.13',
+  percentProgressFromPriorDebtBalanceMilestone: '54.0%',
   interestPaidYtd: '100.00',
   interestSavedFromSelectedScenario: null,
   currentCreditUtilization: null,
   priorYearCreditUtilization: null,
-  creditUtilizationChange: null,
   selectedScenario: null,
   balanceHistory: [],
   annualPrincipalReduction: [],
   annualInterestPaid: [],
+  baselinePayoffDate: null,
+  selectedScenarioPayoffDate: null,
   scenarioComparison: [],
 };
 
@@ -1843,7 +1845,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 1.5.0')).toBeVisible();
+    expect(await screen.findByText('Version 1.5.1')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,

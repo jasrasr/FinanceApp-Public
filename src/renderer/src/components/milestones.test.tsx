@@ -20,13 +20,13 @@ const milestones: MilestonesDto = {
     debtName: 'Generated Mortgage',
     projectedPayoffDate: '2027-01-01',
   },
-  nextDebtReductionMilestone: '20000.00',
-  nextDebtReductionMilestoneDate: '2027-03-01',
+  nextDebtBalanceMilestone: '90000.00',
+  dollarsRemainingToNextDebtBalanceMilestone: '0.00',
+  percentProgressFromPriorDebtBalanceMilestone: '100.0%',
   interestPaidYtd: '750.00',
   interestSavedFromSelectedScenario: null,
   currentCreditUtilization: '42.0%',
   priorYearCreditUtilization: '50.0%',
-  creditUtilizationChange: '-8.0 percentage points',
   selectedScenario: null,
   balanceHistory: [
     {
@@ -44,6 +44,8 @@ const milestones: MilestonesDto = {
   ],
   annualPrincipalReduction: [{ year: '2026', amount: '2500.00' }],
   annualInterestPaid: [{ year: '2026', amount: '750.00' }],
+  baselinePayoffDate: null,
+  selectedScenarioPayoffDate: null,
   scenarioComparison: [],
 };
 
@@ -61,7 +63,10 @@ describe('Milestones', () => {
     );
 
     expect(screen.getByText('Debt payoff milestones')).toBeVisible();
-    expect(screen.getByText('$10,000.00')).toBeVisible();
+    expect(screen.getByText('$90,000.00')).toBeVisible();
+    expect(screen.getByText('$0.00 remaining')).toBeVisible();
+    expect(screen.getByText('42.0% current')).toBeVisible();
+    expect(screen.getByText('Down from 50.0% prior year')).toBeVisible();
     expect(
       screen.getByRole('img', { name: /Total principal balance over time/i }),
     ).toBeVisible();

@@ -1181,7 +1181,11 @@ describe('payoff milestones', () => {
 
 describe('payoff scenarios', () => {
   it('adds selected saved scenario comparison data to milestones', () => {
-    const debt = service.createDebt(validRequest('Generated Milestone Scenario Note'));
+    const request = validRequest('Generated Milestone Scenario Note');
+    request.debt.originalPrincipal = '20000.00';
+    request.debt.minimumPayment = '1000.00';
+    request.initialTerm.requiredPayment = '1000.00';
+    const debt = service.createDebt(request);
     service.createDebtTransaction(validTransactionRequest(debt.id));
     const scenario = service.createPayoffScenario({
       name: 'Generated milestone scenario',
@@ -1190,7 +1194,7 @@ describe('payoff scenarios', () => {
       extraMonthlyPayment: '5000.00',
       customPriority: [],
       variableRateOverrides: {},
-      maxProjectionMonths: 120,
+      maxProjectionMonths: 360,
     });
 
     const milestones = service.getMilestones!({ scenarioId: scenario.id });
@@ -1203,14 +1207,25 @@ describe('payoff scenarios', () => {
       scenario.result.interestSavings,
     );
     expect(milestones.scenarioComparison.length).toBeGreaterThan(0);
+    const currentPoint = milestones.scenarioComparison.find(
+      (point) => point.date === '2026-07-27',
+    );
+    expect(currentPoint?.actualPrincipalBalance).toBe('19600.00');
+    expect(currentPoint?.baselinePrincipalBalance).toBe('19600.00');
+    expect(currentPoint?.selectedScenarioPrincipalBalance).toBe('19600.00');
     expect(
       milestones.scenarioComparison.some(
         (point) => point.actualPrincipalBalance !== null,
       ),
     ).toBe(true);
+    expect(milestones.baselinePayoffDate).not.toBeNull();
+    expect(milestones.selectedScenarioPayoffDate).not.toBeNull();
+    expect(
+      milestones.selectedScenarioPayoffDate! < milestones.baselinePayoffDate!,
+    ).toBe(true);
     expect(
       milestones.scenarioComparison.some(
-        (point) => point.projectedPrincipalBalance !== null,
+        (point) => point.baselinePrincipalBalance !== null,
       ),
     ).toBe(true);
   });

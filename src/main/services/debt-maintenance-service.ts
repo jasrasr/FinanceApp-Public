@@ -2580,6 +2580,7 @@ const createMilestones = (
   database: AppDatabase,
   effectiveDate: string,
   selectedScenario: PayoffScenarioDto | null,
+  baselineScenario: PayoffBaselineDto | null,
 ): MilestonesDto => {
   const records = listDebtActivityRecords(database, true);
   const trackingStartDate =
@@ -2659,29 +2660,47 @@ const createMilestones = (
       mortgagePrincipalBalance: centsToDollars(values.mortgage),
       nonmortgagePrincipalBalance: centsToDollars(values.nonmortgage),
     }));
-  const scenarioComparison = selectedScenario
-    ? (() => {
-        const actual = new Map(
-          balanceHistory.map((point) => [point.date, point.totalPrincipalBalance]),
-        );
-        const projected = new Map(
-          selectedScenario.result.monthlySchedule.map((entry) => [
-            entry.month,
-            entry.totalProjectedBalance,
-          ]),
-        );
-        const dates = [...new Set([...actual.keys(), ...projected.keys()])].sort();
-        return dates.map((date) => ({
-          date,
-          actualPrincipalBalance:
-            date <= effectiveDate ? (actual.get(date) ?? null) : null,
-          projectedPrincipalBalance:
-            date >= selectedScenario.scenarioStartDate
-              ? (projected.get(date) ?? null)
-              : null,
-        }));
-      })()
-    : [];
+  const scenarioComparison =
+    selectedScenario && baselineScenario
+      ? (() => {
+          const actual = new Map(
+            balanceHistory.map((point) => [point.date, point.totalPrincipalBalance]),
+          );
+          const baseline = new Map(
+            baselineScenario.result.monthlySchedule.map((entry) => [
+              entry.month,
+              entry.totalProjectedBalance,
+            ]),
+          );
+          const selected = new Map(
+            selectedScenario.result.monthlySchedule.map((entry) => [
+              entry.month,
+              entry.totalProjectedBalance,
+            ]),
+          );
+          const currentBalance = balanceHistory.at(-1)?.totalPrincipalBalance ?? '0.00';
+          const dates = [
+            ...new Set([...actual.keys(), ...baseline.keys(), ...selected.keys()]),
+          ].sort();
+          return dates.map((date) => ({
+            date,
+            actualPrincipalBalance:
+              date <= effectiveDate ? (actual.get(date) ?? null) : null,
+            baselinePrincipalBalance:
+              date >= effectiveDate
+                ? date === effectiveDate
+                  ? currentBalance
+                  : (baseline.get(date) ?? null)
+                : null,
+            selectedScenarioPrincipalBalance:
+              date >= effectiveDate
+                ? date === effectiveDate
+                  ? currentBalance
+                  : (selected.get(date) ?? null)
+                : null,
+          }));
+        })()
+      : [];
   const nextProjectedDebtPayoff =
     selectedScenario?.result.payoffOrder
       .filter(
@@ -2690,14 +2709,12 @@ const createMilestones = (
       .sort((left, right) =>
         (left.projectedPayoffDate ?? '').localeCompare(right.projectedPayoffDate ?? ''),
       )[0] ?? null;
-  const nextMilestoneCents =
-    (Math.floor(Math.max(0, reducedCents) / 1_000_000) + 1) * 1_000_000;
-  const milestoneBalanceCents = startingDebtCents - nextMilestoneCents;
-  const nextDebtReductionMilestoneDate = selectedScenario
-    ? (selectedScenario.result.monthlySchedule.find(
-        (entry) => parseDollars(entry.totalProjectedBalance) <= milestoneBalanceCents,
-      )?.month ?? null)
-    : null;
+  const safeCurrentDebtCents = Math.max(0, currentDebtCents);
+  const nextDebtBalanceMilestoneCents =
+    safeCurrentDebtCents === 0
+      ? 0
+      : Math.floor((safeCurrentDebtCents - 1) / 1_000_000) * 1_000_000;
+  const priorDebtBalanceMilestoneCents = nextDebtBalanceMilestoneCents + 1_000_000;
   const validCreditCards = records.filter(
     (record) =>
       record.debt.status === 'active' &&
@@ -2748,24 +2765,35 @@ const createMilestones = (
           projectedPayoffDate: nextProjectedDebtPayoff.projectedPayoffDate!,
         }
       : null,
-    nextDebtReductionMilestone: centsToDollars(nextMilestoneCents),
-    nextDebtReductionMilestoneDate,
+    nextDebtBalanceMilestone: centsToDollars(nextDebtBalanceMilestoneCents),
+    dollarsRemainingToNextDebtBalanceMilestone: centsToDollars(
+      safeCurrentDebtCents - nextDebtBalanceMilestoneCents,
+    ),
+    percentProgressFromPriorDebtBalanceMilestone:
+      safeCurrentDebtCents === 0
+        ? '100.0%'
+        : `${Math.max(
+            0,
+            Math.min(
+              100,
+              ((priorDebtBalanceMilestoneCents - safeCurrentDebtCents) / 1_000_000) *
+                100,
+            ),
+          ).toFixed(1)}%`,
     interestPaidYtd: ytdAnnual?.interestActivity ?? '0.00',
     interestSavedFromSelectedScenario: selectedScenario?.result.interestSavings ?? null,
     currentCreditUtilization:
       utilization === null ? null : `${utilization.toFixed(1)}%`,
     priorYearCreditUtilization:
       priorUtilization === null ? null : `${priorUtilization.toFixed(1)}%`,
-    creditUtilizationChange:
-      utilization === null || priorUtilization === null
-        ? null
-        : `${(utilization - priorUtilization).toFixed(1)} percentage points`,
     selectedScenario: selectedScenario
       ? { id: selectedScenario.id, name: selectedScenario.name }
       : null,
     balanceHistory,
     annualPrincipalReduction,
     annualInterestPaid,
+    baselinePayoffDate: baselineScenario?.result.projectedPayoffDate ?? null,
+    selectedScenarioPayoffDate: selectedScenario?.result.projectedPayoffDate ?? null,
     scenarioComparison,
   };
 };
@@ -2877,10 +2905,49 @@ export const createDebtMaintenanceService = ({
       try {
         const parsed = getMilestonesRequestSchema.parse(request);
         const effectiveDate = currentFinancialDate(now);
-        const scenario = parsed.scenarioId
-          ? mapPayoffScenario(getScenarioOrThrow(parsed.scenarioId))
-          : null;
-        return createMilestones(database, effectiveDate, scenario);
+        if (!parsed.scenarioId)
+          return createMilestones(database, effectiveDate, null, null);
+
+        const scenarioRecord = getScenarioOrThrow(parsed.scenarioId);
+        const savedScenario = mapPayoffScenario(scenarioRecord);
+        const savedAssumptions = parsePayoffAssumptions(scenarioRecord.assumptionsJson);
+        const currentAssumptions: PayoffAssumptions = {
+          ...savedAssumptions,
+          scenarioStartDate: effectiveDate,
+        };
+        const selectedScenario: PayoffScenarioDto = {
+          ...savedScenario,
+          scenarioStartDate: effectiveDate,
+          result: mapPayoffResult(calculatePayoffResult(currentAssumptions)),
+        };
+        const baselineAssumptions: PayoffAssumptions = {
+          scenarioStartDate: effectiveDate,
+          strategy: 'baseline',
+          extraMonthlyPaymentCents: 0,
+          customPriority: [],
+          variableRateOverrides: {},
+          maxProjectionMonths: savedAssumptions.maxProjectionMonths,
+        };
+        const baselineResult = mapPayoffResult(
+          calculatePayoffResult(baselineAssumptions),
+        );
+        const baselineScenario: PayoffBaselineDto = {
+          id: 'generated-required-payments-baseline',
+          name: 'Required payments only',
+          strategy: 'baseline',
+          scenarioStartDate: effectiveDate,
+          extraMonthlyPayment: '0.00',
+          lumpSum: '0.00',
+          maxProjectionMonths: savedAssumptions.maxProjectionMonths,
+          result: baselineResult,
+          calculationEngineVersion: PAYOFF_ENGINE_VERSION,
+        };
+        return createMilestones(
+          database,
+          effectiveDate,
+          selectedScenario,
+          baselineScenario,
+        );
       } catch (error) {
         return normalizeError(error);
       }

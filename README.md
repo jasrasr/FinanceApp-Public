@@ -83,7 +83,9 @@ Known non-blocking limitations:
 - Debt Payoff Milestones section with tracking-to-date and year-to-date debt
   reduction, mortgage/nonmortgage progress, payoff and $10,000 milestone
   projections, interest metrics, credit utilization change, and visual actual
-  balance, annual activity, and selected-scenario comparison charts.
+  balance, annual activity, and selected-scenario comparison charts. The next
+  balance milestone is shown as a target balance and dollars remaining; credit
+  utilization shows the current value alongside the prior-year comparison.
 - Debt-history charts provide bounded wheel zoom and drag pan. Interest charts
   provide readable month/year labels, dynamic currency ticks, immediate compact
   hover details, and reconciled annual debt-source interest totals.

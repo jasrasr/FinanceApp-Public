@@ -31,10 +31,16 @@ const LineChart = ({
   ariaLabel,
   dates,
   lines,
+  markers = [],
 }: {
   readonly ariaLabel: string;
   readonly dates: readonly string[];
   readonly lines: readonly Line[];
+  readonly markers?: readonly {
+    readonly date: string;
+    readonly label: string;
+    readonly color: string;
+  }[];
 }): React.JSX.Element => {
   const [visible, setVisible] = useState<readonly string[]>(
     lines.map((line) => line.key),
@@ -140,6 +146,31 @@ const LineChart = ({
               {dateLabel(dates[index]!)}
             </text>
           ))}
+          {markers.map((marker) => {
+            const index = dates.indexOf(marker.date);
+            if (index < 0) return null;
+            return (
+              <g key={marker.label}>
+                <line
+                  stroke={marker.color}
+                  strokeDasharray="4 3"
+                  x1={x(index)}
+                  x2={x(index)}
+                  y1={top}
+                  y2={height - bottom}
+                />
+                <text
+                  fill={marker.color}
+                  fontSize="11"
+                  textAnchor="middle"
+                  x={x(index)}
+                  y={top - 8}
+                >
+                  {marker.label}
+                </text>
+              </g>
+            );
+          })}
           {activeLines.map((line) => (
             <g key={line.key}>
               {line.values
@@ -190,7 +221,7 @@ const AnnualBarChart = ({
   readonly rows: readonly { readonly year: string; readonly amount: string }[];
 }): React.JSX.Element => {
   const width = 860;
-  const height = 260;
+  const height = 330;
   const left = 70;
   const right = 24;
   const top = 24;
@@ -322,12 +353,22 @@ export const Milestones = ({
     },
     {
       key: 'projected',
-      label: 'Projected scenario',
+      label: 'Required payments only',
+      color: '#047857',
+      values: milestones.scenarioComparison.map((point) =>
+        point.baselinePrincipalBalance === null
+          ? NaN
+          : amount(point.baselinePrincipalBalance),
+      ),
+    },
+    {
+      key: 'selected',
+      label: 'Selected scenario',
       color: '#be123c',
       values: milestones.scenarioComparison.map((point) =>
-        point.projectedPrincipalBalance === null
+        point.selectedScenarioPrincipalBalance === null
           ? NaN
-          : amount(point.projectedPrincipalBalance),
+          : amount(point.selectedScenarioPrincipalBalance),
       ),
     },
   ];
@@ -374,11 +415,6 @@ export const Milestones = ({
           ['Interest paid YTD', money(amount(milestones.interestPaidYtd))],
           ['Mortgage reduced', money(amount(milestones.mortgageDebtReduced))],
           ['Nonmortgage reduced', money(amount(milestones.nonmortgageDebtReduced))],
-          [
-            'Current credit utilization',
-            milestones.currentCreditUtilization ?? 'Not available',
-          ],
-          ['Utilization change', milestones.creditUtilizationChange ?? 'Not available'],
         ].map(([label, value]) => (
           <div
             className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
@@ -390,6 +426,19 @@ export const Milestones = ({
             <p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p>
           </div>
         ))}
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:col-span-2 lg:col-span-2">
+          <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            Credit utilization
+          </p>
+          <p className="mt-2 text-2xl font-semibold tabular-nums">
+            {milestones.currentCreditUtilization ?? 'Not available'} current
+          </p>
+          <p className="mt-1 text-sm text-slate-600">
+            {milestones.priorYearCreditUtilization
+              ? `Down from ${milestones.priorYearCreditUtilization} prior year`
+              : 'Prior-year comparison not available.'}
+          </p>
+        </div>
       </section>
 
       <section
@@ -414,14 +463,20 @@ export const Milestones = ({
           )}
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-sm font-semibold">Next $10,000 reduction</p>
+          <p className="text-sm font-semibold">Next debt balance milestone</p>
           <p className="mt-2 text-2xl font-semibold">
-            {money(amount(milestones.nextDebtReductionMilestone))}
+            {money(amount(milestones.nextDebtBalanceMilestone))}
           </p>
           <p className="mt-1 text-sm text-slate-600">
-            {milestones.nextDebtReductionMilestoneDate ??
-              'Select a saved scenario for a projected date.'}
+            {money(amount(milestones.dollarsRemainingToNextDebtBalanceMilestone))}{' '}
+            remaining
           </p>
+          {milestones.percentProgressFromPriorDebtBalanceMilestone ? (
+            <p className="mt-1 text-xs text-slate-500">
+              {milestones.percentProgressFromPriorDebtBalanceMilestone} from prior
+              $10,000 level
+            </p>
+          ) : null}
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <p className="text-sm font-semibold">Scenario interest saved</p>
@@ -449,30 +504,42 @@ export const Milestones = ({
           dates={historyDates}
           lines={historyLines.slice(1)}
         />
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div>
-            <h3 className="mb-3 text-xl font-semibold">Annual principal reduction</h3>
-            <AnnualBarChart
-              ariaLabel="Annual principal reduction"
-              rows={milestones.annualPrincipalReduction}
-            />
-          </div>
-          <div>
-            <h3 className="mb-3 text-xl font-semibold">Annual interest paid</h3>
-            <AnnualBarChart
-              ariaLabel="Annual interest paid"
-              rows={milestones.annualInterestPaid}
-            />
-          </div>
-        </div>
-        <h3 className="pt-3 text-xl font-semibold">
-          Actual vs selected payoff scenario
-        </h3>
+        <h3 className="pt-3 text-xl font-semibold">Annual principal reduction</h3>
+        <AnnualBarChart
+          ariaLabel="Annual principal reduction"
+          rows={milestones.annualPrincipalReduction}
+        />
+        <h3 className="pt-3 text-xl font-semibold">Annual interest paid</h3>
+        <AnnualBarChart
+          ariaLabel="Annual interest paid"
+          rows={milestones.annualInterestPaid}
+        />
+        <h3 className="pt-3 text-xl font-semibold">Debt payoff outlook</h3>
         {selectedScenarioId ? (
           <LineChart
-            ariaLabel="Actual total principal balance versus selected payoff scenario"
+            ariaLabel="Actual balance and payoff projections"
             dates={scenarioDates}
             lines={scenarioLines}
+            markers={[
+              ...(milestones.baselinePayoffDate
+                ? [
+                    {
+                      date: milestones.baselinePayoffDate,
+                      label: 'Baseline payoff',
+                      color: '#047857',
+                    },
+                  ]
+                : []),
+              ...(milestones.selectedScenarioPayoffDate
+                ? [
+                    {
+                      date: milestones.selectedScenarioPayoffDate,
+                      label: 'Selected payoff',
+                      color: '#be123c',
+                    },
+                  ]
+                : []),
+            ]}
           />
         ) : (
           <p className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600">

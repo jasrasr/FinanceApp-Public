@@ -2115,3 +2115,23 @@ year`.
   saved scenario selection.
 - Recommended next phase: first-user review of milestone thresholds and chart
   density.
+
+## Phase 50: Milestones Presentation Refinement
+
+- Completion date: 2026-08-10. Application version: 1.5.1.
+- Replaced the abstract reduction milestone with a descending target balance,
+  dollars remaining, and optional progress from the prior balance level.
+- Clarified credit-utilization context, stacked annual charts vertically with
+  taller axes, and renamed the scenario comparison to Debt payoff outlook.
+- Rebuilt the outlook using historical Actual plus Required payments only and
+  Selected scenario projections that share the current effective-date balance.
+  Added payoff markers and preserved the selected-scenario control.
+- No database migration or accounting change. Refined ADR 038, README,
+  metadata, IPC DTO validation, and renderer/service/integration tests.
+- Validation: `npm run format`, `npm run check`, and `npm run package:smoke` passed;
+  check completed 184 tests, the 15-table database check, and Electron E2E.
+  Packaged smoke passed installer launch and upgrade preservation. Windows
+  signing/deprecation warnings were non-blocking.
+- Known limitation: payoff markers appear only when the calculated payoff date
+  falls within the saved scenario's projection horizon.
+- Recommended next phase: first-user review of chart branch and milestone copy.
