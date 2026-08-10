@@ -266,6 +266,7 @@ export const listDebtsRequestSchema = z
   .strict();
 
 export const getDashboardRequestSchema = z.object({}).strict();
+export const getDataHealthRequestSchema = z.object({}).strict();
 
 export const getDataManagementStatusRequestSchema = z.object({}).strict();
 
@@ -782,6 +783,53 @@ export const dashboardDtoSchema = z
   })
   .strict();
 
+const dataHealthReasonSchema = z
+  .object({
+    code: z.enum([
+      'never_reconciled',
+      'activity_since_reconciliation',
+      'missing_due_day',
+      'missing_schedule_start',
+      'missing_credit_limit',
+      'edited_or_voided_activity',
+      'refinance_activity',
+      'expected_payment_missing',
+      'data_integrity',
+      'stale_reconciliation',
+      'reconciliation_exception',
+    ]),
+    label: z.string(),
+  })
+  .strict();
+export const dataHealthRowDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    debtName: z.string(),
+    creditor: z.string(),
+    debtType: z.enum(DEBT_TYPES),
+    status: z.enum(['current', 'review', 'attention']),
+    currentBalance: z.string(),
+    effectiveDate: financialDateInputSchema,
+    lastReconciliationDate: financialDateInputSchema.nullable(),
+    daysSinceReconciliation: z.number().int().nonnegative().nullable(),
+    activitySinceLastReconciliation: z.string(),
+    reasons: z.array(dataHealthReasonSchema),
+  })
+  .strict();
+export const dataHealthDtoSchema = z
+  .object({
+    effectiveDate: financialDateInputSchema,
+    counts: z
+      .object({
+        current: z.number().int().nonnegative(),
+        review: z.number().int().nonnegative(),
+        attention: z.number().int().nonnegative(),
+      })
+      .strict(),
+    rows: z.array(dataHealthRowDtoSchema),
+  })
+  .strict();
+
 const backupSummaryDtoSchema = z
   .object({
     id: z.string(),
@@ -1190,6 +1238,7 @@ export const permanentDebtDeletionResultSchema = applicationResultSchema(
   permanentDebtDeletionDtoSchema,
 );
 export const dashboardResultSchema = applicationResultSchema(dashboardDtoSchema);
+export const dataHealthResultSchema = applicationResultSchema(dataHealthDtoSchema);
 export const dataManagementStatusResultSchema = applicationResultSchema(
   dataManagementStatusDtoSchema,
 );
@@ -1233,6 +1282,7 @@ export type CreateBalanceReconciliationRequest = z.infer<
 >;
 export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
 export type GetDashboardRequest = z.infer<typeof getDashboardRequestSchema>;
+export type GetDataHealthRequest = z.infer<typeof getDataHealthRequestSchema>;
 export type GetDataManagementStatusRequest = z.infer<
   typeof getDataManagementStatusRequestSchema
 >;
@@ -1291,6 +1341,7 @@ export type ScheduledPaymentDto = z.infer<typeof scheduledPaymentDtoSchema>;
 export type PermanentDebtDeletionDto = z.infer<typeof permanentDebtDeletionDtoSchema>;
 export type RefinanceEventDto = z.infer<typeof refinanceEventDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
+export type DataHealthDto = z.infer<typeof dataHealthDtoSchema>;
 export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSchema>;
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;

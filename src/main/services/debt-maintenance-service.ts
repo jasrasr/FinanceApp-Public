@@ -14,6 +14,7 @@ import type {
   ExtraCashAllocationRequest,
   ExtraCashAllocationResponse,
   DashboardDto,
+  DataHealthDto,
   DeleteDebtPermanentlyRequest,
   ConfirmScheduledPaymentRequest,
   RemoveScheduledPaymentConfirmationRequest,
@@ -21,6 +22,7 @@ import type {
   DebtDetailDto,
   DebtSummaryDto,
   GetDashboardRequest,
+  GetDataHealthRequest,
   GetDebtReportsRequest,
   GetDebtRequest,
   GetPayoffScenarioRequest,
@@ -52,6 +54,7 @@ import {
   confirmScheduledPaymentRequestSchema,
   removeScheduledPaymentConfirmationRequestSchema,
   getDashboardRequestSchema,
+  getDataHealthRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
   getPayoffScenarioRequestSchema,
@@ -157,6 +160,7 @@ import { ApplicationServiceError } from './application-error';
 export interface DebtMaintenanceService {
   listDebts(request: ListDebtsRequest): readonly DebtSummaryDto[];
   getDashboard(request: GetDashboardRequest): DashboardDto;
+  getDataHealth?(request: GetDataHealthRequest): DataHealthDto;
   getDebtReports(request: GetDebtReportsRequest): DebtReportsDto;
   listPayoffScenarios(
     request: ListPayoffScenariosRequest,
@@ -1178,6 +1182,206 @@ const currentFinancialDate = (now: () => string): string =>
 
 const yearStartDate = (effectiveDate: string): string =>
   `${effectiveDate.slice(0, 4)}-01-01`;
+
+const calendarDaysBetween = (startDate: string, endDate: string): number => {
+  const parse = (value: string): number => {
+    const [year, month, day] = value.split('-').map(Number);
+    return Date.UTC(year!, month! - 1, day!);
+  };
+  return Math.max(0, Math.round((parse(endDate) - parse(startDate)) / 86_400_000));
+};
+
+const dataHealthReason = (
+  code:
+    | 'never_reconciled'
+    | 'activity_since_reconciliation'
+    | 'missing_due_day'
+    | 'missing_schedule_start'
+    | 'missing_credit_limit'
+    | 'edited_or_voided_activity'
+    | 'refinance_activity'
+    | 'expected_payment_missing'
+    | 'data_integrity'
+    | 'stale_reconciliation'
+    | 'reconciliation_exception',
+  label: string,
+) => ({ code, label });
+
+const createDataHealth = (
+  database: AppDatabase,
+  records: readonly DebtWithActivityRecord[],
+  effectiveDate: string,
+): DataHealthDto => {
+  const rows = records.map((record) => {
+    const balanceCents = calculateLedgerBalanceThroughDate(
+      database,
+      record.debt.id,
+      effectiveDate,
+    );
+    const currentReconciliations = record.balanceReconciliations
+      .filter((reconciliation) => reconciliation.lifecycleStatus === 'current')
+      .sort((left, right) => right.statementDate.localeCompare(left.statementDate));
+    const lastReconciliationDate = currentReconciliations[0]?.statementDate ?? null;
+    const daysSinceReconciliation = lastReconciliationDate
+      ? calendarDaysBetween(lastReconciliationDate, effectiveDate)
+      : null;
+    const boundary = lastReconciliationDate ?? record.debt.originationDate;
+    const activity = record.transactions.filter(
+      ({ transaction }) =>
+        transaction.effectiveDate > boundary &&
+        transaction.effectiveDate <= effectiveDate &&
+        transaction.status !== 'superseded',
+    );
+    const activityCents = activity.reduce(
+      (total, { transaction }) => total + Math.abs(transaction.totalAmountCents),
+      0,
+    );
+    const activitySinceLastReconciliation = lastReconciliationDate
+      ? `${activity.length} transaction${activity.length === 1 ? '' : 's'} (${centsToDollars(activityCents)})`
+      : activity.length > 0
+        ? `${activity.length} transaction${activity.length === 1 ? '' : 's'} since origination`
+        : 'No posted activity';
+    const reasons: ReturnType<typeof dataHealthReason>[] = [];
+    const activePositiveBalance =
+      record.debt.status === 'active' && !record.debt.archivedAtUtc && balanceCents > 0;
+    const schedule = scheduledPaymentForRecord(record, balanceCents, effectiveDate);
+
+    if (activePositiveBalance && !lastReconciliationDate) {
+      reasons.push(dataHealthReason('never_reconciled', 'Never reconciled'));
+    }
+    const latestReconciliation = currentReconciliations[0];
+    if (
+      latestReconciliation &&
+      latestReconciliation.reconciliationStatus !== 'reconciled' &&
+      latestReconciliation.reconciliationStatus !== 'reconciled_with_adjustment'
+    ) {
+      reasons.push(
+        dataHealthReason('reconciliation_exception', 'Reconciliation needs review'),
+      );
+    }
+    if (activePositiveBalance && activity.length > 0 && lastReconciliationDate) {
+      reasons.push(
+        dataHealthReason(
+          'activity_since_reconciliation',
+          'Activity since last reconciliation',
+        ),
+      );
+    }
+    if (activePositiveBalance && record.debt.paymentDueDay === null) {
+      reasons.push(dataHealthReason('missing_due_day', 'Missing due day'));
+    }
+    if (activePositiveBalance && record.debt.paymentScheduleStartDate === null) {
+      reasons.push(
+        dataHealthReason('missing_schedule_start', 'Missing scheduling start date'),
+      );
+    }
+    if (
+      activePositiveBalance &&
+      (record.debt.debtType === 'credit_card' || record.debt.debtType === 'heloc') &&
+      (!record.debt.creditLimitCents || record.debt.creditLimitCents <= 0)
+    ) {
+      reasons.push(dataHealthReason('missing_credit_limit', 'Missing credit limit'));
+    }
+    if (
+      lastReconciliationDate &&
+      record.transactions.some(
+        ({ transaction }) =>
+          transaction.updatedAtUtc.slice(0, 10) > lastReconciliationDate &&
+          (transaction.status === 'superseded' || transaction.status === 'voided'),
+      )
+    ) {
+      reasons.push(
+        dataHealthReason(
+          'edited_or_voided_activity',
+          'Edited or voided transactions since reconciliation',
+        ),
+      );
+    }
+    if (
+      lastReconciliationDate &&
+      record.refinanceEvents.some(
+        ({ refinanceDate }) => refinanceDate > lastReconciliationDate,
+      )
+    ) {
+      reasons.push(
+        dataHealthReason(
+          'refinance_activity',
+          'Refinance activity since reconciliation',
+        ),
+      );
+    }
+    if (
+      activePositiveBalance &&
+      schedule.obligations.some(
+        (obligation) => !obligation.satisfied && obligation.dueDate < effectiveDate,
+      )
+    ) {
+      reasons.push(
+        dataHealthReason(
+          'expected_payment_missing',
+          'Expected payment with no qualifying payment',
+        ),
+      );
+    }
+    if (findMalformedReversalIssues(record).length > 0) {
+      reasons.push(
+        dataHealthReason('data_integrity', 'Existing data-integrity warning'),
+      );
+    }
+    if (lastReconciliationDate && daysSinceReconciliation! > 90) {
+      reasons.push(
+        dataHealthReason(
+          'stale_reconciliation',
+          'Reconciliation is more than 90 days old',
+        ),
+      );
+    }
+
+    const attentionCodes = new Set([
+      'never_reconciled',
+      'edited_or_voided_activity',
+      'refinance_activity',
+      'expected_payment_missing',
+      'data_integrity',
+      'reconciliation_exception',
+    ]);
+    const status: DataHealthDto['rows'][number]['status'] = reasons.some((reason) =>
+      attentionCodes.has(reason.code),
+    )
+      ? 'attention'
+      : reasons.length > 0
+        ? 'review'
+        : 'current';
+    return {
+      debtId: record.debt.id,
+      debtName: record.debt.name,
+      creditor: record.debt.creditor,
+      debtType: record.debt.debtType,
+      status,
+      currentBalance: centsToDollars(balanceCents),
+      effectiveDate,
+      lastReconciliationDate,
+      daysSinceReconciliation,
+      activitySinceLastReconciliation,
+      reasons,
+    };
+  });
+  const rank = { attention: 0, review: 1, current: 2 } as const;
+  rows.sort(
+    (left, right) =>
+      rank[left.status] - rank[right.status] ||
+      left.debtName.localeCompare(right.debtName),
+  );
+  return {
+    effectiveDate,
+    counts: {
+      current: rows.filter((row) => row.status === 'current').length,
+      review: rows.filter((row) => row.status === 'review').length,
+      attention: rows.filter((row) => row.status === 'attention').length,
+    },
+    rows,
+  };
+};
 
 const addMonths = (financialDate: string, months: number): string => {
   const [yearText, monthText, dayText] = financialDate.split('-');
@@ -2446,6 +2650,19 @@ export const createDebtMaintenanceService = ({
       try {
         getDashboardRequestSchema.parse(request);
         return createDashboard(
+          database,
+          listActiveDebtActivityRecords(database),
+          currentFinancialDate(now),
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getDataHealth: (request) => {
+      try {
+        getDataHealthRequestSchema.parse(request);
+        return createDataHealth(
           database,
           listActiveDebtActivityRecords(database),
           currentFinancialDate(now),

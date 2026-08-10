@@ -31,6 +31,7 @@ describe('typed preload bridge', () => {
       'editDebtTransaction',
       'exportData',
       'getDashboard',
+      'getDataHealth',
       'getDataManagementStatus',
       'getDebt',
       'getDebtReports',
@@ -53,7 +54,7 @@ describe('typed preload bridge', () => {
     ]);
     expect(bridge.bridgeVersion).toBe(23);
     expect(bridge.appMetadata).toEqual({
-      version: '1.3.0',
+      version: '1.4.0',
       lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);

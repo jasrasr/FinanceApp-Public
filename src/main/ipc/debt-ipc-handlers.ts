@@ -14,6 +14,7 @@ import {
   renamePayoffScenarioRequestSchema,
   createDebtRequestSchema,
   dashboardDtoSchema,
+  dataHealthDtoSchema,
   dataExportDtoSchema,
   dataManagementStatusDtoSchema,
   deleteBackupRequestSchema,
@@ -25,6 +26,7 @@ import {
   debtSummaryListSchema,
   exportDataRequestSchema,
   getDashboardRequestSchema,
+  getDataHealthRequestSchema,
   getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -259,6 +261,14 @@ export const registerDebtIpcHandlers = (
     dashboardDtoSchema,
     isTrustedSender,
     (request) => service.getDashboard(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.dataHealth,
+    getDataHealthRequestSchema,
+    dataHealthDtoSchema,
+    isTrustedSender,
+    (request) => service.getDataHealth!(request),
   );
   registerHandler(
     ipcMain,

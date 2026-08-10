@@ -10,6 +10,7 @@ import type {
   CreateDebtRequest,
   CreateManualBackupRequest,
   DashboardDto,
+  DataHealthDto,
   DataExportDto,
   DataManagementStatusDto,
   DeleteBackupRequest,
@@ -21,6 +22,7 @@ import type {
   RemoveScheduledPaymentConfirmationRequest,
   ExportDataRequest,
   GetDashboardRequest,
+  GetDataHealthRequest,
   GetDataManagementStatusRequest,
   GetDebtReportsRequest,
   GetDebtRequest,
@@ -55,6 +57,9 @@ export interface DebtBridge {
     request: ListDebtsRequest,
   ): Promise<ApplicationResult<readonly DebtSummaryDto[]>>;
   getDashboard(request: GetDashboardRequest): Promise<ApplicationResult<DashboardDto>>;
+  getDataHealth?(
+    request: GetDataHealthRequest,
+  ): Promise<ApplicationResult<DataHealthDto>>;
   getDataManagementStatus(
     request: GetDataManagementStatusRequest,
   ): Promise<ApplicationResult<DataManagementStatusDto>>;

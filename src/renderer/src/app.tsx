@@ -12,6 +12,7 @@ import type {
   CreateDebtRequest,
   CreatePayoffScenarioRequest,
   DashboardDto,
+  DataHealthDto,
   BalanceReconciliationDto,
   DataManagementStatusDto,
   DebtReportsDto,
@@ -39,6 +40,7 @@ import { ConfirmationDialog } from './components/confirmation-dialog';
 import { CreateDebtForm } from './components/create-debt-form';
 import { Dashboard } from './components/dashboard';
 import { DataManagement } from './components/data-management';
+import { DataHealth } from './components/data-health';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { combinedDebtLabel } from './components/debt-label';
@@ -65,7 +67,8 @@ type View =
   | 'allocation'
   | 'reports'
   | 'escrow-detail'
-  | 'data-management';
+  | 'data-management'
+  | 'data-health';
 type DetailPanel =
   'overview' | 'transaction' | 'transaction-edit' | 'reconciliation' | 'refinance';
 type Confirmation =
@@ -156,6 +159,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   );
   const [dataManagementStatus, setDataManagementStatus] =
     useState<DataManagementStatusDto | null>(null);
+  const [dataHealth, setDataHealth] = useState<DataHealthDto | null>(null);
   const [payoffScenarios, setPayoffScenarios] = useState<readonly PayoffScenarioDto[]>(
     [],
   );
@@ -331,6 +335,15 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setError(result.error);
     }
 
+    setLoading(false);
+  };
+
+  const loadDataHealth = async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() => bridge.getDataHealth!({}));
+    if (result.ok) setDataHealth(result.value);
+    else setError(result.error);
     setLoading(false);
   };
 
@@ -538,6 +551,15 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setError(null);
     setFieldErrors(undefined);
     void loadDataManagementStatus();
+  };
+
+  const showDataHealth = (): void => {
+    setView('data-health');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setError(null);
+    setFieldErrors(undefined);
+    void loadDataHealth();
   };
 
   const createPayoffScenario = async (
@@ -1339,6 +1361,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'data-health' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'data-health')}
+                onClick={showDataHealth}
+                type="button"
+              >
+                Data health
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-current={view === 'list' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'list')}
                 onClick={showList}
@@ -1419,9 +1451,11 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                           ? () => void loadReports()
                           : view === 'data-management'
                             ? () => void loadDataManagementStatus()
-                            : view === 'escrow-detail'
-                              ? () => void loadEscrowDetail()
-                              : undefined
+                            : view === 'data-health'
+                              ? () => void loadDataHealth()
+                              : view === 'escrow-detail'
+                                ? () => void loadEscrowDetail()
+                                : undefined
                 }
               />
             </div>
@@ -1540,6 +1574,13 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onOpenBackupFolder={() => void bridge.openBackupFolder?.({})}
               restoring={saving}
               status={dataManagementStatus}
+            />
+          ) : null}
+
+          {!loading && view === 'data-health' && dataHealth ? (
+            <DataHealth
+              health={dataHealth}
+              onSelectDebt={(id) => void selectDebt(id)}
             />
           ) : null}
 

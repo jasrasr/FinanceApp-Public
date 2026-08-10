@@ -74,6 +74,10 @@ Known non-blocking limitations:
 - Advanced read-only debt reports for rollforwards, balance history, activity
   trends, maturity and required-payment schedules, interest analysis, and
   reconciliation/data-quality exceptions.
+- Data Health screen with per-debt reconciliation age, activity, scheduling,
+  refinance, edited/voided transaction, expected-payment, and integrity review
+  reasons. Rows are grouped as Current, Review, or Attention and open the debt
+  detail screen when selected.
 - Debt-history charts provide bounded wheel zoom and drag pan. Interest charts
   provide readable month/year labels, dynamic currency ticks, immediate compact
   hover details, and reconciled annual debt-source interest totals.

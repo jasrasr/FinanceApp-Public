@@ -16,6 +16,7 @@ import {
   renamePayoffScenarioRequestSchema,
   createDebtRequestSchema,
   dashboardResultSchema,
+  dataHealthResultSchema,
   dataExportResultSchema,
   dataManagementStatusResultSchema,
   deleteBackupRequestSchema,
@@ -27,6 +28,7 @@ import {
   debtListResultSchema,
   exportDataRequestSchema,
   getDashboardRequestSchema,
+  getDataHealthRequestSchema,
   getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -70,6 +72,7 @@ import {
   type RemoveScheduledPaymentConfirmationRequest,
   type ExportDataRequest,
   type GetDashboardRequest,
+  type GetDataHealthRequest,
   type GetDataManagementStatusRequest,
   type GetDebtReportsRequest,
   type GetDebtRequest,
@@ -109,6 +112,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.dashboard,
           getDashboardRequestSchema.parse(request),
+        ),
+      ),
+    getDataHealth: async (request: GetDataHealthRequest) =>
+      dataHealthResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.dataHealth,
+          getDataHealthRequestSchema.parse(request),
         ),
       ),
     getDataManagementStatus: async (request: GetDataManagementStatusRequest) =>

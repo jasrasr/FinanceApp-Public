@@ -2052,3 +2052,24 @@ year`.
   the live database location is intentionally not configurable.
 - Recommended next phase: perform first-user acceptance of OneDrive sync timing
   and portable restore messaging.
+
+## Phase 47: Reconciliation and Data Health Dashboard
+
+- Completion date: 2026-08-10. Application version: 1.4.0.
+- Added the Data Health screen, Current/Review/Attention summary cards, compact
+  status distribution visual, sorted per-debt review queue, and debt-detail
+  drill-through.
+- Health uses existing reconciliation, scheduling, transaction-chain,
+  refinance, ledger-balance, and reversal-integrity helpers. No accounting
+  calculations or existing dashboard/report behavior changed.
+- Added typed `debt:data-health` IPC and DTO contracts; no database migration was
+  required. Added ADR 037, README guidance, metadata, and bridge/E2E tests.
+- Validation: `npm run format`, `npm run check`, and `npm run package:smoke` passed;
+  check completed 178 tests, the 15-table database check, and Electron E2E.
+  Packaged smoke passed installer launch, restore/export workflow, and upgrade
+  preservation. Windows signing/deprecation and temporary-directory cleanup
+  warnings were non-blocking.
+- Known limitation: stale reconciliation review uses a concise 90-calendar-day
+  threshold; it does not alter reconciliation status or ledger data.
+- Recommended next phase: first-user acceptance of health reason wording and
+  status thresholds.
