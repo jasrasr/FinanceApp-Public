@@ -271,6 +271,9 @@ export const getDataHealthRequestSchema = z.object({}).strict();
 export const getMilestonesRequestSchema = z
   .object({ scenarioId: uuidSchema.nullable() })
   .strict();
+export const getDebtOutlookRequestSchema = z
+  .object({ scenarioId: uuidSchema.nullable() })
+  .strict();
 export const acceptCurrentBalanceRequestSchema = z
   .object({
     debtId: uuidSchema,
@@ -1312,6 +1315,67 @@ export const dataManagementStatusResultSchema = applicationResultSchema(
 export const dataExportResultSchema = applicationResultSchema(dataExportDtoSchema);
 export const debtReportsResultSchema = applicationResultSchema(debtReportsDtoSchema);
 export const milestonesResultSchema = applicationResultSchema(milestonesDtoSchema);
+const debtOutlookMonthDtoSchema = z
+  .object({
+    month: financialDateInputSchema,
+    requiredPayments: z.string(),
+    plannedExtraPayments: z.string(),
+    totalDebtService: z.string(),
+    debtPayoffs: z.array(
+      z.object({ debtId: uuidSchema, debtName: z.string() }).strict(),
+    ),
+    details: z.array(
+      z
+        .object({
+          debtId: uuidSchema,
+          debtName: z.string(),
+          dueDate: financialDateInputSchema,
+          requiredPayment: z.string(),
+          plannedExtraPayment: z.string(),
+          totalPlannedPayment: z.string(),
+          projectedEndingBalance: z.string().nullable(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+const debtOutlookEventDtoSchema = z
+  .object({
+    date: financialDateInputSchema,
+    debtId: uuidSchema,
+    debtName: z.string(),
+    eventType: z.enum([
+      'payoff',
+      'maturity',
+      'rate_change',
+      'required_payment_change',
+      'refinance',
+      'term_change',
+    ]),
+    description: z.string(),
+  })
+  .strict();
+export const debtOutlookDtoSchema = z
+  .object({
+    effectiveDate: financialDateInputSchema,
+    scenario: z.object({ id: uuidSchema.nullable(), name: z.string() }).strict(),
+    months: z.array(debtOutlookMonthDtoSchema).length(12),
+    events: z.array(debtOutlookEventDtoSchema),
+    requiredPaymentsTotal: z.string(),
+    plannedExtraPaymentsTotal: z.string(),
+    totalPlannedDebtService: z.string(),
+    averageMonthlyDebtService: z.string(),
+    highestPaymentMonth: z
+      .object({ month: financialDateInputSchema, amount: z.string() })
+      .strict(),
+    lowestPaymentMonth: z
+      .object({ month: financialDateInputSchema, amount: z.string() })
+      .strict(),
+    projectedDebtPayoffCount: z.number().int().nonnegative(),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+export const debtOutlookResultSchema = applicationResultSchema(debtOutlookDtoSchema);
 export const payoffScenarioResultSchema = applicationResultSchema(
   payoffScenarioDtoSchema,
 );
@@ -1352,6 +1416,7 @@ export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
 export type GetDashboardRequest = z.infer<typeof getDashboardRequestSchema>;
 export type GetDataHealthRequest = z.infer<typeof getDataHealthRequestSchema>;
 export type GetMilestonesRequest = z.infer<typeof getMilestonesRequestSchema>;
+export type GetDebtOutlookRequest = z.infer<typeof getDebtOutlookRequestSchema>;
 export type AcceptCurrentBalanceRequest = z.infer<
   typeof acceptCurrentBalanceRequestSchema
 >;
@@ -1415,6 +1480,7 @@ export type RefinanceEventDto = z.infer<typeof refinanceEventDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
 export type DataHealthDto = z.infer<typeof dataHealthDtoSchema>;
 export type MilestonesDto = z.infer<typeof milestonesDtoSchema>;
+export type DebtOutlookDto = z.infer<typeof debtOutlookDtoSchema>;
 export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSchema>;
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;

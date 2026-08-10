@@ -14,6 +14,7 @@ import type {
   ExtraCashAllocationRequest,
   ExtraCashAllocationResponse,
   DashboardDto,
+  DebtOutlookDto,
   DataHealthDto,
   MilestonesDto,
   AcceptCurrentBalanceRequest,
@@ -26,6 +27,7 @@ import type {
   GetDashboardRequest,
   GetDataHealthRequest,
   GetMilestonesRequest,
+  GetDebtOutlookRequest,
   GetDebtReportsRequest,
   GetDebtRequest,
   GetPayoffScenarioRequest,
@@ -59,6 +61,7 @@ import {
   getDashboardRequestSchema,
   getDataHealthRequestSchema,
   getMilestonesRequestSchema,
+  getDebtOutlookRequestSchema,
   acceptCurrentBalanceRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -157,6 +160,7 @@ import {
 } from '../domain/accounting/extra-cash-allocation';
 import {
   calculateScheduledPayments,
+  dueDateForMonth,
   type ScheduledPaymentResult,
 } from '../domain/accounting/payment-schedule';
 import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
@@ -167,6 +171,7 @@ export interface DebtMaintenanceService {
   getDashboard(request: GetDashboardRequest): DashboardDto;
   getDataHealth?(request: GetDataHealthRequest): DataHealthDto;
   getMilestones?(request: GetMilestonesRequest): MilestonesDto;
+  getDebtOutlook?(request: GetDebtOutlookRequest): DebtOutlookDto;
   acceptCurrentBalance?(request: AcceptCurrentBalanceRequest): DebtDetailDto;
   getDebtReports(request: GetDebtReportsRequest): DebtReportsDto;
   listPayoffScenarios(
@@ -2798,6 +2803,260 @@ const createMilestones = (
   };
 };
 
+const debtOutlookMonthStart = (date: string, offset: number): string =>
+  addMonths(`${date.slice(0, 7)}-01`, offset);
+
+const debtOutlookMonthEnd = (month: string): string => {
+  const nextMonth = addMonths(month, 1);
+  return previousFinancialDate(nextMonth);
+};
+
+const createDebtOutlook = (
+  database: AppDatabase,
+  effectiveDate: string,
+  scenarioId: string | null,
+  calculateResult: (assumptions: PayoffAssumptions) => PayoffProjectionResult,
+  getScenario: (id: string) => PayoffScenarioRecord,
+): DebtOutlookDto => {
+  const records = listActiveDebtActivityRecords(database).filter(
+    (record) => record.debt.status === 'active',
+  );
+  const months = Array.from({ length: 12 }, (_, index) =>
+    debtOutlookMonthStart(effectiveDate, index),
+  );
+  const windowEnd = debtOutlookMonthEnd(months.at(-1)!);
+  const baselineResult = calculateResult({
+    scenarioStartDate: effectiveDate,
+    strategy: 'baseline',
+    extraMonthlyPaymentCents: 0,
+    customPriority: [],
+    variableRateOverrides: {},
+    maxProjectionMonths: 12,
+  });
+  let selectedResult: PayoffProjectionResult | null = null;
+  let scenarioName = 'Required payments only';
+  let selectedScenarioId: string | null = null;
+  if (scenarioId) {
+    const scenario = getScenario(scenarioId);
+    const assumptions = parsePayoffAssumptions(scenario.assumptionsJson);
+    selectedResult = calculateResult({
+      ...assumptions,
+      scenarioStartDate: effectiveDate,
+      maxProjectionMonths: Math.max(12, assumptions.maxProjectionMonths),
+    });
+    scenarioName = scenario.name;
+    selectedScenarioId = scenario.id;
+  }
+
+  const resultForOutlook = selectedResult ?? baselineResult;
+  const allocationByMonthAndDebt = new Map<
+    string,
+    Map<
+      string,
+      NonNullable<
+        PayoffProjectionResult['monthlySchedule'][number]['debtAllocations']
+      >[number]
+    >
+  >();
+  for (const row of resultForOutlook.monthlySchedule) {
+    const allocations = new Map(
+      (row.debtAllocations ?? []).map((allocation) => [allocation.debtId, allocation]),
+    );
+    allocationByMonthAndDebt.set(monthKey(row.month), allocations);
+  }
+  const payoffDates = new Map(
+    resultForOutlook.debts
+      .filter((debt) => debt.projectedPayoffDate)
+      .map((debt) => [debt.debtId, debt.projectedPayoffDate!]),
+  );
+  const warnings: string[] = [];
+  const detailRowsByMonth = new Map<
+    string,
+    DebtOutlookDto['months'][number]['details']
+  >();
+
+  for (const month of months) {
+    const details: DebtOutlookDto['months'][number]['details'] = [];
+    for (const record of records) {
+      const balance = calculateLedgerBalanceThroughDate(
+        database,
+        record.debt.id,
+        effectiveDate,
+      );
+      if (balance <= 0) continue;
+      if (record.debt.paymentDueDay === null) {
+        warnings.push(`${record.debt.name}: missing due day; payment not projected.`);
+        continue;
+      }
+      if (record.debt.paymentScheduleStartDate === null) {
+        warnings.push(
+          `${record.debt.name}: missing scheduling start date; payment not projected.`,
+        );
+        continue;
+      }
+      const dueDate = dueDateForMonth(
+        Number(month.slice(0, 4)),
+        Number(month.slice(5, 7)),
+        record.debt.paymentDueDay,
+      );
+      if (dueDate < record.debt.paymentScheduleStartDate) continue;
+      const term = currentTermForDate(record.terms, dueDate);
+      if (term.paymentFrequency !== 'monthly') {
+        warnings.push(
+          `${record.debt.name}: ${term.paymentFrequency} scheduling is unsupported; payment not projected.`,
+        );
+        continue;
+      }
+      const payoffDate = payoffDates.get(record.debt.id);
+      if (payoffDate && dueDate > payoffDate) continue;
+      const allocation = allocationByMonthAndDebt
+        .get(monthKey(month))
+        ?.get(record.debt.id);
+      const plannedExtraPayment = allocation?.extraPaymentCents ?? 0;
+      const projectedEndingBalance = allocation
+        ? centsToDollars(allocation.endingBalanceCents)
+        : null;
+      details.push({
+        debtId: record.debt.id,
+        debtName: record.debt.name,
+        dueDate,
+        requiredPayment: centsToDollars(term.requiredPaymentCents),
+        plannedExtraPayment: centsToDollars(plannedExtraPayment),
+        totalPlannedPayment: centsToDollars(
+          term.requiredPaymentCents + plannedExtraPayment,
+        ),
+        projectedEndingBalance,
+      });
+    }
+    details.sort(
+      (left, right) =>
+        left.dueDate.localeCompare(right.dueDate) ||
+        left.debtName.localeCompare(right.debtName),
+    );
+    detailRowsByMonth.set(monthKey(month), details);
+  }
+
+  const outlookMonths = months.map((month) => {
+    const details = detailRowsByMonth.get(monthKey(month)) ?? [];
+    const requiredPayments = details.reduce(
+      (total, detail) => total + signedCurrencyInputToCents(detail.requiredPayment),
+      0,
+    );
+    const plannedExtraPayments = details.reduce(
+      (total, detail) => total + signedCurrencyInputToCents(detail.plannedExtraPayment),
+      0,
+    );
+    const payoffRows = resultForOutlook.debts
+      .filter(
+        (debt) =>
+          debt.projectedPayoffDate !== null &&
+          monthKey(debt.projectedPayoffDate) === monthKey(month),
+      )
+      .map((debt) => ({ debtId: debt.debtId, debtName: debt.debtName }));
+    return {
+      month,
+      requiredPayments: centsToDollars(requiredPayments),
+      plannedExtraPayments: centsToDollars(plannedExtraPayments),
+      totalDebtService: centsToDollars(requiredPayments + plannedExtraPayments),
+      debtPayoffs: payoffRows,
+      details,
+    };
+  });
+
+  const events: DebtOutlookDto['events'] = [];
+  for (const record of records) {
+    const addEvent = (
+      date: string,
+      eventType: DebtOutlookDto['events'][number]['eventType'],
+      description: string,
+    ): void => {
+      if (date >= effectiveDate && date <= windowEnd) {
+        events.push({
+          date,
+          debtId: record.debt.id,
+          debtName: record.debt.name,
+          eventType,
+          description,
+        });
+      }
+    };
+    const payoffDate = payoffDates.get(record.debt.id);
+    if (payoffDate) addEvent(payoffDate, 'payoff', 'Projected payoff.');
+    if (record.debt.maturityDate)
+      addEvent(record.debt.maturityDate, 'maturity', 'Maturity date.');
+    for (const term of record.terms) {
+      if (term.effectiveStartDate < effectiveDate) continue;
+      const prior = record.terms
+        .filter((candidate) => candidate.effectiveStartDate < term.effectiveStartDate)
+        .at(-1);
+      if (!prior) continue;
+      if (
+        prior.interestRateType !== term.interestRateType ||
+        prior.interestRateMicros !== term.interestRateMicros
+      )
+        addEvent(term.effectiveStartDate, 'rate_change', 'Interest rate changes.');
+      if (prior.requiredPaymentCents !== term.requiredPaymentCents)
+        addEvent(
+          term.effectiveStartDate,
+          'required_payment_change',
+          'Required payment changes.',
+        );
+      if (
+        prior.paymentFrequency !== term.paymentFrequency ||
+        prior.dayCountConvention !== term.dayCountConvention ||
+        prior.calculationConvention !== term.calculationConvention
+      )
+        addEvent(term.effectiveStartDate, 'term_change', 'Debt terms change.');
+    }
+    for (const refinance of record.refinanceEvents)
+      addEvent(refinance.refinanceDate, 'refinance', 'In-place refinance event.');
+  }
+  events.sort(
+    (left, right) =>
+      left.date.localeCompare(right.date) ||
+      left.debtName.localeCompare(right.debtName),
+  );
+
+  const totals = outlookMonths.map((month) =>
+    signedCurrencyInputToCents(month.totalDebtService),
+  );
+  const requiredTotal = outlookMonths.reduce(
+    (total, month) => total + signedCurrencyInputToCents(month.requiredPayments),
+    0,
+  );
+  const extraTotal = outlookMonths.reduce(
+    (total, month) => total + signedCurrencyInputToCents(month.plannedExtraPayments),
+    0,
+  );
+  const highestIndex = totals.indexOf(Math.max(...totals));
+  const lowestIndex = totals.indexOf(Math.min(...totals));
+  return {
+    effectiveDate,
+    scenario: { id: selectedScenarioId, name: scenarioName },
+    months: outlookMonths,
+    events,
+    requiredPaymentsTotal: centsToDollars(requiredTotal),
+    plannedExtraPaymentsTotal: centsToDollars(extraTotal),
+    totalPlannedDebtService: centsToDollars(requiredTotal + extraTotal),
+    averageMonthlyDebtService: centsToDollars(
+      Math.round((requiredTotal + extraTotal) / 12),
+    ),
+    highestPaymentMonth: {
+      month: months[highestIndex]!,
+      amount: centsToDollars(totals[highestIndex]!),
+    },
+    lowestPaymentMonth: {
+      month: months[lowestIndex]!,
+      amount: centsToDollars(totals[lowestIndex]!),
+    },
+    projectedDebtPayoffCount: outlookMonths.reduce(
+      (total, month) => total + month.debtPayoffs.length,
+      0,
+    ),
+    warnings: [...new Set(warnings)],
+  };
+};
+
 const normalizeError = (error: unknown): never => {
   if (error instanceof ApplicationServiceError) {
     throw error;
@@ -2947,6 +3206,22 @@ export const createDebtMaintenanceService = ({
           effectiveDate,
           selectedScenario,
           baselineScenario,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getDebtOutlook: (request) => {
+      try {
+        const parsed = getDebtOutlookRequestSchema.parse(request);
+        const effectiveDate = currentFinancialDate(now);
+        return createDebtOutlook(
+          database,
+          effectiveDate,
+          parsed.scenarioId,
+          calculatePayoffResult,
+          getScenarioOrThrow,
         );
       } catch (error) {
         return normalizeError(error);

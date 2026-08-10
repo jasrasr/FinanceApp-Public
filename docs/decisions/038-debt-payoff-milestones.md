@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for version 1.5.2.
+Accepted for version 1.6.0.
 
 ## Decision
 

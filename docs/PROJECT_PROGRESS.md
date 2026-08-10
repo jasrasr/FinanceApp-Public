@@ -2155,3 +2155,25 @@ year`.
   existing payoff-engine warnings and do not fabricate payoff markers.
 - Recommended next phase: first-user review of baseline projection horizon and
   warning presentation.
+
+## Phase 52: Twelve-Month Debt-Service Outlook
+
+- Completion date: 2026-08-10. Application version: 1.6.0.
+- Added the read-only Debt outlook screen with exactly twelve calendar months,
+  required payments, optional saved-scenario extra payments, cash-service
+  summaries, monthly detail, scheduling warnings, payoff events, maturities,
+  effective-term changes, and refinance events.
+- Added a typed main-process service/IPC operation. Required amounts reuse
+  effective-dated monthly terms and due-day scheduling; scenario extras and
+  payoff events reuse the payoff engine. No ledger, migration, or saved-scenario
+  mutation was introduced.
+- Added ADR 039, README release/functionality notes, integration tests, and
+  renderer tests.
+- Validation: `npm run format`, `npm run check`, and `npm run package:smoke` are
+  complete after this phase; the final check completed 190 tests, the 15-table
+  database check, production build, and Electron E2E (one passed and two
+  expected skips).
+- Known limitation: unsupported or missing scheduling data is reported as a
+  warning and does not produce an invented payment obligation.
+- Recommended next phase: first-user review of monthly debt-service detail and
+  scenario event presentation.

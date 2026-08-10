@@ -13,6 +13,7 @@ import type {
   CreatePayoffScenarioRequest,
   DashboardDto,
   DataHealthDto,
+  DebtOutlookDto,
   MilestonesDto,
   BalanceReconciliationDto,
   DataManagementStatusDto,
@@ -43,6 +44,7 @@ import { Dashboard } from './components/dashboard';
 import { DataManagement } from './components/data-management';
 import { DataHealth } from './components/data-health';
 import { Milestones } from './components/milestones';
+import { DebtOutlook } from './components/debt-outlook';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { combinedDebtLabel } from './components/debt-label';
@@ -71,7 +73,8 @@ type View =
   | 'escrow-detail'
   | 'data-management'
   | 'data-health'
-  | 'milestones';
+  | 'milestones'
+  | 'debt-outlook';
 type DetailPanel =
   'overview' | 'transaction' | 'transaction-edit' | 'reconciliation' | 'refinance';
 type Confirmation =
@@ -164,7 +167,11 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     useState<DataManagementStatusDto | null>(null);
   const [dataHealth, setDataHealth] = useState<DataHealthDto | null>(null);
   const [milestones, setMilestones] = useState<MilestonesDto | null>(null);
+  const [debtOutlook, setDebtOutlook] = useState<DebtOutlookDto | null>(null);
   const [selectedMilestoneScenarioId, setSelectedMilestoneScenarioId] = useState<
+    string | null
+  >(null);
+  const [selectedDebtOutlookScenarioId, setSelectedDebtOutlookScenarioId] = useState<
     string | null
   >(null);
   const [payoffScenarios, setPayoffScenarios] = useState<readonly PayoffScenarioDto[]>(
@@ -369,6 +376,24 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     else setError(scenariosResult.error);
     if (milestoneResult.ok) setMilestones(milestoneResult.value);
     else setError(milestoneResult.error);
+    setLoading(false);
+  };
+
+  const loadDebtOutlook = async (
+    scenarioId = selectedDebtOutlookScenarioId,
+  ): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const scenariosResult = await invokeBridge(() =>
+      bridge.listPayoffScenarios({ includeArchived: false }),
+    );
+    const outlookResult = await invokeBridge(() =>
+      bridge.getDebtOutlook!({ scenarioId }),
+    );
+    if (scenariosResult.ok) setPayoffScenarios(scenariosResult.value);
+    else setError(scenariosResult.error);
+    if (outlookResult.ok) setDebtOutlook(outlookResult.value);
+    else setError(outlookResult.error);
     setLoading(false);
   };
 
@@ -622,9 +647,34 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     void loadMilestones();
   };
 
+  const showDebtOutlook = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'debt-outlook',
+        },
+        '',
+        '#debt-outlook',
+      );
+    }
+    setView('debt-outlook');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setError(null);
+    setFieldErrors(undefined);
+    void loadDebtOutlook();
+  };
+
   const selectMilestoneScenario = (scenarioId: string | null): void => {
     setSelectedMilestoneScenarioId(scenarioId);
     void loadMilestones(scenarioId);
+  };
+
+  const selectDebtOutlookScenario = (scenarioId: string | null): void => {
+    setSelectedDebtOutlookScenarioId(scenarioId);
+    void loadDebtOutlook(scenarioId);
   };
 
   const createPayoffScenario = async (
@@ -891,6 +941,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       if (nextView === 'list') void loadDebts();
       if (nextView === 'reports' && !reports) void loadReports();
       if (nextView === 'milestones') void loadMilestones();
+      if (nextView === 'debt-outlook') void loadDebtOutlook();
       suppressNavigationPushRef.current = false;
     };
     if (window.history.state?.app !== 'debt-tracker') {
@@ -1427,6 +1478,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'debt-outlook' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'debt-outlook')}
+                onClick={showDebtOutlook}
+                type="button"
+              >
+                Debt outlook
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-current={view === 'list' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'list')}
                 onClick={showList}
@@ -1670,6 +1731,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onSelectDebt={(id) => void selectDebt(id)}
               scenarios={payoffScenarios}
               selectedScenarioId={selectedMilestoneScenarioId}
+            />
+          ) : null}
+
+          {!loading && view === 'debt-outlook' && debtOutlook ? (
+            <DebtOutlook
+              onScenarioChange={selectDebtOutlookScenario}
+              onSelectDebt={(id) => void selectDebt(id)}
+              outlook={debtOutlook}
+              scenarios={payoffScenarios}
+              selectedScenarioId={selectedDebtOutlookScenarioId}
             />
           ) : null}
 

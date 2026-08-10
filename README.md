@@ -3,6 +3,13 @@
 Debt Tracker is a Windows-first, local, single-user Electron desktop application
 for maintaining debts and supporting future debt-paydown analysis.
 
+Version 1.6.0 adds a read-only Debt outlook screen for the next 12 calendar
+months. It shows recorded required payments, optional saved-scenario extra
+payments, monthly debt-service totals, payoff and effective-term events, and
+drill-through monthly detail. Revolving-debt outlooks use recorded required
+payments only; future purchases, draws, and changing statement minimums are
+not forecast.
+
 ## Release Status
 
 Version 1.2.5 adds an engine-generated Required payments only comparison baseline
@@ -86,6 +93,11 @@ Known non-blocking limitations:
   balance, annual activity, and selected-scenario comparison charts. The next
   balance milestone is shown as a target balance and dollars remaining; credit
   utilization shows the current value alongside the prior-year comparison.
+- Debt outlook screen with a 12-month required-payment and optional
+  payoff-scenario extra-payment chart, monthly payment detail, scheduling
+  warnings, projected payoff events, maturities, rate/payment changes, and
+  refinance events. The outlook is read-only and does not alter saved
+  scenarios or the actual ledger.
 - Debt-history charts provide bounded wheel zoom and drag pan. Interest charts
   provide readable month/year labels, dynamic currency ticks, immediate compact
   hover details, and reconciled annual debt-source interest totals.

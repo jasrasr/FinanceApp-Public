@@ -1179,6 +1179,67 @@ describe('payoff milestones', () => {
   });
 });
 
+describe('debt outlook', () => {
+  it('returns twelve scheduled months and excludes debts without usable scheduling', () => {
+    const scheduled = validRequest('Generated Outlook Scheduled Debt');
+    scheduled.debt.paymentDueDay = 15;
+    scheduled.debt.paymentScheduleStartDate = '2026-07-01';
+    service.createDebt(scheduled);
+    const missing = validRequest('Generated Outlook Missing Schedule');
+    service.createDebt(missing);
+
+    const outlook = service.getDebtOutlook!({ scenarioId: null });
+
+    expect(outlook.months).toHaveLength(12);
+    expect(outlook.months[0]?.month).toBe('2026-07-01');
+    expect(outlook.months.at(-1)?.month).toBe('2027-06-01');
+    expect(outlook.months.every((month) => month.plannedExtraPayments === '0.00')).toBe(
+      true,
+    );
+    expect(outlook.months[0]?.details.map((detail) => detail.debtName)).toEqual([
+      'Generated Outlook Scheduled Debt',
+    ]);
+    expect(outlook.requiredPaymentsTotal).toBe('29400.00');
+    expect(outlook.warnings).toContain(
+      'Generated Outlook Missing Schedule: missing due day; payment not projected.',
+    );
+  });
+
+  it('uses selected scenario extras and reports payoff events without changing the ledger', () => {
+    const request = validRequest('Generated Outlook Scenario Debt');
+    request.debt.originalPrincipal = '20000.00';
+    request.debt.minimumPayment = '1000.00';
+    request.debt.paymentDueDay = 15;
+    request.debt.paymentScheduleStartDate = '2026-07-01';
+    request.initialTerm.requiredPayment = '1000.00';
+    const debt = service.createDebt(request);
+    const beforeTransactions = context.database.select().from(debtTransactions).all();
+    const scenario = service.createPayoffScenario({
+      name: 'Generated Outlook Extra Scenario',
+      scenarioStartDate: '2026-07-27',
+      strategy: 'avalanche',
+      extraMonthlyPayment: '5000.00',
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 12,
+    });
+
+    const outlook = service.getDebtOutlook!({ scenarioId: scenario.id });
+
+    expect(outlook.scenario).toEqual({ id: scenario.id, name: scenario.name });
+    expect(Number(outlook.plannedExtraPaymentsTotal)).toBeGreaterThan(0);
+    expect(
+      outlook.months.some((month) =>
+        month.debtPayoffs.some((row) => row.debtId === debt.id),
+      ),
+    ).toBe(true);
+    expect(outlook.events.some((event) => event.eventType === 'payoff')).toBe(true);
+    expect(context.database.select().from(debtTransactions).all()).toEqual(
+      beforeTransactions,
+    );
+  });
+});
+
 describe('payoff scenarios', () => {
   it('returns a complete required-payments-only monthly baseline schedule', () => {
     const request = validRequest('Generated Baseline Schedule Note');

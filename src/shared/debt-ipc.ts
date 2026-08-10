@@ -11,6 +11,7 @@ export const DEBT_IPC_CHANNELS = {
   dashboard: 'debt:dashboard',
   dataHealth: 'debt:data-health',
   milestones: 'debt:milestones',
+  debtOutlook: 'debt:outlook',
   acceptCurrentBalance: 'debt:data-health:accept-current-balance',
   dataManagementStatus: 'debt:data-management:status',
   createManualBackup: 'debt:data-management:create-manual-backup',
