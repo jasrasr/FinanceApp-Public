@@ -2073,3 +2073,23 @@ year`.
   threshold; it does not alter reconciliation status or ledger data.
 - Recommended next phase: first-user acceptance of health reason wording and
   status thresholds.
+
+## Phase 48: Navigation and Data Health Balance Acceptance Refinement
+
+- Completion date: 2026-08-10. Application version: 1.4.1.
+- Reordered primary navigation to Dashboard, Debts, Extra-cash allocation,
+  Payoff scenarios, Reports, Data health, and Data management without changing
+  routing or history behavior.
+- Added eligible Data Health rows' Accept current balance confirmation flow.
+  It records an application-accepted, non-lender-verified balance control and
+  audit event without changing transactions, balances, or calculations.
+- No database migration. Added the typed acceptance IPC operation and retained
+  existing reconciliation/snapshot history and integrity behavior.
+- Validation: `npm run format`, `npm run check`, and `npm run package:smoke` passed;
+  check completed 181 tests, the 15-table database check, and Electron E2E.
+  Packaged smoke passed installer launch and upgrade preservation. Windows
+  signing/deprecation and temporary-directory cleanup warnings were non-blocking.
+- Known limitation: acceptance is intentionally limited to reconciliation and
+  balance-control reasons; configuration and integrity warnings remain visible.
+- Recommended next phase: first-user acceptance of navigation labels and
+  balance-control wording.

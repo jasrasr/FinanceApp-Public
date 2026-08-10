@@ -347,6 +347,21 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setLoading(false);
   };
 
+  const acceptCurrentBalance = async (debtId: string): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.acceptCurrentBalance!({ debtId, confirmed: true }),
+    );
+    if (result.ok) {
+      setSuccessMessage('Current application balance accepted for control purposes.');
+      await loadDataHealth();
+    } else {
+      handleFailure(result.error);
+    }
+    setSaving(false);
+  };
+
   const loadPayoffScenarios = async (): Promise<void> => {
     setLoading(true);
     setError(null);
@@ -1351,32 +1366,22 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
-                aria-current={view === 'allocation' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'allocation')}
-                onClick={showAllocation}
-                type="button"
-              >
-                Extra-cash allocation
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'data-health' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'data-health')}
-                onClick={showDataHealth}
-                type="button"
-              >
-                Data health
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
                 aria-current={view === 'list' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'list')}
                 onClick={showList}
                 type="button"
               >
                 Debts
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
+                aria-current={view === 'allocation' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'allocation')}
+                onClick={showAllocation}
+                type="button"
+              >
+                Extra-cash allocation
               </button>
             </li>
             <li className="mt-1">
@@ -1397,6 +1402,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 type="button"
               >
                 Reports
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
+                aria-current={view === 'data-health' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'data-health')}
+                onClick={showDataHealth}
+                type="button"
+              >
+                Data health
               </button>
             </li>
             <li className="mt-1">
@@ -1580,6 +1595,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           {!loading && view === 'data-health' && dataHealth ? (
             <DataHealth
               health={dataHealth}
+              onAcceptCurrentBalance={(id) => void acceptCurrentBalance(id)}
               onSelectDebt={(id) => void selectDebt(id)}
             />
           ) : null}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { DataHealth } from './data-health';
 import type { DataHealthDto } from '../../../shared/debt-contracts';
@@ -59,7 +59,14 @@ const health: DataHealthDto = {
 describe('DataHealth', () => {
   it('shows summary counts, attention-first rows, concise reasons, and drill-through', () => {
     const onSelectDebt = vi.fn();
-    render(<DataHealth health={health} onSelectDebt={onSelectDebt} />);
+    const onAcceptCurrentBalance = vi.fn();
+    render(
+      <DataHealth
+        health={health}
+        onAcceptCurrentBalance={onAcceptCurrentBalance}
+        onSelectDebt={onSelectDebt}
+      />,
+    );
     expect(screen.getByText('Attention Debt')).toBeVisible();
     expect(screen.getByText('Never reconciled')).toBeVisible();
     const debtButtons = screen.getAllByRole('button');
@@ -67,5 +74,41 @@ describe('DataHealth', () => {
       debtButtons.find((button) => button.textContent === 'Attention Debt')!,
     );
     expect(onSelectDebt).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000002');
+    expect(screen.getAllByText('Accept current balance')).toHaveLength(2);
+    fireEvent.click(screen.getAllByText('Accept current balance')[0]!);
+    expect(screen.getByRole('dialog')).toHaveTextContent('Attention Debt');
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Accept current balance',
+      }),
+    );
+    expect(onAcceptCurrentBalance).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000002',
+    );
+  });
+
+  it('does not offer acceptance for configuration or integrity reasons', () => {
+    const restrictedHealth: DataHealthDto = {
+      ...health,
+      counts: { current: 0, review: 1, attention: 0 },
+      rows: [
+        {
+          ...health.rows[0]!,
+          status: 'review',
+          reasons: [
+            { code: 'missing_due_day', label: 'Missing due day' },
+            { code: 'data_integrity', label: 'Data integrity issue' },
+          ],
+        },
+      ],
+    };
+    render(
+      <DataHealth
+        health={restrictedHealth}
+        onAcceptCurrentBalance={vi.fn()}
+        onSelectDebt={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('Accept current balance')).toBeNull();
   });
 });

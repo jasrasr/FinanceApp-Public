@@ -15,6 +15,7 @@ import type {
   ExtraCashAllocationResponse,
   DashboardDto,
   DataHealthDto,
+  AcceptCurrentBalanceRequest,
   DeleteDebtPermanentlyRequest,
   ConfirmScheduledPaymentRequest,
   RemoveScheduledPaymentConfirmationRequest,
@@ -55,6 +56,7 @@ import {
   removeScheduledPaymentConfirmationRequestSchema,
   getDashboardRequestSchema,
   getDataHealthRequestSchema,
+  acceptCurrentBalanceRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
   getPayoffScenarioRequestSchema,
@@ -161,6 +163,7 @@ export interface DebtMaintenanceService {
   listDebts(request: ListDebtsRequest): readonly DebtSummaryDto[];
   getDashboard(request: GetDashboardRequest): DashboardDto;
   getDataHealth?(request: GetDataHealthRequest): DataHealthDto;
+  acceptCurrentBalance?(request: AcceptCurrentBalanceRequest): DebtDetailDto;
   getDebtReports(request: GetDebtReportsRequest): DebtReportsDto;
   listPayoffScenarios(
     request: ListPayoffScenariosRequest,
@@ -2667,6 +2670,111 @@ export const createDebtMaintenanceService = ({
           listActiveDebtActivityRecords(database),
           currentFinancialDate(now),
         );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    acceptCurrentBalance: (request) => {
+      try {
+        const parsed = acceptCurrentBalanceRequestSchema.parse(request);
+        const existing = getRecordOrThrow(parsed.debtId);
+        if (existing.debt.archivedAtUtc || existing.debt.status !== 'active') {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Only an active debt can accept a current balance.',
+          );
+        }
+        const effectiveDate = currentFinancialDate(now);
+        const healthRow = createDataHealth(database, [existing], effectiveDate).rows[0];
+        const eligibleReasons = new Set([
+          'never_reconciled',
+          'activity_since_reconciliation',
+          'edited_or_voided_activity',
+          'refinance_activity',
+          'stale_reconciliation',
+          'reconciliation_exception',
+        ]);
+        if (!healthRow?.reasons.some((reason) => eligibleReasons.has(reason.code))) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'The current balance cannot resolve any remaining data-health issue.',
+          );
+        }
+        const applicationCalculatedBalanceCents = calculateLedgerBalanceThroughDate(
+          database,
+          parsed.debtId,
+          effectiveDate,
+        );
+        const timestamp = nextTimestamp(now, existing.debt.updatedAtUtc);
+        const reconciliationId = createId();
+        const existingCurrent = existing.balanceReconciliations.find(
+          (reconciliation) =>
+            reconciliation.statementDate === effectiveDate &&
+            reconciliation.lifecycleStatus === 'current',
+        );
+        const snapshotId = createId();
+        createBalanceReconciliationRecord(database, {
+          reconciliation: {
+            id: reconciliationId,
+            debtId: parsed.debtId,
+            statementDate: effectiveDate,
+            statementEndingBalanceCents: applicationCalculatedBalanceCents,
+            applicationCalculatedBalanceCents,
+            reconciliationStatus: 'reconciled',
+            explanation:
+              'User accepted the application-calculated balance as the current control balance.',
+            approvedAdjustmentTransactionId: null,
+            sourceReference: 'application-calculated-acceptance',
+            supportingNotes: 'Accepted application balance; not lender-verified.',
+            lifecycleStatus: 'current',
+            supersedesReconciliationId: existingCurrent?.id ?? null,
+            supersededByReconciliationId: null,
+            voidedAtUtc: null,
+            supersededAtUtc: null,
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          },
+          snapshot: {
+            id: snapshotId,
+            debtId: parsed.debtId,
+            effectiveDate,
+            confirmedBalanceCents: applicationCalculatedBalanceCents,
+            sourceType: 'manual',
+            sourceReference: `application-calculated-acceptance:${reconciliationId}`,
+            notes: 'Accepted application balance; not lender-verified.',
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          },
+          supersedes: existingCurrent
+            ? {
+                id: existingCurrent.id,
+                expectedUpdatedAtUtc: existingCurrent.updatedAtUtc,
+                supersededAtUtc: timestamp,
+              }
+            : undefined,
+          auditInputs: [
+            createReconciliationAudit(
+              createId(),
+              reconciliationId,
+              'application_balance_accepted',
+              'create',
+              timestamp,
+              'Application-calculated balance was accepted as the current control balance; not lender-verified.',
+              { effectiveDate, applicationCalculatedBalanceCents },
+            ),
+            createSnapshotAudit(
+              createId(),
+              snapshotId,
+              'application_balance_snapshot_recorded',
+              'create',
+              timestamp,
+              'Application-calculated balance snapshot recorded as manual, not lender-verified evidence.',
+              { sourceType: 'manual', reconciliationId },
+            ),
+          ],
+        });
+        return mapDetail(database, getRecordOrThrow(parsed.debtId), effectiveDate);
       } catch (error) {
         return normalizeError(error);
       }

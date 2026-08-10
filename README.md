@@ -77,7 +77,9 @@ Known non-blocking limitations:
 - Data Health screen with per-debt reconciliation age, activity, scheduling,
   refinance, edited/voided transaction, expected-payment, and integrity review
   reasons. Rows are grouped as Current, Review, or Attention and open the debt
-  detail screen when selected.
+  detail screen when selected. Eligible reconciliation/balance rows can accept
+  the current application-calculated balance as a control balance; this records
+  an explicit non-lender-verified snapshot and does not change ledger activity.
 - Debt-history charts provide bounded wheel zoom and drag pan. Interest charts
   provide readable month/year labels, dynamic currency ticks, immediate compact
   hover details, and reconciled annual debt-source interest totals.

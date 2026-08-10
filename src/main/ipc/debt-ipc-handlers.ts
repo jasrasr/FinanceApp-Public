@@ -27,6 +27,7 @@ import {
   exportDataRequestSchema,
   getDashboardRequestSchema,
   getDataHealthRequestSchema,
+  acceptCurrentBalanceRequestSchema,
   getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -269,6 +270,14 @@ export const registerDebtIpcHandlers = (
     dataHealthDtoSchema,
     isTrustedSender,
     (request) => service.getDataHealth!(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.acceptCurrentBalance,
+    acceptCurrentBalanceRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.acceptCurrentBalance!(request),
   );
   registerHandler(
     ipcMain,

@@ -9,6 +9,7 @@ describe('typed preload bridge', () => {
     const bridge = createAppBridge(vi.fn());
 
     expect(Object.keys(bridge).sort()).toEqual([
+      'acceptCurrentBalance',
       'addDebtTerm',
       'appMetadata',
       'appName',
@@ -54,7 +55,7 @@ describe('typed preload bridge', () => {
     ]);
     expect(bridge.bridgeVersion).toBe(23);
     expect(bridge.appMetadata).toEqual({
-      version: '1.4.0',
+      version: '1.4.1',
       lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);

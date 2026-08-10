@@ -706,6 +706,47 @@ describe('debt creation', () => {
     expect(eventTypes).toContain('balance_snapshot_recorded');
   });
 
+  it('accepts an eligible application balance without changing ledger activity', () => {
+    const created = service.createDebt(validRequest());
+    service.createDebtTransaction(validTransactionRequest(created.id));
+    const transactionCount = context.database
+      .select()
+      .from(debtTransactions)
+      .all().length;
+
+    const updated = service.acceptCurrentBalance!({
+      debtId: created.id,
+      confirmed: true,
+    });
+    const reconciliations = context.database
+      .select()
+      .from(balanceReconciliations)
+      .all();
+    const snapshots = context.database.select().from(balanceSnapshots).all();
+    const eventTypes = context.database
+      .select({ eventType: auditEvents.eventType })
+      .from(auditEvents)
+      .all()
+      .map((event) => event.eventType);
+
+    expect(context.database.select().from(debtTransactions).all()).toHaveLength(
+      transactionCount,
+    );
+    expect(updated.transactions).toHaveLength(transactionCount);
+    expect(reconciliations).toHaveLength(1);
+    expect(snapshots).toHaveLength(1);
+    expect(reconciliations[0]).toMatchObject({
+      reconciliationStatus: 'reconciled',
+      sourceReference: 'application-calculated-acceptance',
+    });
+    expect(snapshots[0]).toMatchObject({
+      sourceType: 'manual',
+      notes: 'Accepted application balance; not lender-verified.',
+    });
+    expect(eventTypes).toContain('application_balance_accepted');
+    expect(eventTypes).toContain('application_balance_snapshot_recorded');
+  });
+
   it('rejects a nonzero reconciliation difference before saving', () => {
     const created = service.createDebt(validRequest());
     service.createDebtTransaction(validTransactionRequest(created.id));

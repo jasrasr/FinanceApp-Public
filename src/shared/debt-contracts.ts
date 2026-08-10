@@ -267,6 +267,12 @@ export const listDebtsRequestSchema = z
 
 export const getDashboardRequestSchema = z.object({}).strict();
 export const getDataHealthRequestSchema = z.object({}).strict();
+export const acceptCurrentBalanceRequestSchema = z
+  .object({
+    debtId: uuidSchema,
+    confirmed: z.literal(true),
+  })
+  .strict();
 
 export const getDataManagementStatusRequestSchema = z.object({}).strict();
 
@@ -1283,6 +1289,9 @@ export type CreateBalanceReconciliationRequest = z.infer<
 export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
 export type GetDashboardRequest = z.infer<typeof getDashboardRequestSchema>;
 export type GetDataHealthRequest = z.infer<typeof getDataHealthRequestSchema>;
+export type AcceptCurrentBalanceRequest = z.infer<
+  typeof acceptCurrentBalanceRequestSchema
+>;
 export type GetDataManagementStatusRequest = z.infer<
   typeof getDataManagementStatusRequestSchema
 >;

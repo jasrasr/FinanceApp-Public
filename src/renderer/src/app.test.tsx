@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AppBridge } from '../../shared/app-bridge';
 import type {
   DashboardDto,
+  DataHealthDto,
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
@@ -25,11 +26,16 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 23,
   appMetadata: {
-    version: '1.4.0',
+    version: '1.4.1',
     lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
   getDashboard: vi.fn(async () => ({ ok: true as const, value: sampleDashboard })),
+  getDataHealth: vi.fn(async () => ({ ok: true as const, value: sampleDataHealth })),
+  acceptCurrentBalance: vi.fn(async () => ({
+    ok: true as const,
+    value: sampleDebtDetail,
+  })),
   getDataManagementStatus: vi.fn(async () => ({
     ok: true as const,
     value: sampleDataManagementStatus,
@@ -215,6 +221,12 @@ const sampleDashboard: DashboardDto = {
     },
   ],
   attentionItems: [],
+};
+
+const sampleDataHealth: DataHealthDto = {
+  effectiveDate: '2026-07-28',
+  counts: { current: 0, review: 0, attention: 0 },
+  rows: [],
 };
 
 const sampleDataManagementStatus = {
@@ -1804,7 +1816,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 1.4.0')).toBeVisible();
+    expect(await screen.findByText('Version 1.4.1')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -2378,6 +2390,28 @@ describe('debt maintenance application', () => {
 
     expect(screen.queryByRole('button', { name: 'Workbook import' })).toBeNull();
     expect('selectWorkbookForImport' in createBridge()).toBe(false);
+  });
+
+  it('keeps the primary navigation in the approved order', async () => {
+    render(<App bridge={createBridge()} />);
+
+    const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+    await waitFor(() =>
+      expect(within(navigation).getAllByRole('button')).toHaveLength(7),
+    );
+    expect(
+      within(navigation)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual([
+      'Dashboard',
+      'Debts',
+      'Extra-cash allocation',
+      'Payoff scenarios',
+      'Reports',
+      'Data health',
+      'Data management',
+    ]);
   });
 
   it('renders saved payoff scenarios and scenario-only assumptions', async () => {

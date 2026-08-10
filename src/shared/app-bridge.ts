@@ -23,6 +23,7 @@ import type {
   ExportDataRequest,
   GetDashboardRequest,
   GetDataHealthRequest,
+  AcceptCurrentBalanceRequest,
   GetDataManagementStatusRequest,
   GetDebtReportsRequest,
   GetDebtRequest,
@@ -60,6 +61,9 @@ export interface DebtBridge {
   getDataHealth?(
     request: GetDataHealthRequest,
   ): Promise<ApplicationResult<DataHealthDto>>;
+  acceptCurrentBalance?(
+    request: AcceptCurrentBalanceRequest,
+  ): Promise<ApplicationResult<DebtDetailDto>>;
   getDataManagementStatus(
     request: GetDataManagementStatusRequest,
   ): Promise<ApplicationResult<DataManagementStatusDto>>;
