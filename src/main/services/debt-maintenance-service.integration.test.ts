@@ -1180,6 +1180,28 @@ describe('payoff milestones', () => {
 });
 
 describe('payoff scenarios', () => {
+  it('returns a complete required-payments-only monthly baseline schedule', () => {
+    const request = validRequest('Generated Baseline Schedule Note');
+    request.debt.originalPrincipal = '20000.00';
+    request.debt.minimumPayment = '1000.00';
+    request.initialTerm.requiredPayment = '1000.00';
+    service.createDebt(request);
+
+    const baseline = service.calculatePayoffBaseline({
+      scenarioStartDate: '2026-07-27',
+      maxProjectionMonths: 12,
+    });
+
+    expect(baseline.extraMonthlyPayment).toBe('0.00');
+    expect(baseline.lumpSum).toBe('0.00');
+    expect(baseline.result.monthlySchedule.length).toBeGreaterThan(1);
+    expect(baseline.result.monthlySchedule[0]?.month).toBe('2026-07-27');
+    expect(
+      Number(baseline.result.monthlySchedule[1]?.totalProjectedBalance) <
+        Number(baseline.result.monthlySchedule[0]?.totalProjectedBalance),
+    ).toBe(true);
+  });
+
   it('adds selected saved scenario comparison data to milestones', () => {
     const request = validRequest('Generated Milestone Scenario Note');
     request.debt.originalPrincipal = '20000.00';

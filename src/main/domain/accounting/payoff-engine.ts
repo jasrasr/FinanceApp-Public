@@ -527,7 +527,9 @@ const runProjection = (
         }
       }
     }
-    if (includeExtra) {
+    // Baseline projections also need their monthly total-balance rows. The
+    // absence of user extra cash must not suppress the authoritative schedule.
+    {
       const nextPriorityDebtId =
         priorityOrder(debts, balances, unsupportedDebtIds, assumptions, nextDate)[0] ??
         null;

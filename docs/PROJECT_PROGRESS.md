@@ -2135,3 +2135,23 @@ year`.
 - Known limitation: payoff markers appear only when the calculated payoff date
   falls within the saved scenario's projection horizon.
 - Recommended next phase: first-user review of chart branch and milestone copy.
+
+## Phase 51: Required-Payments Baseline Projection Correction
+
+- Completion date: 2026-08-10. Application version: 1.5.2.
+- Corrected the payoff engine so required-payments-only projections emit their
+  complete monthly schedule instead of only summary results.
+- Milestones now receives the authoritative baseline rows and renders Actual,
+  Required payments only, and Selected scenario from the same current balance
+  and date, with future baseline values and payoff markers preserved.
+- No database migration or ledger accounting change. Added reproduction,
+  service-boundary, chart, baseline schedule, date-branch, and payoff-order
+  regression tests. Updated ADR 038 and release metadata.
+- Validation: `npm run format`, `npm run check`, and `npm run package:smoke` passed;
+  check completed 186 tests, the 15-table database check, production build, and
+  Electron E2E (one passed and two expected skips). Package smoke passed the
+  installer launch and upgrade-preservation workflows.
+- Known limitation: unsupported or non-amortizing debts remain identified by
+  existing payoff-engine warnings and do not fabricate payoff markers.
+- Recommended next phase: first-user review of baseline projection horizon and
+  warning presentation.

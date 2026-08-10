@@ -27,7 +27,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 24,
   appMetadata: {
-    version: '1.5.1',
+    version: '1.5.2',
     lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -1845,7 +1845,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 1.5.1')).toBeVisible();
+    expect(await screen.findByText('Version 1.5.2')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,

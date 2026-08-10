@@ -76,4 +76,61 @@ describe('Milestones', () => {
     fireEvent.click(screen.getByRole('button', { name: /Generated Mortgage/ }));
     expect(onSelectDebt).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000001');
   });
+
+  it('renders the complete actual, baseline, and selected outlook with payoff markers', () => {
+    const scenarioId = '00000000-0000-4000-8000-000000000099';
+    render(
+      <Milestones
+        milestones={{
+          ...milestones,
+          selectedScenario: { id: scenarioId, name: 'Generated selected scenario' },
+          baselinePayoffDate: '2026-09-28',
+          selectedScenarioPayoffDate: '2026-08-28',
+          scenarioComparison: [
+            {
+              date: '2026-07-28',
+              actualPrincipalBalance: '90000.00',
+              baselinePrincipalBalance: '90000.00',
+              selectedScenarioPrincipalBalance: '90000.00',
+            },
+            {
+              date: '2026-08-28',
+              actualPrincipalBalance: null,
+              baselinePrincipalBalance: '85000.00',
+              selectedScenarioPrincipalBalance: '0.00',
+            },
+            {
+              date: '2026-09-28',
+              actualPrincipalBalance: null,
+              baselinePrincipalBalance: '0.00',
+              selectedScenarioPrincipalBalance: null,
+            },
+          ],
+        }}
+        onScenarioChange={vi.fn()}
+        onSelectDebt={vi.fn()}
+        scenarios={[]}
+        selectedScenarioId={scenarioId}
+      />,
+    );
+
+    expect(
+      screen.getByRole('img', { name: /Actual balance and payoff projections/i }),
+    ).toBeVisible();
+    const outlook = screen.getByRole('img', {
+      name: /Actual balance and payoff projections/i,
+    });
+    expect(
+      [...outlook.querySelectorAll('title')].filter((title) =>
+        title.textContent?.includes('Required payments only'),
+      ),
+    ).toHaveLength(3);
+    expect(
+      [...outlook.querySelectorAll('title')].filter((title) =>
+        title.textContent?.includes('Selected scenario'),
+      ),
+    ).toHaveLength(2);
+    expect(screen.getByText('Baseline payoff')).toBeVisible();
+    expect(screen.getByText('Selected payoff')).toBeVisible();
+  });
 });

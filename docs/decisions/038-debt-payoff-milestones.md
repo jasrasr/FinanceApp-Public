@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for version 1.5.0.
+Accepted for version 1.5.2.
 
 ## Decision
 
@@ -26,3 +26,7 @@ values are never labeled actual. Payoff dates are shown as chart markers when
 they fall within the projection horizon. Balance milestones use descending
 $10,000 target balances and report the dollars remaining to the target rather
 than an abstract reduction amount.
+
+The baseline monthly schedule is emitted by the payoff engine even when user
+extra payments are disabled. This keeps generated required-payments-only
+projection rows authoritative for the Milestones chart.
