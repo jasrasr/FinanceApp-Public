@@ -6,6 +6,7 @@ import type { AppBridge } from '../../shared/app-bridge';
 import type {
   DashboardDto,
   DataHealthDto,
+  MilestonesDto,
   DebtReportsDto,
   DebtDetailDto,
   DebtSummaryDto,
@@ -24,14 +25,15 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 23,
+  bridgeVersion: 24,
   appMetadata: {
-    version: '1.4.1',
+    version: '1.5.0',
     lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
   getDashboard: vi.fn(async () => ({ ok: true as const, value: sampleDashboard })),
   getDataHealth: vi.fn(async () => ({ ok: true as const, value: sampleDataHealth })),
+  getMilestones: vi.fn(async () => ({ ok: true as const, value: sampleMilestones })),
   acceptCurrentBalance: vi.fn(async () => ({
     ok: true as const,
     value: sampleDebtDetail,
@@ -227,6 +229,31 @@ const sampleDataHealth: DataHealthDto = {
   effectiveDate: '2026-07-28',
   counts: { current: 0, review: 0, attention: 0 },
   rows: [],
+};
+
+const sampleMilestones: MilestonesDto = {
+  effectiveDate: '2026-07-28',
+  trackingStartDate: '2025-01-15',
+  totalDebtReducedSinceTracking: '400.00',
+  debtReducedYtd: '400.00',
+  startingDebt: '125000.13',
+  currentDebt: '124600.13',
+  percentageStartingDebtRemaining: '99.7%',
+  mortgageDebtReduced: '0.00',
+  nonmortgageDebtReduced: '400.00',
+  nextProjectedDebtPayoff: null,
+  nextDebtReductionMilestone: '10000.00',
+  nextDebtReductionMilestoneDate: null,
+  interestPaidYtd: '100.00',
+  interestSavedFromSelectedScenario: null,
+  currentCreditUtilization: null,
+  priorYearCreditUtilization: null,
+  creditUtilizationChange: null,
+  selectedScenario: null,
+  balanceHistory: [],
+  annualPrincipalReduction: [],
+  annualInterestPaid: [],
+  scenarioComparison: [],
 };
 
 const sampleDataManagementStatus = {
@@ -1816,7 +1843,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 1.4.1')).toBeVisible();
+    expect(await screen.findByText('Version 1.5.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -2397,7 +2424,7 @@ describe('debt maintenance application', () => {
 
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     await waitFor(() =>
-      expect(within(navigation).getAllByRole('button')).toHaveLength(7),
+      expect(within(navigation).getAllByRole('button')).toHaveLength(8),
     );
     expect(
       within(navigation)
@@ -2405,6 +2432,7 @@ describe('debt maintenance application', () => {
         .map((button) => button.textContent),
     ).toEqual([
       'Dashboard',
+      'Milestones',
       'Debts',
       'Extra-cash allocation',
       'Payoff scenarios',

@@ -11,6 +11,7 @@ import type {
   CreateManualBackupRequest,
   DashboardDto,
   DataHealthDto,
+  MilestonesDto,
   DataExportDto,
   DataManagementStatusDto,
   DeleteBackupRequest,
@@ -23,6 +24,7 @@ import type {
   ExportDataRequest,
   GetDashboardRequest,
   GetDataHealthRequest,
+  GetMilestonesRequest,
   AcceptCurrentBalanceRequest,
   GetDataManagementStatusRequest,
   GetDebtReportsRequest,
@@ -61,6 +63,9 @@ export interface DebtBridge {
   getDataHealth?(
     request: GetDataHealthRequest,
   ): Promise<ApplicationResult<DataHealthDto>>;
+  getMilestones?(
+    request: GetMilestonesRequest,
+  ): Promise<ApplicationResult<MilestonesDto>>;
   acceptCurrentBalance?(
     request: AcceptCurrentBalanceRequest,
   ): Promise<ApplicationResult<DebtDetailDto>>;
@@ -162,6 +167,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 23;
+  readonly bridgeVersion: 24;
   readonly appMetadata: AppMetadataDto;
 }

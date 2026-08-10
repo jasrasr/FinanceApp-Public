@@ -17,6 +17,7 @@ import {
   createDebtRequestSchema,
   dashboardResultSchema,
   dataHealthResultSchema,
+  milestonesResultSchema,
   acceptCurrentBalanceRequestSchema,
   dataExportResultSchema,
   dataManagementStatusResultSchema,
@@ -30,6 +31,7 @@ import {
   exportDataRequestSchema,
   getDashboardRequestSchema,
   getDataHealthRequestSchema,
+  getMilestonesRequestSchema,
   getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -74,6 +76,7 @@ import {
   type ExportDataRequest,
   type GetDashboardRequest,
   type GetDataHealthRequest,
+  type GetMilestonesRequest,
   type AcceptCurrentBalanceRequest,
   type GetDataManagementStatusRequest,
   type GetDebtReportsRequest,
@@ -103,7 +106,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 23,
+    bridgeVersion: 24,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -121,6 +124,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.dataHealth,
           getDataHealthRequestSchema.parse(request),
+        ),
+      ),
+    getMilestones: async (request: GetMilestonesRequest) =>
+      milestonesResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.milestones,
+          getMilestonesRequestSchema.parse(request),
         ),
       ),
     acceptCurrentBalance: async (request: AcceptCurrentBalanceRequest) =>

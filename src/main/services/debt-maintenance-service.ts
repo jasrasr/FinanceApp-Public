@@ -15,6 +15,7 @@ import type {
   ExtraCashAllocationResponse,
   DashboardDto,
   DataHealthDto,
+  MilestonesDto,
   AcceptCurrentBalanceRequest,
   DeleteDebtPermanentlyRequest,
   ConfirmScheduledPaymentRequest,
@@ -24,6 +25,7 @@ import type {
   DebtSummaryDto,
   GetDashboardRequest,
   GetDataHealthRequest,
+  GetMilestonesRequest,
   GetDebtReportsRequest,
   GetDebtRequest,
   GetPayoffScenarioRequest,
@@ -56,6 +58,7 @@ import {
   removeScheduledPaymentConfirmationRequestSchema,
   getDashboardRequestSchema,
   getDataHealthRequestSchema,
+  getMilestonesRequestSchema,
   acceptCurrentBalanceRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -163,6 +166,7 @@ export interface DebtMaintenanceService {
   listDebts(request: ListDebtsRequest): readonly DebtSummaryDto[];
   getDashboard(request: GetDashboardRequest): DashboardDto;
   getDataHealth?(request: GetDataHealthRequest): DataHealthDto;
+  getMilestones?(request: GetMilestonesRequest): MilestonesDto;
   acceptCurrentBalance?(request: AcceptCurrentBalanceRequest): DebtDetailDto;
   getDebtReports(request: GetDebtReportsRequest): DebtReportsDto;
   listPayoffScenarios(
@@ -2572,6 +2576,200 @@ const createDebtReports = (
   };
 };
 
+const createMilestones = (
+  database: AppDatabase,
+  effectiveDate: string,
+  selectedScenario: PayoffScenarioDto | null,
+): MilestonesDto => {
+  const records = listDebtActivityRecords(database, true);
+  const trackingStartDate =
+    records.map((record) => record.debt.originationDate).sort()[0] ?? effectiveDate;
+  const reports = createDebtReports(
+    database,
+    {
+      startDate: trackingStartDate,
+      endDate: effectiveDate,
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    },
+    () => `${effectiveDate}T00:00:00.000Z`,
+  );
+  const debtTypes = new Map(
+    records.map((record) => [record.debt.id, record.debt.debtType]),
+  );
+  const parseDollars = (value: string): number => signedCurrencyInputToCents(value);
+  const currentByDebt = new Map(
+    records.map((record) => [
+      record.debt.id,
+      calculateLedgerBalanceThroughDate(database, record.debt.id, effectiveDate),
+    ]),
+  );
+  const startingDebtCents = records.reduce(
+    (total, record) => total + record.debt.originalPrincipalCents,
+    0,
+  );
+  const currentDebtCents = [...currentByDebt.values()].reduce(
+    (total, balance) => total + balance,
+    0,
+  );
+  const mortgageStartingCents = records
+    .filter((record) => record.debt.debtType === 'mortgage')
+    .reduce((total, record) => total + record.debt.originalPrincipalCents, 0);
+  const mortgageCurrentCents = records
+    .filter((record) => record.debt.debtType === 'mortgage')
+    .reduce((total, record) => total + (currentByDebt.get(record.debt.id) ?? 0), 0);
+  const reducedCents = startingDebtCents - currentDebtCents;
+  const mortgageReducedCents = mortgageStartingCents - mortgageCurrentCents;
+  const nonmortgageReducedCents = reducedCents - mortgageReducedCents;
+  const currentYear = effectiveDate.slice(0, 4);
+  const ytdAnnual = reports.annualRollforward.rows.find(
+    (row) => row.period === currentYear,
+  );
+  const annualPrincipalReduction = reports.annualRollforward.rows.map((row) => ({
+    year: row.period,
+    amount: row.principalReduction,
+  }));
+  const annualInterestPaid = reports.annualRollforward.rows.map((row) => ({
+    year: row.period,
+    amount: row.interestActivity,
+  }));
+  const balanceByDate = new Map<
+    string,
+    { total: number; mortgage: number; nonmortgage: number }
+  >();
+  for (const row of reports.balanceHistory.rows) {
+    const current = balanceByDate.get(row.effectiveDate) ?? {
+      total: 0,
+      mortgage: 0,
+      nonmortgage: 0,
+    };
+    const balance = parseDollars(row.calculatedBalance);
+    current.total += balance;
+    if (debtTypes.get(row.debtId) === 'mortgage') current.mortgage += balance;
+    else current.nonmortgage += balance;
+    balanceByDate.set(row.effectiveDate, current);
+  }
+  const balanceHistory = [...balanceByDate.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, values]) => ({
+      date,
+      totalPrincipalBalance: centsToDollars(values.total),
+      mortgagePrincipalBalance: centsToDollars(values.mortgage),
+      nonmortgagePrincipalBalance: centsToDollars(values.nonmortgage),
+    }));
+  const scenarioComparison = selectedScenario
+    ? (() => {
+        const actual = new Map(
+          balanceHistory.map((point) => [point.date, point.totalPrincipalBalance]),
+        );
+        const projected = new Map(
+          selectedScenario.result.monthlySchedule.map((entry) => [
+            entry.month,
+            entry.totalProjectedBalance,
+          ]),
+        );
+        const dates = [...new Set([...actual.keys(), ...projected.keys()])].sort();
+        return dates.map((date) => ({
+          date,
+          actualPrincipalBalance:
+            date <= effectiveDate ? (actual.get(date) ?? null) : null,
+          projectedPrincipalBalance:
+            date >= selectedScenario.scenarioStartDate
+              ? (projected.get(date) ?? null)
+              : null,
+        }));
+      })()
+    : [];
+  const nextProjectedDebtPayoff =
+    selectedScenario?.result.payoffOrder
+      .filter(
+        (item) => item.projectedPayoffDate && item.projectedPayoffDate >= effectiveDate,
+      )
+      .sort((left, right) =>
+        (left.projectedPayoffDate ?? '').localeCompare(right.projectedPayoffDate ?? ''),
+      )[0] ?? null;
+  const nextMilestoneCents =
+    (Math.floor(Math.max(0, reducedCents) / 1_000_000) + 1) * 1_000_000;
+  const milestoneBalanceCents = startingDebtCents - nextMilestoneCents;
+  const nextDebtReductionMilestoneDate = selectedScenario
+    ? (selectedScenario.result.monthlySchedule.find(
+        (entry) => parseDollars(entry.totalProjectedBalance) <= milestoneBalanceCents,
+      )?.month ?? null)
+    : null;
+  const validCreditCards = records.filter(
+    (record) =>
+      record.debt.status === 'active' &&
+      record.debt.debtType === 'credit_card' &&
+      record.debt.creditLimitCents !== null &&
+      record.debt.creditLimitCents > 0,
+  );
+  const creditLimitCents = validCreditCards.reduce(
+    (total, record) => total + (record.debt.creditLimitCents ?? 0),
+    0,
+  );
+  const utilizationCents = validCreditCards.reduce(
+    (total, record) => total + Math.max(0, currentByDebt.get(record.debt.id) ?? 0),
+    0,
+  );
+  const priorYearDate = addMonths(effectiveDate, -12);
+  const priorUtilizationCents = validCreditCards.reduce(
+    (total, record) =>
+      total +
+      Math.max(
+        0,
+        calculateLedgerBalanceThroughDate(database, record.debt.id, priorYearDate),
+      ),
+    0,
+  );
+  const utilization =
+    creditLimitCents > 0 ? (utilizationCents / creditLimitCents) * 100 : null;
+  const priorUtilization =
+    creditLimitCents > 0 ? (priorUtilizationCents / creditLimitCents) * 100 : null;
+
+  return {
+    effectiveDate,
+    trackingStartDate,
+    totalDebtReducedSinceTracking: centsToDollars(reducedCents),
+    debtReducedYtd: ytdAnnual?.principalReduction ?? '0.00',
+    startingDebt: centsToDollars(startingDebtCents),
+    currentDebt: centsToDollars(currentDebtCents),
+    percentageStartingDebtRemaining:
+      startingDebtCents === 0
+        ? '0.0%'
+        : `${((currentDebtCents / startingDebtCents) * 100).toFixed(1)}%`,
+    mortgageDebtReduced: centsToDollars(mortgageReducedCents),
+    nonmortgageDebtReduced: centsToDollars(nonmortgageReducedCents),
+    nextProjectedDebtPayoff: nextProjectedDebtPayoff
+      ? {
+          debtId: nextProjectedDebtPayoff.debtId,
+          debtName: nextProjectedDebtPayoff.debtName,
+          projectedPayoffDate: nextProjectedDebtPayoff.projectedPayoffDate!,
+        }
+      : null,
+    nextDebtReductionMilestone: centsToDollars(nextMilestoneCents),
+    nextDebtReductionMilestoneDate,
+    interestPaidYtd: ytdAnnual?.interestActivity ?? '0.00',
+    interestSavedFromSelectedScenario: selectedScenario?.result.interestSavings ?? null,
+    currentCreditUtilization:
+      utilization === null ? null : `${utilization.toFixed(1)}%`,
+    priorYearCreditUtilization:
+      priorUtilization === null ? null : `${priorUtilization.toFixed(1)}%`,
+    creditUtilizationChange:
+      utilization === null || priorUtilization === null
+        ? null
+        : `${(utilization - priorUtilization).toFixed(1)} percentage points`,
+    selectedScenario: selectedScenario
+      ? { id: selectedScenario.id, name: selectedScenario.name }
+      : null,
+    balanceHistory,
+    annualPrincipalReduction,
+    annualInterestPaid,
+    scenarioComparison,
+  };
+};
+
 const normalizeError = (error: unknown): never => {
   if (error instanceof ApplicationServiceError) {
     throw error;
@@ -2670,6 +2868,19 @@ export const createDebtMaintenanceService = ({
           listActiveDebtActivityRecords(database),
           currentFinancialDate(now),
         );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getMilestones: (request) => {
+      try {
+        const parsed = getMilestonesRequestSchema.parse(request);
+        const effectiveDate = currentFinancialDate(now);
+        const scenario = parsed.scenarioId
+          ? mapPayoffScenario(getScenarioOrThrow(parsed.scenarioId))
+          : null;
+        return createMilestones(database, effectiveDate, scenario);
       } catch (error) {
         return normalizeError(error);
       }

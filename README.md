@@ -80,6 +80,10 @@ Known non-blocking limitations:
   detail screen when selected. Eligible reconciliation/balance rows can accept
   the current application-calculated balance as a control balance; this records
   an explicit non-lender-verified snapshot and does not change ledger activity.
+- Debt Payoff Milestones section with tracking-to-date and year-to-date debt
+  reduction, mortgage/nonmortgage progress, payoff and $10,000 milestone
+  projections, interest metrics, credit utilization change, and visual actual
+  balance, annual activity, and selected-scenario comparison charts.
 - Debt-history charts provide bounded wheel zoom and drag pan. Interest charts
   provide readable month/year labels, dynamic currency ticks, immediate compact
   hover details, and reconciled annual debt-source interest totals.

@@ -2093,3 +2093,25 @@ year`.
   balance-control reasons; configuration and integrity warnings remain visible.
 - Recommended next phase: first-user acceptance of navigation labels and
   balance-control wording.
+
+## Phase 49: Debt Payoff Milestones
+
+- Completion date: 2026-08-10. Application version: 1.5.0.
+- Added a Milestones screen with debt-reduction, interest, credit-utilization,
+  payoff-date, and next-$10,000 milestone summaries plus five visual progress
+  charts.
+- Metrics and chart series reuse main-process report rollforwards, ledger
+  balance calculations, saved payoff scenario results, and shared chart scale
+  helpers. Actual and projected values remain explicitly separate.
+- No database migration. Added the typed `debt:milestones` IPC operation and
+  bridge version 24. Added ADR 038, README guidance, metadata, component,
+  service, renderer, preload, and navigation tests.
+- Validation: `npm run format`, `npm run check`, and `npm run package:smoke` passed;
+  check completed 184 tests, the 15-table database check, and Electron E2E.
+  Packaged smoke passed installer launch and upgrade preservation. Windows
+  signing/deprecation and temporary-directory cleanup warnings were non-blocking.
+- Known limitation: credit-utilization year-over-year comparison is shown only
+  when valid active credit-card limits exist; scenario comparison requires a
+  saved scenario selection.
+- Recommended next phase: first-user review of milestone thresholds and chart
+  density.

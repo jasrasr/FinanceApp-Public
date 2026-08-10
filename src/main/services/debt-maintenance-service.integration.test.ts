@@ -1155,7 +1155,66 @@ describe('debt creation', () => {
   });
 });
 
+describe('payoff milestones', () => {
+  it('builds milestone totals from reports without altering ledger activity', () => {
+    const created = service.createDebt(validRequest());
+    service.createDebtTransaction(validTransactionRequest(created.id));
+    const transactionsBefore = context.database.select().from(debtTransactions).all();
+
+    const milestones = service.getMilestones!({ scenarioId: null });
+
+    expect(milestones.totalDebtReducedSinceTracking).toBe('400.00');
+    expect(milestones.debtReducedYtd).toBe('400.00');
+    expect(milestones.interestPaidYtd).toBe('100.00');
+    expect(milestones.percentageStartingDebtRemaining).toBe('99.7%');
+    expect(milestones.balanceHistory.length).toBeGreaterThan(0);
+    expect(milestones.annualPrincipalReduction.at(-1)).toMatchObject({
+      year: '2026',
+      amount: '400.00',
+    });
+    expect(milestones.scenarioComparison).toEqual([]);
+    expect(context.database.select().from(debtTransactions).all()).toEqual(
+      transactionsBefore,
+    );
+  });
+});
+
 describe('payoff scenarios', () => {
+  it('adds selected saved scenario comparison data to milestones', () => {
+    const debt = service.createDebt(validRequest('Generated Milestone Scenario Note'));
+    service.createDebtTransaction(validTransactionRequest(debt.id));
+    const scenario = service.createPayoffScenario({
+      name: 'Generated milestone scenario',
+      scenarioStartDate: '2026-07-28',
+      strategy: 'avalanche',
+      extraMonthlyPayment: '5000.00',
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 120,
+    });
+
+    const milestones = service.getMilestones!({ scenarioId: scenario.id });
+
+    expect(milestones.selectedScenario).toEqual({
+      id: scenario.id,
+      name: 'Generated milestone scenario',
+    });
+    expect(milestones.interestSavedFromSelectedScenario).toBe(
+      scenario.result.interestSavings,
+    );
+    expect(milestones.scenarioComparison.length).toBeGreaterThan(0);
+    expect(
+      milestones.scenarioComparison.some(
+        (point) => point.actualPrincipalBalance !== null,
+      ),
+    ).toBe(true);
+    expect(
+      milestones.scenarioComparison.some(
+        (point) => point.projectedPrincipalBalance !== null,
+      ),
+    ).toBe(true);
+  });
+
   it('creates, saves, reruns, and archives a scenario without writing projected ledger activity', () => {
     const debt = service.createDebt(validRequest('Generated Payoff Scenario Note'));
     service.createDebtTransaction(validTransactionRequest(debt.id));

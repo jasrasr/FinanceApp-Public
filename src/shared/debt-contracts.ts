@@ -267,6 +267,10 @@ export const listDebtsRequestSchema = z
 
 export const getDashboardRequestSchema = z.object({}).strict();
 export const getDataHealthRequestSchema = z.object({}).strict();
+
+export const getMilestonesRequestSchema = z
+  .object({ scenarioId: uuidSchema.nullable() })
+  .strict();
 export const acceptCurrentBalanceRequestSchema = z
   .object({
     debtId: uuidSchema,
@@ -1245,11 +1249,66 @@ export const permanentDebtDeletionResultSchema = applicationResultSchema(
 );
 export const dashboardResultSchema = applicationResultSchema(dashboardDtoSchema);
 export const dataHealthResultSchema = applicationResultSchema(dataHealthDtoSchema);
+const milestoneBalancePointDtoSchema = z
+  .object({
+    date: financialDateInputSchema,
+    totalPrincipalBalance: z.string(),
+    mortgagePrincipalBalance: z.string(),
+    nonmortgagePrincipalBalance: z.string(),
+  })
+  .strict();
+const milestoneAnnualPointDtoSchema = z
+  .object({ year: z.string(), amount: z.string() })
+  .strict();
+const milestoneScenarioPointDtoSchema = z
+  .object({
+    date: financialDateInputSchema,
+    actualPrincipalBalance: z.string().nullable(),
+    projectedPrincipalBalance: z.string().nullable(),
+  })
+  .strict();
+export const milestonesDtoSchema = z
+  .object({
+    effectiveDate: financialDateInputSchema,
+    trackingStartDate: financialDateInputSchema,
+    totalDebtReducedSinceTracking: z.string(),
+    debtReducedYtd: z.string(),
+    startingDebt: z.string(),
+    currentDebt: z.string(),
+    percentageStartingDebtRemaining: z.string(),
+    mortgageDebtReduced: z.string(),
+    nonmortgageDebtReduced: z.string(),
+    nextProjectedDebtPayoff: z
+      .object({
+        debtId: uuidSchema,
+        debtName: z.string(),
+        projectedPayoffDate: financialDateInputSchema,
+      })
+      .strict()
+      .nullable(),
+    nextDebtReductionMilestone: z.string(),
+    nextDebtReductionMilestoneDate: financialDateInputSchema.nullable(),
+    interestPaidYtd: z.string(),
+    interestSavedFromSelectedScenario: z.string().nullable(),
+    currentCreditUtilization: z.string().nullable(),
+    priorYearCreditUtilization: z.string().nullable(),
+    creditUtilizationChange: z.string().nullable(),
+    selectedScenario: z
+      .object({ id: uuidSchema, name: z.string() })
+      .strict()
+      .nullable(),
+    balanceHistory: z.array(milestoneBalancePointDtoSchema),
+    annualPrincipalReduction: z.array(milestoneAnnualPointDtoSchema),
+    annualInterestPaid: z.array(milestoneAnnualPointDtoSchema),
+    scenarioComparison: z.array(milestoneScenarioPointDtoSchema),
+  })
+  .strict();
 export const dataManagementStatusResultSchema = applicationResultSchema(
   dataManagementStatusDtoSchema,
 );
 export const dataExportResultSchema = applicationResultSchema(dataExportDtoSchema);
 export const debtReportsResultSchema = applicationResultSchema(debtReportsDtoSchema);
+export const milestonesResultSchema = applicationResultSchema(milestonesDtoSchema);
 export const payoffScenarioResultSchema = applicationResultSchema(
   payoffScenarioDtoSchema,
 );
@@ -1289,6 +1348,7 @@ export type CreateBalanceReconciliationRequest = z.infer<
 export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
 export type GetDashboardRequest = z.infer<typeof getDashboardRequestSchema>;
 export type GetDataHealthRequest = z.infer<typeof getDataHealthRequestSchema>;
+export type GetMilestonesRequest = z.infer<typeof getMilestonesRequestSchema>;
 export type AcceptCurrentBalanceRequest = z.infer<
   typeof acceptCurrentBalanceRequestSchema
 >;
@@ -1351,6 +1411,7 @@ export type PermanentDebtDeletionDto = z.infer<typeof permanentDebtDeletionDtoSc
 export type RefinanceEventDto = z.infer<typeof refinanceEventDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
 export type DataHealthDto = z.infer<typeof dataHealthDtoSchema>;
+export type MilestonesDto = z.infer<typeof milestonesDtoSchema>;
 export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSchema>;
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;

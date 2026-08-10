@@ -13,6 +13,7 @@ import type {
   CreatePayoffScenarioRequest,
   DashboardDto,
   DataHealthDto,
+  MilestonesDto,
   BalanceReconciliationDto,
   DataManagementStatusDto,
   DebtReportsDto,
@@ -41,6 +42,7 @@ import { CreateDebtForm } from './components/create-debt-form';
 import { Dashboard } from './components/dashboard';
 import { DataManagement } from './components/data-management';
 import { DataHealth } from './components/data-health';
+import { Milestones } from './components/milestones';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { combinedDebtLabel } from './components/debt-label';
@@ -68,7 +70,8 @@ type View =
   | 'reports'
   | 'escrow-detail'
   | 'data-management'
-  | 'data-health';
+  | 'data-health'
+  | 'milestones';
 type DetailPanel =
   'overview' | 'transaction' | 'transaction-edit' | 'reconciliation' | 'refinance';
 type Confirmation =
@@ -160,6 +163,10 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [dataManagementStatus, setDataManagementStatus] =
     useState<DataManagementStatusDto | null>(null);
   const [dataHealth, setDataHealth] = useState<DataHealthDto | null>(null);
+  const [milestones, setMilestones] = useState<MilestonesDto | null>(null);
+  const [selectedMilestoneScenarioId, setSelectedMilestoneScenarioId] = useState<
+    string | null
+  >(null);
   const [payoffScenarios, setPayoffScenarios] = useState<readonly PayoffScenarioDto[]>(
     [],
   );
@@ -344,6 +351,24 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     const result = await invokeBridge(() => bridge.getDataHealth!({}));
     if (result.ok) setDataHealth(result.value);
     else setError(result.error);
+    setLoading(false);
+  };
+
+  const loadMilestones = async (
+    scenarioId = selectedMilestoneScenarioId,
+  ): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const scenariosResult = await invokeBridge(() =>
+      bridge.listPayoffScenarios({ includeArchived: false }),
+    );
+    const milestoneResult = await invokeBridge(() =>
+      bridge.getMilestones!({ scenarioId }),
+    );
+    if (scenariosResult.ok) setPayoffScenarios(scenariosResult.value);
+    else setError(scenariosResult.error);
+    if (milestoneResult.ok) setMilestones(milestoneResult.value);
+    else setError(milestoneResult.error);
     setLoading(false);
   };
 
@@ -575,6 +600,31 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setError(null);
     setFieldErrors(undefined);
     void loadDataHealth();
+  };
+
+  const showMilestones = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'milestones',
+        },
+        '',
+        '#milestones',
+      );
+    }
+    setView('milestones');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setError(null);
+    setFieldErrors(undefined);
+    void loadMilestones();
+  };
+
+  const selectMilestoneScenario = (scenarioId: string | null): void => {
+    setSelectedMilestoneScenarioId(scenarioId);
+    void loadMilestones(scenarioId);
   };
 
   const createPayoffScenario = async (
@@ -840,6 +890,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       if (nextView === 'dashboard') void loadDashboard();
       if (nextView === 'list') void loadDebts();
       if (nextView === 'reports' && !reports) void loadReports();
+      if (nextView === 'milestones') void loadMilestones();
       suppressNavigationPushRef.current = false;
     };
     if (window.history.state?.app !== 'debt-tracker') {
@@ -1366,6 +1417,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'milestones' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'milestones')}
+                onClick={showMilestones}
+                type="button"
+              >
+                Milestones
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-current={view === 'list' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'list')}
                 onClick={showList}
@@ -1468,9 +1529,11 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                             ? () => void loadDataManagementStatus()
                             : view === 'data-health'
                               ? () => void loadDataHealth()
-                              : view === 'escrow-detail'
-                                ? () => void loadEscrowDetail()
-                                : undefined
+                              : view === 'milestones'
+                                ? () => void loadMilestones()
+                                : view === 'escrow-detail'
+                                  ? () => void loadEscrowDetail()
+                                  : undefined
                 }
               />
             </div>
@@ -1597,6 +1660,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               health={dataHealth}
               onAcceptCurrentBalance={(id) => void acceptCurrentBalance(id)}
               onSelectDebt={(id) => void selectDebt(id)}
+            />
+          ) : null}
+
+          {!loading && view === 'milestones' && milestones ? (
+            <Milestones
+              milestones={milestones}
+              onScenarioChange={selectMilestoneScenario}
+              onSelectDebt={(id) => void selectDebt(id)}
+              scenarios={payoffScenarios}
+              selectedScenarioId={selectedMilestoneScenarioId}
             />
           ) : null}
 
