@@ -165,6 +165,7 @@ describe('database migrations and isolation', () => {
       .all() as { name: string }[];
 
     expect(tableNames.map((row) => row.name)).toEqual([
+      'application_settings',
       'audit_events',
       'balance_reconciliations',
       'balance_snapshots',
@@ -714,7 +715,7 @@ describe('database migrations and isolation', () => {
       { status: 'superseded', count: 1 },
     ]);
     expect(temporaryRebuildTable).toBeUndefined();
-    expect(migrationCount.count).toBe(11);
+    expect(migrationCount.count).toBe(12);
     expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
     expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
 

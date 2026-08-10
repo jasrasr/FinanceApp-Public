@@ -78,6 +78,13 @@
       "when": 1785699744116,
       "tag": "0010_amusing_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1786380064576,
+      "tag": "0011_configurable_data_locations",
+      "breakpoints": true
     }
   ]
 }

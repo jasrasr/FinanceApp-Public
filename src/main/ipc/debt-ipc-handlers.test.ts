@@ -147,7 +147,7 @@ describe('debt IPC handlers', () => {
     expect(service.listDebts).toHaveBeenCalledWith({ includeArchived: false });
   });
 
-  it('does not register removed workbook import IPC handlers', () => {
+  it('registers only the approved backup-file import IPC handler', () => {
     const service = createService();
     const { handlers, registrar } = createRegistrar();
     registerDebtIpcHandlers(
@@ -157,9 +157,9 @@ describe('debt IPC handlers', () => {
       () => true,
     );
 
-    expect([...handlers.keys()].some((channel) => channel.includes(':import'))).toBe(
-      false,
-    );
+    expect(
+      [...handlers.keys()].filter((channel) => channel.includes(':import')),
+    ).toEqual([DEBT_IPC_CHANNELS.importBackupFile]);
   });
 
   it('rejects invalid posted-transaction payloads on the new channel', () => {

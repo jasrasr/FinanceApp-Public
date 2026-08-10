@@ -442,3 +442,11 @@ fields remain readable.
 
 No `app_settings` table is created. Drizzle maintains migration state, and no
 foundational application setting currently justifies a persistent row.
+
+### application_settings
+
+| Column           | Type / unit       | Required | Meaning                                                                            |
+| ---------------- | ----------------- | -------- | ---------------------------------------------------------------------------------- |
+| `key`            | text              | yes      | Purpose-specific setting key, including `backup_directory` and `export_directory`. |
+| `value`          | text              | yes      | Validated local folder path; never the live database path.                         |
+| `updated_at_utc` | ISO UTC timestamp | yes      | Last persisted change time.                                                        |

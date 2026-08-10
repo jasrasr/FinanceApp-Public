@@ -1,6 +1,8 @@
 import type { AppBridge } from '../shared/app-bridge';
+import { z } from 'zod';
 import {
   appMetadataDtoSchema,
+  applicationResultSchema,
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
@@ -42,6 +44,11 @@ import {
   rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
   restoreBackupRequestSchema,
+  chooseDataFolderRequestSchema,
+  chooseBackupFileRequestSchema,
+  setDataLocationsRequestSchema,
+  openBackupFolderRequestSchema,
+  importBackupFileRequestSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
   voidDebtTransactionRequestSchema,
@@ -75,6 +82,10 @@ import {
   type ReverseDebtTransactionRequest,
   type RestoreDebtRequest,
   type RestoreBackupRequest,
+  type ChooseDataFolderRequest,
+  type ChooseBackupFileRequest,
+  type SetDataLocationsRequest,
+  type ImportBackupFileRequest,
   type UpdateDebtRequest,
   type VoidBalanceReconciliationRequest,
   type VoidDebtTransactionRequest,
@@ -133,6 +144,41 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.exportData,
           exportDataRequestSchema.parse(request),
+        ),
+      ),
+    chooseDataFolder: async (request: ChooseDataFolderRequest) =>
+      applicationResultSchema(z.string().nullable()).parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.chooseDataFolder,
+          chooseDataFolderRequestSchema.parse(request),
+        ),
+      ),
+    chooseBackupFile: async (request: ChooseBackupFileRequest) =>
+      applicationResultSchema(z.string().nullable()).parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.chooseBackupFile,
+          chooseBackupFileRequestSchema.parse(request),
+        ),
+      ),
+    setDataLocations: async (request: SetDataLocationsRequest) =>
+      dataManagementStatusResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.setDataLocations,
+          setDataLocationsRequestSchema.parse(request),
+        ),
+      ),
+    openBackupFolder: async (request: Record<string, never>) =>
+      applicationResultSchema(z.boolean()).parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.openBackupFolder,
+          openBackupFolderRequestSchema.parse(request),
+        ),
+      ),
+    importBackupFile: async (request: ImportBackupFileRequest) =>
+      dataManagementStatusResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.importBackupFile,
+          importBackupFileRequestSchema.parse(request),
         ),
       ),
     getDebtReports: async (request: GetDebtReportsRequest) =>

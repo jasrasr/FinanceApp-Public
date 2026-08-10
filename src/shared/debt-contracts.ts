@@ -287,6 +287,26 @@ export const exportDataRequestSchema = z
   })
   .strict();
 
+export const setDataLocationsRequestSchema = z
+  .object({
+    backupDirectory: z.string().trim().min(1).max(4000),
+    exportDirectory: z.string().trim().min(1).max(4000),
+    moveExistingBackups: z.boolean(),
+  })
+  .strict();
+export const chooseDataFolderRequestSchema = z
+  .object({
+    kind: z.enum(['backup', 'export']),
+  })
+  .strict();
+export const chooseBackupFileRequestSchema = z.object({}).strict();
+export const openBackupFolderRequestSchema = z.object({}).strict();
+export const importBackupFileRequestSchema = z
+  .object({
+    sourcePath: z.string().trim().min(1).max(4000),
+  })
+  .strict();
+
 export const getDebtReportsRequestSchema = z
   .object({
     startDate: financialDateInputSchema.nullable(),
@@ -784,7 +804,9 @@ const backupOperationDtoSchema = z
 
 export const dataManagementStatusDtoSchema = z
   .object({
+    liveDatabaseDisplayPath: z.string().optional(),
     backupDirectoryDisplayPath: z.string(),
+    exportDirectoryDisplayPath: z.string().optional(),
     lastSuccessfulBackupAtUtc: utcTimestampSchema.nullable(),
     availableBackups: z.array(backupSummaryDtoSchema),
     lastBackup: backupOperationDtoSchema,
@@ -1218,6 +1240,10 @@ export type CreateManualBackupRequest = z.infer<typeof createManualBackupRequest
 export type RestoreBackupRequest = z.infer<typeof restoreBackupRequestSchema>;
 export type DeleteBackupRequest = z.infer<typeof deleteBackupRequestSchema>;
 export type ExportDataRequest = z.infer<typeof exportDataRequestSchema>;
+export type SetDataLocationsRequest = z.infer<typeof setDataLocationsRequestSchema>;
+export type ChooseDataFolderRequest = z.infer<typeof chooseDataFolderRequestSchema>;
+export type ChooseBackupFileRequest = z.infer<typeof chooseBackupFileRequestSchema>;
+export type ImportBackupFileRequest = z.infer<typeof importBackupFileRequestSchema>;
 export type GetDebtReportsRequest = z.infer<typeof getDebtReportsRequestSchema>;
 export type CreatePayoffScenarioRequest = z.infer<
   typeof createPayoffScenarioRequestSchema

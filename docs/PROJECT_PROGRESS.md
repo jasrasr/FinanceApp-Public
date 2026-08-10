@@ -2031,3 +2031,24 @@ year`.
 - Recommended next phase:
   - Monitor acceptance use for non-monthly schedules before expanding the
     scheduler beyond monthly obligations.
+
+## Phase 46: Configurable Data Locations and Portable Restore
+
+- Completion date: 2026-08-10. Application version: 1.3.0.
+- Added persisted backup/export locations, read-only live database display,
+  native folder pickers, open-backup-folder action, validated backup-file import,
+  and copy-then-validate backup-location migration.
+- The live SQLite database remains in local user data; OneDrive is supported for
+  backups and exports. Restore safety backups, integrity checks, and automatic
+  retention distinctions remain in force.
+- Added migration `0011_configurable_data_locations.sql`, typed IPC operations,
+  and ADR 036. Portable computer switching is documented as backup, sync,
+  restore, continue; independent copies do not merge.
+- Validation: `npm run format`, `npm run check`, and `npm run package:smoke` passed;
+  the check gate ran 177 tests, a 15-table database check, and the Electron E2E
+  workflow. Generated test data only. Packaging emitted only existing Windows
+  signing/deprecation warnings.
+- Known limitation: location changes are initiated through the folder picker;
+  the live database location is intentionally not configurable.
+- Recommended next phase: perform first-user acceptance of OneDrive sync timing
+  and portable restore messaging.

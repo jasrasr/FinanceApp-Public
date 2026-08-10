@@ -10,6 +10,10 @@ export interface DataManagementProps {
   readonly onExport: () => void;
   readonly onRefresh: () => void;
   readonly onRestore: (backupId: string) => void;
+  readonly onChooseFolder: (kind: 'backup' | 'export') => void;
+  readonly onChooseBackupFile: () => void;
+  readonly onOpenBackupFolder: () => void;
+  readonly onImportBackupFile: () => void;
 }
 
 const statusLabel = (value: string): string => value.replaceAll('_', ' ');
@@ -21,6 +25,10 @@ export const DataManagement = ({
   onExport,
   onRefresh,
   onRestore,
+  onChooseFolder,
+  onChooseBackupFile,
+  onOpenBackupFolder,
+  onImportBackupFile,
   restoring,
   status,
 }: DataManagementProps): React.JSX.Element => (
@@ -51,12 +59,53 @@ export const DataManagement = ({
     {!loading && status ? (
       <>
         <section className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-3">
+            <h3 className="text-lg font-semibold">Data locations</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              The live database stays in the local Windows application-data directory
+              and cannot be moved into OneDrive.
+            </p>
+            <dl className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+              <div>
+                <dt className="font-semibold text-slate-500">
+                  Live database (read-only)
+                </dt>
+                <dd className="mt-1 break-all">
+                  {status.liveDatabaseDisplayPath ?? 'Local application-data database'}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-semibold text-slate-500">Backup folder</dt>
+                <dd className="mt-1 break-all">{status.backupDirectoryDisplayPath}</dd>
+                <button
+                  className="mt-2 underline"
+                  onClick={() => onChooseFolder('backup')}
+                  type="button"
+                >
+                  Change backup folder
+                </button>
+              </div>
+              <div>
+                <dt className="font-semibold text-slate-500">Export folder</dt>
+                <dd className="mt-1 break-all">
+                  {status.exportDirectoryDisplayPath ?? 'Not configured'}
+                </dd>
+                <button
+                  className="mt-2 underline"
+                  onClick={() => onChooseFolder('export')}
+                  type="button"
+                >
+                  Change export folder
+                </button>
+              </div>
+            </dl>
+          </div>
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
               Backup directory
             </p>
-            <p className="mt-2 break-all text-sm text-slate-700">
-              {status.backupDirectoryDisplayPath}
+            <p className="mt-2 text-sm text-slate-700">
+              Configured in Data locations above.
             </p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -96,6 +145,27 @@ export const DataManagement = ({
                 type="button"
               >
                 Refresh
+              </button>
+              <button
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold"
+                onClick={onOpenBackupFolder}
+                type="button"
+              >
+                Open backup folder
+              </button>
+              <button
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold"
+                onClick={onChooseBackupFile}
+                type="button"
+              >
+                Import backup file
+              </button>
+              <button
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold"
+                onClick={onImportBackupFile}
+                type="button"
+              >
+                Add backup from file
               </button>
               <button
                 className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"

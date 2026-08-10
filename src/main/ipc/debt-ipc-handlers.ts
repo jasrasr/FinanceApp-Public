@@ -1,5 +1,5 @@
 import type { IpcMainInvokeEvent } from 'electron';
-import { ZodError, type ZodType } from 'zod';
+import { ZodError, z, type ZodType } from 'zod';
 import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
@@ -42,6 +42,11 @@ import {
   rerunPayoffScenarioRequestSchema,
   restoreDebtRequestSchema,
   restoreBackupRequestSchema,
+  chooseDataFolderRequestSchema,
+  chooseBackupFileRequestSchema,
+  setDataLocationsRequestSchema,
+  openBackupFolderRequestSchema,
+  importBackupFileRequestSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
   type ApplicationError,
@@ -172,6 +177,10 @@ export const registerDebtIpcHandlers = (
   service: DebtMaintenanceService,
   dataManagementService: DataManagementService,
   isTrustedSender: TrustedSenderValidator,
+  nativeDialogs: {
+    readonly selectFolder: (title: string) => string | null;
+    readonly selectBackupFile: () => string | null;
+  } = { selectFolder: () => null, selectBackupFile: () => null },
 ): void => {
   let databaseOperationActive = false;
   const runExclusiveDatabaseOperation = async <T>(
@@ -199,6 +208,49 @@ export const registerDebtIpcHandlers = (
     debtSummaryListSchema,
     isTrustedSender,
     (request) => service.listDebts(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.chooseDataFolder,
+    chooseDataFolderRequestSchema,
+    z.string().nullable(),
+    isTrustedSender,
+    (request) =>
+      nativeDialogs.selectFolder(
+        request.kind === 'backup' ? 'Select backup folder' : 'Select export folder',
+      ),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.chooseBackupFile,
+    chooseBackupFileRequestSchema,
+    z.string().nullable(),
+    isTrustedSender,
+    () => nativeDialogs.selectBackupFile(),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.setDataLocations,
+    setDataLocationsRequestSchema,
+    dataManagementStatusDtoSchema,
+    isTrustedSender,
+    (request) => dataManagementService.setDataLocations!(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.openBackupFolder,
+    openBackupFolderRequestSchema,
+    z.boolean(),
+    isTrustedSender,
+    () => dataManagementService.openBackupFolder?.() ?? false,
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.importBackupFile,
+    importBackupFileRequestSchema,
+    dataManagementStatusDtoSchema,
+    isTrustedSender,
+    (request) => dataManagementService.importBackupFile!(request),
   );
   registerHandler(
     ipcMain,

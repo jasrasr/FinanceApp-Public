@@ -647,6 +647,48 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
+  const chooseDataFolder = async (kind: 'backup' | 'export'): Promise<void> => {
+    if (!dataManagementStatus) return;
+    const chosen = await invokeBridge(() => bridge.chooseDataFolder!({ kind }));
+    if (!chosen.ok || !chosen.value) return;
+    const selectedPath = chosen.value;
+    const moveExistingBackups =
+      kind === 'backup' &&
+      window.confirm(
+        'Move existing backups to the new folder after each copy is validated? Choose Cancel to use the new location only.',
+      );
+    const result = await invokeBridge(() =>
+      bridge.setDataLocations!({
+        backupDirectory:
+          kind === 'backup'
+            ? selectedPath
+            : dataManagementStatus.backupDirectoryDisplayPath,
+        exportDirectory:
+          kind === 'export'
+            ? selectedPath
+            : (dataManagementStatus.exportDirectoryDisplayPath ??
+              dataManagementStatus.backupDirectoryDisplayPath),
+        moveExistingBackups,
+      }),
+    );
+    if (result.ok) {
+      setDataManagementStatus(result.value);
+      setSuccessMessage('Data locations were updated.');
+    } else handleFailure(result.error);
+  };
+
+  const importBackupFile = async (): Promise<void> => {
+    const chosen = await invokeBridge(() => bridge.chooseBackupFile!({}));
+    if (!chosen.ok || !chosen.value) return;
+    const result = await invokeBridge(() =>
+      bridge.importBackupFile!({ sourcePath: chosen.value! }),
+    );
+    if (result.ok) {
+      setDataManagementStatus(result.value);
+      setSuccessMessage('Backup was validated and added for restore.');
+    } else handleFailure(result.error);
+  };
+
   const restoreBackup = async (backupId: string): Promise<void> => {
     const confirmed = window.confirm(
       'Restore this validated backup? Debt Tracker will create a safety backup first and replace the current local database.',
@@ -1492,6 +1534,10 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onExport={() => void exportData()}
               onRefresh={() => void loadDataManagementStatus()}
               onRestore={(backupId) => void restoreBackup(backupId)}
+              onChooseFolder={(kind) => void chooseDataFolder(kind)}
+              onChooseBackupFile={() => void importBackupFile()}
+              onImportBackupFile={() => void importBackupFile()}
+              onOpenBackupFolder={() => void bridge.openBackupFolder?.({})}
               restoring={saving}
               status={dataManagementStatus}
             />

@@ -17,6 +17,8 @@ describe('typed preload bridge', () => {
       'bridgeVersion',
       'calculateExtraCashAllocation',
       'calculatePayoffBaseline',
+      'chooseBackupFile',
+      'chooseDataFolder',
       'confirmScheduledPayment',
       'createBalanceReconciliation',
       'createBalanceSnapshot',
@@ -33,8 +35,10 @@ describe('typed preload bridge', () => {
       'getDebt',
       'getDebtReports',
       'getPayoffScenario',
+      'importBackupFile',
       'listDebts',
       'listPayoffScenarios',
+      'openBackupFolder',
       'recordRefinance',
       'removeScheduledPaymentConfirmation',
       'renamePayoffScenario',
@@ -42,14 +46,15 @@ describe('typed preload bridge', () => {
       'restoreBackup',
       'restoreDebt',
       'reverseDebtTransaction',
+      'setDataLocations',
       'updateDebt',
       'voidBalanceReconciliation',
       'voidDebtTransaction',
     ]);
     expect(bridge.bridgeVersion).toBe(23);
     expect(bridge.appMetadata).toEqual({
-      version: '1.1.2',
-      lastChangedAtUtc: '2026-07-28T13:42:00.000Z',
+      version: '1.3.0',
+      lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);
     expect('query' in bridge).toBe(false);
@@ -83,11 +88,11 @@ describe('typed preload bridge', () => {
     await expect(bridge.listDebts({ includeArchived: false })).rejects.toThrow();
   });
 
-  it('does not expose removed workbook import bridge operations', () => {
+  it('exposes only the approved backup-file import operation', () => {
     const bridge = createAppBridge(vi.fn());
 
     expect(
-      Object.keys(bridge).some((key) => key.toLowerCase().includes('import')),
-    ).toBe(false);
+      Object.keys(bridge).filter((key) => key.toLowerCase().includes('import')),
+    ).toEqual(['importBackupFile']);
   });
 });

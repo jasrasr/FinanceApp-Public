@@ -3,6 +3,7 @@ import { openMigratedDatabase } from '../src/main/database/connection';
 import { createTemporaryDatabaseLocation } from '../src/main/database/temporary-database';
 
 const expectedTables = [
+  'application_settings',
   'audit_events',
   'balance_reconciliations',
   'balance_snapshots',

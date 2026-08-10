@@ -1,6 +1,7 @@
 import BetterSqlite3 from 'better-sqlite3';
 import {
   existsSync,
+  copyFileSync,
   mkdirSync,
   readdirSync,
   renameSync,
@@ -28,12 +29,16 @@ import type {
   ExportDataRequest,
   GetDataManagementStatusRequest,
   RestoreBackupRequest,
+  ImportBackupFileRequest,
+  SetDataLocationsRequest,
 } from '../../shared/debt-contracts';
 import {
   createManualBackupRequestSchema,
   exportDataRequestSchema,
   getDataManagementStatusRequestSchema,
   restoreBackupRequestSchema,
+  importBackupFileRequestSchema,
+  setDataLocationsRequestSchema,
 } from '../../shared/debt-contracts';
 import type { DatabaseContext } from '../database/connection';
 import { ApplicationServiceError } from './application-error';
@@ -67,11 +72,15 @@ export interface DataManagementService {
   restoreBackup(request: RestoreBackupRequest): Promise<DataManagementStatusDto>;
   deleteBackup(request: DeleteBackupRequest): Promise<DataManagementStatusDto>;
   exportData(request: ExportDataRequest): DataExportDto;
+  importBackupFile?(request: ImportBackupFileRequest): DataManagementStatusDto;
+  setDataLocations?(request: SetDataLocationsRequest): DataManagementStatusDto;
+  openBackupFolder?(): boolean;
 }
 
 export interface DataManagementServiceDependencies {
   readonly applicationRootDirectory: string;
   readonly backupRootDirectory: string;
+  readonly exportRootDirectory?: string;
   readonly databasePath: string;
   readonly createId?: () => string;
   readonly getContext: () => DatabaseContext;
@@ -79,6 +88,8 @@ export interface DataManagementServiceDependencies {
   readonly getReports: () => DebtReportsDto;
   readonly now?: () => string;
   readonly reopenContext: () => void;
+  readonly openBackupFolder?: (directory: string) => boolean;
+  /** Legacy test/application hook retained for compatibility; configured export paths are used. */
   readonly selectExportDirectory?: () => string | null;
 }
 
@@ -287,19 +298,44 @@ const writeCsvFile = (
 
 export const createDataManagementService = ({
   applicationRootDirectory,
-  backupRootDirectory,
+  backupRootDirectory: initialBackupRootDirectory,
   createId = randomUUID,
   databasePath,
+  exportRootDirectory: initialExportRootDirectory = join(
+    initialBackupRootDirectory,
+    '..',
+    'exports',
+  ),
   getContext,
   getDashboard,
   getReports,
   now = () => new Date().toISOString(),
   reopenContext,
+  openBackupFolder: openBackupFolderNative,
   selectExportDirectory,
 }: DataManagementServiceDependencies): DataManagementService => {
+  let backupRootDirectory = initialBackupRootDirectory;
+  let exportRootDirectory = selectExportDirectory?.() ?? initialExportRootDirectory;
   let lastBackup: BackupOperation = backupOperationNotRun;
   let lastRestore: BackupOperation = backupOperationNotRun;
   const activeBackupIds = new Set<string>();
+
+  const setting = (key: string, fallback: string): string => {
+    const row = getContext()
+      .sqlite.prepare('select value from application_settings where key = ?')
+      .get(key) as { value?: string } | undefined;
+    return row?.value ?? fallback;
+  };
+  const saveSetting = (key: string, value: string): void => {
+    getContext()
+      .sqlite.prepare(
+        `insert into application_settings (key, value, updated_at_utc) values (?, ?, ?)
+       on conflict(key) do update set value = excluded.value, updated_at_utc = excluded.updated_at_utc`,
+      )
+      .run(key, value, now());
+  };
+  backupRootDirectory = setting('backup_directory', backupRootDirectory);
+  exportRootDirectory = setting('export_directory', exportRootDirectory);
 
   const ensureBackupRoot = (): void => {
     if (isPathInside(backupRootDirectory, applicationRootDirectory)) {
@@ -315,7 +351,9 @@ export const createDataManagementService = ({
     ensureBackupRoot();
     const backups = listBackups(backupRootDirectory);
     return {
+      liveDatabaseDisplayPath: databasePath,
       backupDirectoryDisplayPath: backupRootDirectory,
+      exportDirectoryDisplayPath: exportRootDirectory,
       lastSuccessfulBackupAtUtc:
         backups.find((backup) => backup.integrityStatus === 'valid')?.createdAtUtc ??
         null,
@@ -579,17 +617,7 @@ export const createDataManagementService = ({
     if (parsed.format !== 'csv') {
       throw new ApplicationServiceError('validation', 'Only CSV export is configured.');
     }
-    const selectedDirectory = selectExportDirectory?.() ?? null;
-    if (!selectedDirectory) {
-      return {
-        status: 'cancelled',
-        exportedAtUtc: null,
-        exportDirectoryDisplayPath: null,
-        fileCount: 0,
-        format: 'csv',
-        message: 'Export was cancelled.',
-      };
-    }
+    const selectedDirectory = exportRootDirectory;
     if (isPathInside(selectedDirectory, applicationRootDirectory)) {
       throw new ApplicationServiceError(
         'validation',
@@ -758,6 +786,89 @@ export const createDataManagementService = ({
     };
   };
 
+  const setDataLocations = (
+    request: SetDataLocationsRequest,
+  ): DataManagementStatusDto => {
+    const parsed = setDataLocationsRequestSchema.parse(request);
+    if (
+      isPathInside(parsed.backupDirectory, applicationRootDirectory) ||
+      isPathInside(parsed.exportDirectory, applicationRootDirectory)
+    ) {
+      throw new ApplicationServiceError(
+        'validation',
+        'Backup and export folders must remain outside the application repository.',
+      );
+    }
+    if (isPathInside(parsed.backupDirectory, dirname(databasePath))) {
+      // The live database may stay in user data, but a configurable backup folder is safe there.
+    }
+    mkdirSync(parsed.backupDirectory, { recursive: true });
+    mkdirSync(parsed.exportDirectory, { recursive: true });
+    if (
+      parsed.moveExistingBackups &&
+      resolve(parsed.backupDirectory) !== resolve(backupRootDirectory)
+    ) {
+      const files = listBackups(backupRootDirectory);
+      const copied: string[] = [];
+      try {
+        for (const backup of files) {
+          const target = createUniquePath(parsed.backupDirectory, backup.fileName);
+          copyFileSync(join(backupRootDirectory, backup.fileName), target);
+          validateDatabaseFile(target);
+          copied.push(target);
+        }
+      } catch {
+        for (const target of copied) rmSync(target, { force: true });
+        throw new ApplicationServiceError(
+          'internal',
+          'Existing backups could not be copied and validated. Originals were retained.',
+        );
+      }
+      for (const backup of files)
+        removeBackupFiles(backupRootDirectory, backup.fileName);
+    }
+    backupRootDirectory = parsed.backupDirectory;
+    exportRootDirectory = parsed.exportDirectory;
+    saveSetting('backup_directory', backupRootDirectory);
+    saveSetting('export_directory', exportRootDirectory);
+    return status();
+  };
+
+  const importBackupFile = (
+    request: ImportBackupFileRequest,
+  ): DataManagementStatusDto => {
+    const parsed = importBackupFileRequestSchema.parse(request);
+    if (!existsSync(parsed.sourcePath) || !isAbsolute(parsed.sourcePath))
+      throw new ApplicationServiceError(
+        'validation',
+        'Selected backup file is not available.',
+      );
+    validateDatabaseFile(parsed.sourcePath);
+    ensureBackupRoot();
+    const fileName = basename(parsed.sourcePath);
+    if (!fileName.endsWith('.sqlite3'))
+      throw new ApplicationServiceError(
+        'validation',
+        'Selected file is not a Debt Tracker SQLite backup.',
+      );
+    const target = createUniquePath(
+      backupRootDirectory,
+      fileName.startsWith('manual-') ||
+        fileName.startsWith('auto-') ||
+        fileName.startsWith('pre-restore-')
+        ? fileName
+        : `manual-import-${safeTimestamp(now())}.sqlite3`,
+    );
+    copyFileSync(parsed.sourcePath, target);
+    try {
+      validateDatabaseFile(target);
+    } catch (error) {
+      rmSync(target, { force: true });
+      throw error;
+    }
+    return status();
+  };
+
   return {
     getDataManagementStatus: (request) => {
       getDataManagementStatusRequestSchema.parse(request);
@@ -833,5 +944,8 @@ export const createDataManagementService = ({
       return status();
     },
     exportData,
+    importBackupFile,
+    setDataLocations,
+    openBackupFolder: () => openBackupFolderNative?.(backupRootDirectory) ?? false,
   };
 };

@@ -426,6 +426,14 @@ Electron user-data directory that it removes after the workflow.
   the only valid backup.
 - Failed restore attempts are designed to leave the existing database usable.
 - CSV exports are written to a user-selected directory outside the repository.
+- Version 1.3.0 adds Data Management data locations. The live database remains
+  in local application data; backup and export folders may be OneDrive folders.
+  Existing backups can be copied and validated before the old location is
+  removed, and validated backups can be imported from OneDrive, USB, or another
+  folder without modifying the source file.
+- Backups move work between computers, but separate copies do not merge. Create
+  a backup, allow OneDrive to sync, restore it on the other computer, and then
+  continue working there.
 - Export files label actual, confirmed, calculated, and scenario values
   separately and omit audit-event detail.
 

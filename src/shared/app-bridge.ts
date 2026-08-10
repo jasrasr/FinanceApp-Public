@@ -44,6 +44,10 @@ import type {
   VoidDebtTransactionRequest,
   ExtraCashAllocationRequest,
   ExtraCashAllocationResponse,
+  SetDataLocationsRequest,
+  ChooseDataFolderRequest,
+  ChooseBackupFileRequest,
+  ImportBackupFileRequest,
 } from './debt-contracts';
 
 export interface DebtBridge {
@@ -64,6 +68,21 @@ export interface DebtBridge {
     request: DeleteBackupRequest,
   ): Promise<ApplicationResult<DataManagementStatusDto>>;
   exportData(request: ExportDataRequest): Promise<ApplicationResult<DataExportDto>>;
+  chooseDataFolder?(
+    request: ChooseDataFolderRequest,
+  ): Promise<ApplicationResult<string | null>>;
+  chooseBackupFile?(
+    request: ChooseBackupFileRequest,
+  ): Promise<ApplicationResult<string | null>>;
+  setDataLocations?(
+    request: SetDataLocationsRequest,
+  ): Promise<ApplicationResult<DataManagementStatusDto>>;
+  openBackupFolder?(
+    request: Record<string, never>,
+  ): Promise<ApplicationResult<boolean>>;
+  importBackupFile?(
+    request: ImportBackupFileRequest,
+  ): Promise<ApplicationResult<DataManagementStatusDto>>;
   getDebtReports(
     request: GetDebtReportsRequest,
   ): Promise<ApplicationResult<DebtReportsDto>>;

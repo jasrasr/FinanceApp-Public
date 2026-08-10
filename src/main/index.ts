@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseContext } from './database/connection';
@@ -19,17 +19,21 @@ const rendererFile = join(__dirname, '../renderer/index.html');
 const trustedRendererLocation = (): string =>
   process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(rendererFile).toString();
 
-const selectExportDirectory = (): string | null => {
-  const testExportDirectory = process.env.DEBT_TRACKER_TEST_EXPORT_DIR;
-  if (testExportDirectory && process.env.DEBT_TRACKER_TEST_MODE === '1') {
-    return testExportDirectory;
-  }
-
+const selectFolder = (title: string): string | null => {
   const result = dialog.showOpenDialogSync({
-    title: 'Select folder for Debt Tracker export',
+    title,
     properties: ['openDirectory', 'createDirectory'],
   });
 
+  return result?.[0] ?? null;
+};
+
+const selectBackupFile = (): string | null => {
+  const result = dialog.showOpenDialogSync({
+    title: 'Select Debt Tracker backup',
+    properties: ['openFile'],
+    filters: [{ name: 'Debt Tracker backup', extensions: ['sqlite3'] }],
+  });
   return result?.[0] ?? null;
 };
 
@@ -99,6 +103,11 @@ const startApplication = async (): Promise<void> => {
     applicationRootDirectory,
   );
   const backupRootDirectory = join(userDataDirectory, 'backups');
+  const exportRootDirectory =
+    process.env.DEBT_TRACKER_TEST_EXPORT_DIR &&
+    process.env.DEBT_TRACKER_TEST_MODE === '1'
+      ? process.env.DEBT_TRACKER_TEST_EXPORT_DIR
+      : join(userDataDirectory, 'exports');
 
   const reopenDatabaseContext = (): void => {
     databaseContext = initializeApplicationDatabase({
@@ -156,6 +165,7 @@ const startApplication = async (): Promise<void> => {
   const dataManagementService = createDataManagementService({
     applicationRootDirectory,
     backupRootDirectory,
+    exportRootDirectory,
     databasePath,
     getContext: () => {
       if (!databaseContext) throw new Error('Database context is not available.');
@@ -177,7 +187,10 @@ const startApplication = async (): Promise<void> => {
       });
     },
     reopenContext: reopenDatabaseContext,
-    selectExportDirectory,
+    openBackupFolder: (directory) => {
+      void shell.openPath(directory);
+      return true;
+    },
   });
   void dataManagementService.createAutomaticBackup('startup').catch((error) => {
     const detail =
@@ -189,6 +202,7 @@ const startApplication = async (): Promise<void> => {
     service,
     dataManagementService,
     createTrustedSenderValidator(trustedRendererLocation()),
+    { selectFolder, selectBackupFile },
   );
   createWindow();
 

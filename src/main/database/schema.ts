@@ -847,8 +847,15 @@ export const payoffScenarios = sqliteTable(
   ],
 );
 
+export const applicationSettings = sqliteTable('application_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAtUtc: text('updated_at_utc').notNull(),
+});
+
 export const schema = {
   auditEvents,
+  applicationSettings,
   balanceReconciliations,
   balanceSnapshots,
   debtTerms,
