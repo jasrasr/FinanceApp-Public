@@ -292,6 +292,27 @@ describe('debt creation', () => {
       payments: '0.00',
       borrowings: '0.00',
     });
+    expect(reports.progressSummary).toMatchObject({
+      purchases: '0.00',
+      newBorrowing: '0.00',
+      netDebtReduction: '0.00',
+      transferIn: '8000.00',
+      transferOut: '8000.00',
+      netTransfers: '0.00',
+    });
+    const destinationReport = service.getDebtReports({
+      startDate: '2026-02-01',
+      endDate: '2026-02-28',
+      debtId: destination.id,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+    expect(destinationReport.monthlyRollforward.rows[0]).toMatchObject({
+      transferIn: '8000.00',
+      transferOut: '0.00',
+      netTransfers: '8000.00',
+    });
     const transfer = transferRows[0]!;
     service.reverseDebtTransaction({
       id: transfer.id,

@@ -2283,6 +2283,7 @@ const createRollforward = (
     let principalReduction = 0;
     let interestActivity = 0;
     let principalAdjustments = 0;
+    let fees = 0;
 
     for (const record of records) {
       const transactionTypes = new Map(
@@ -2329,6 +2330,7 @@ const createRollforward = (
           principalAdjustments += principal;
         }
         interestActivity += allocationTotal(allocations, ['interest']);
+        fees += allocationTotal(allocations, ['fee']);
       }
     }
 
@@ -2360,6 +2362,7 @@ const createRollforward = (
       transferIn: centsToDollars(transferIn),
       transferOut: centsToDollars(transferOut),
       netTransfers: centsToDollars(transferIn - transferOut),
+      fees: centsToDollars(Math.abs(fees)),
       payments: centsToDollars(payments),
       principalReduction: centsToDollars(principalReduction),
       interestActivity: centsToDollars(Math.abs(interestActivity)),
@@ -2368,6 +2371,43 @@ const createRollforward = (
       endingBalance: centsToDollars(endingBalance),
     };
   });
+
+const summarizeProgressRows = (
+  rows: readonly DebtReportsDto['monthlyRollforward']['rows'][number][],
+) => {
+  const first = rows[0];
+  const last = rows.at(-1);
+  const total = (
+    field:
+      | 'principalReduction'
+      | 'purchases'
+      | 'borrowings'
+      | 'interestActivity'
+      | 'fees'
+      | 'transferIn'
+      | 'transferOut',
+  ): number => rows.reduce((sum, row) => sum + Number(row[field] ?? '0.00'), 0);
+  const principalPaid = total('principalReduction');
+  const purchases = total('purchases');
+  const newBorrowing = total('borrowings');
+  return {
+    beginningBalance: first?.beginningBalance ?? '0.00',
+    endingBalance: last?.endingBalance ?? '0.00',
+    principalPaid: centsToDollars(Math.round(principalPaid * 100)),
+    purchases: centsToDollars(Math.round(purchases * 100)),
+    newBorrowing: centsToDollars(Math.round(newBorrowing * 100)),
+    netDebtReduction: centsToDollars(
+      Math.round((principalPaid - purchases - newBorrowing) * 100),
+    ),
+    interestPaid: centsToDollars(Math.round(total('interestActivity') * 100)),
+    fees: centsToDollars(Math.round(total('fees') * 100)),
+    transferIn: centsToDollars(Math.round(total('transferIn') * 100)),
+    transferOut: centsToDollars(Math.round(total('transferOut') * 100)),
+    netTransfers: centsToDollars(
+      Math.round((total('transferIn') - total('transferOut')) * 100),
+    ),
+  };
+};
 
 const createBalanceTrendRows = (
   records: readonly DebtWithActivityRecord[],
@@ -2462,6 +2502,22 @@ const createDebtReports = (
 
   const monthlyRows = createRollforward(records, startDate, endDate, 'monthly');
   const annualRows = createRollforward(records, startDate, endDate, 'annual');
+  const progressSummary = summarizeProgressRows(monthlyRows);
+  const priorStartDate = addMonths(startDate, -12);
+  const priorEndDate = addMonths(endDate, -12);
+  const priorRows = createRollforward(records, priorStartDate, priorEndDate, 'monthly');
+  const priorSummary = summarizeProgressRows(priorRows);
+  const hasPriorData = priorRows.some((row) =>
+    [
+      row.beginningBalance,
+      row.endingBalance,
+      row.principalReduction,
+      row.purchases,
+      row.borrowings,
+      row.interestActivity,
+      row.fees,
+    ].some((value) => Number(value ?? '0.00') !== 0),
+  );
   const trendRows = monthlyRows.map((row) => ({
     period: row.period,
     principalReduction: row.principalReduction,
@@ -2562,6 +2618,19 @@ const createDebtReports = (
 
   return {
     filters,
+    progressSummary: {
+      ...progressSummary,
+      comparison: hasPriorData
+        ? {
+            startDate: priorStartDate,
+            endDate: priorEndDate,
+            principalPaid: priorSummary.principalPaid,
+            netDebtReduction: priorSummary.netDebtReduction,
+            interestPaid: priorSummary.interestPaid,
+            endingDebt: priorSummary.endingBalance,
+          }
+        : null,
+    },
     monthlyRollforward: {
       basis: reportBasis(
         'Monthly debt rollforward',

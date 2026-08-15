@@ -1,5 +1,16 @@
 # Project Progress
 
+## Phase 46: Runtime version and Debt Progress / Trends
+
+Completion date: 2026-08-15. Version: 1.8.2.
+
+- Replaced the stale preload version fallback with synchronized `package.json` metadata and made renderer/Electron fixtures derive their expected version from the package.
+- Added a read-only Debt Progress / Trends page with YTD, prior-year, last-12-months, all-time, and custom date filters; portfolio and individual-debt filtering; progress cards; monthly flow and balance charts; transfer-aware breakdowns; reconciliation notes; and prior-equivalent comparison data.
+- Reused the existing monthly rollforward and application-calculated balance engine. Purchase/Charge and borrowing activity reduce net debt reduction; portfolio transfers remain separate and net to zero.
+- Added monthly fee reporting to the existing rollforward DTO for the progress table. No migration, ledger write, or production-data change was required.
+- Validation: focused renderer and integration tests passed; full validation pending completion of the final check and Electron E2E run.
+- Recommended next phase: visual acceptance of long custom ranges and individual-debt transfer views.
+
 ## Phase 45: Generated payoff baseline and scale correction
 
 Completion date: 2026-08-05. Version: 1.2.5.

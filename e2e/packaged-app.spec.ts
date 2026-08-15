@@ -2,6 +2,7 @@ import { expect, test, _electron as electron, type Page } from '@playwright/test
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import packageMetadata from '../package.json';
 
 const executablePath = process.env.DEBT_TRACKER_PACKAGED_EXE;
 const currentFinancialDate = (): string => new Date().toISOString().slice(0, 10);
@@ -41,7 +42,9 @@ test.describe('packaged Windows application', () => {
       await expect(
         window.getByRole('heading', { name: 'Debt overview' }),
       ).toBeVisible();
-      await expect(window.getByText('Version 1.8.0')).toBeVisible();
+      await expect(
+        window.getByText(`Version ${packageMetadata.version}`),
+      ).toBeVisible();
       await expect(window.getByText(/^Last changed: /)).toBeVisible();
       await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
         0,

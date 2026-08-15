@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import packageMetadata from '../../../package.json';
 import type { AppBridge } from '../../shared/app-bridge';
 import type {
   DashboardDto,
@@ -27,7 +28,7 @@ const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 27,
   appMetadata: {
-    version: '1.8.0',
+    version: packageMetadata.version,
     lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -322,6 +323,7 @@ const sampleReports: DebtReportsDto = {
         payments: '500.00',
         principalReduction: '400.00',
         interestActivity: '100.00',
+        fees: '0.00',
         adjustmentsAndOther: '0.00',
         rollforwardCheck: '0.00',
         endingBalance: '124600.13',
@@ -338,6 +340,7 @@ const sampleReports: DebtReportsDto = {
         payments: '500.00',
         principalReduction: '400.00',
         interestActivity: '100.00',
+        fees: '0.00',
         adjustmentsAndOther: '0.00',
         rollforwardCheck: '0.00',
         endingBalance: '124600.13',
@@ -1856,7 +1859,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 1.8.0')).toBeVisible();
+    expect(await screen.findByText(`Version ${packageMetadata.version}`)).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -2432,12 +2435,36 @@ describe('debt maintenance application', () => {
     expect('selectWorkbookForImport' in createBridge()).toBe(false);
   });
 
+  it('renders debt progress with the existing report rollforward metrics', async () => {
+    render(<App bridge={createBridge()} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Debt Progress / Trends' }),
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Debt Progress / Trends' }),
+    ).toBeVisible();
+    expect(screen.getByText('Year to date')).toBeVisible();
+    expect(screen.getAllByText('Net debt reduction').length).toBeGreaterThan(0);
+    expect(screen.getByText('Monthly breakdown')).toBeVisible();
+    expect(
+      screen.getByRole('region', { name: /Net debt reduction: \$400\.00/ }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('img', { name: /Monthly debt progress trend chart/ }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('img', { name: /Total debt balance trend chart/ }),
+    ).toBeVisible();
+  });
+
   it('keeps the primary navigation in the approved order', async () => {
     render(<App bridge={createBridge()} />);
 
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     await waitFor(() =>
-      expect(within(navigation).getAllByRole('button')).toHaveLength(11),
+      expect(within(navigation).getAllByRole('button')).toHaveLength(12),
     );
     expect(
       within(navigation)
@@ -2446,6 +2473,7 @@ describe('debt maintenance application', () => {
     ).toEqual([
       'Dashboard',
       'Debts',
+      'Debt Progress / Trends',
       'Milestones',
       'Debt outlook',
       'Interest analysis',
