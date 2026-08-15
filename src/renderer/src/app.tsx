@@ -3,6 +3,7 @@ import type { AppBridge } from '../../shared/app-bridge';
 import type {
   CreateBalanceReconciliationRequest,
   CreateDebtTransactionRequest,
+  CreateDebtTransferRequest,
   EditDebtTransactionRequest,
   AddDebtTermRequest,
   ApplicationError,
@@ -15,6 +16,8 @@ import type {
   DataHealthDto,
   DebtOutlookDto,
   InterestAnalysisDto,
+  RefinanceAnalysisDto,
+  GetRefinanceAnalysisRequest,
   MilestonesDto,
   BalanceReconciliationDto,
   DataManagementStatusDto,
@@ -48,6 +51,7 @@ import { DataHealth } from './components/data-health';
 import { Milestones } from './components/milestones';
 import { DebtOutlook } from './components/debt-outlook';
 import { InterestAnalysis } from './components/interest-analysis';
+import { RefinanceAnalysis } from './components/refinance-analysis';
 import { DebtDetail } from './components/debt-detail';
 import { DebtList } from './components/debt-list';
 import { combinedDebtLabel } from './components/debt-label';
@@ -58,6 +62,7 @@ import { PayoffScenarios } from './components/payoff-scenarios';
 import { ExtraCashAllocation } from './components/extra-cash-allocation';
 import { RecordRefinanceForm } from './components/record-refinance-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
+import { RecordTransferForm } from './components/record-transfer-form';
 import {
   defaultReportSessionState,
   type ReportSessionState,
@@ -78,9 +83,15 @@ type View =
   | 'data-health'
   | 'milestones'
   | 'debt-outlook'
-  | 'interest-analysis';
+  | 'interest-analysis'
+  | 'refinance-analysis';
 type DetailPanel =
-  'overview' | 'transaction' | 'transaction-edit' | 'reconciliation' | 'refinance';
+  | 'overview'
+  | 'transaction'
+  | 'transaction-edit'
+  | 'reconciliation'
+  | 'refinance'
+  | 'transfer';
 type Confirmation =
   'archive' | 'restore' | 'reverse' | 'void-transaction' | 'void-reconciliation' | null;
 type ReverseTarget = {
@@ -175,6 +186,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [interestAnalysis, setInterestAnalysis] = useState<InterestAnalysisDto | null>(
     null,
   );
+  const [refinanceAnalysis, setRefinanceAnalysis] =
+    useState<RefinanceAnalysisDto | null>(null);
   const [interestAnalysisFilters, setInterestAnalysisFilters] =
     useState<GetInterestAnalysisRequest>({
       debtType: null,
@@ -418,6 +431,19 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       bridge.getInterestAnalysis!({ ...filters }),
     );
     if (result.ok) setInterestAnalysis(result.value);
+    else setError(result.error);
+    setLoading(false);
+  };
+
+  const loadRefinanceAnalysis = async (
+    request: GetRefinanceAnalysisRequest,
+  ): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    const result = await invokeBridge(() =>
+      bridge.getRefinanceAnalysis!({ ...request }),
+    );
+    if (result.ok) setRefinanceAnalysis(result.value);
     else setError(result.error);
     setLoading(false);
   };
@@ -710,6 +736,14 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setError(null);
     setFieldErrors(undefined);
     void loadInterestAnalysis();
+  };
+
+  const showRefinanceAnalysis = (): void => {
+    setView('refinance-analysis');
+    setSelectedDebt(null);
+    setError(null);
+    setFieldErrors(undefined);
+    if (debts.length === 0) void loadDebts();
   };
 
   const selectMilestoneScenario = (scenarioId: string | null): void => {
@@ -1224,6 +1258,22 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSaving(false);
   };
 
+  const recordTransfer = async (request: CreateDebtTransferRequest): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    setFieldErrors(undefined);
+    const result = await invokeBridge(() => bridge.createDebtTransfer(request));
+    if (result.ok) {
+      setSelectedDebt(result.value);
+      setSuccessMessage('Debt transfer was recorded atomically.');
+      setDetailPanel('overview');
+      await loadDebts();
+      await loadDashboard();
+      await loadReports();
+    } else handleFailure(result.error);
+    setSaving(false);
+  };
+
   const editTransaction = async (
     request: CreateDebtTransactionRequest,
   ): Promise<void> => {
@@ -1519,6 +1569,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'list' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'list')}
+                onClick={showList}
+                type="button"
+              >
+                Debts
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-current={view === 'milestones' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'milestones')}
                 onClick={showMilestones}
@@ -1549,12 +1609,12 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
-                aria-current={view === 'list' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'list')}
-                onClick={showList}
+                aria-current={view === 'refinance-analysis' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'refinance-analysis')}
+                onClick={showRefinanceAnalysis}
                 type="button"
               >
-                Debts
+                Refinance analysis
               </button>
             </li>
             <li className="mt-1">
@@ -1813,6 +1873,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             />
           ) : null}
 
+          {view === 'refinance-analysis' ? (
+            <RefinanceAnalysis
+              analysis={refinanceAnalysis}
+              debts={debts}
+              error={error?.message ?? null}
+              loading={loading}
+              onCalculate={(request) => void loadRefinanceAnalysis(request)}
+            />
+          ) : null}
+
           {view === 'create' ? (
             <section
               className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8"
@@ -1900,6 +1970,24 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                       }}
                       onSubmit={(request) => void editTransaction(request)}
                       submitLabel="Save transaction edit"
+                    />
+                  </div>
+                </section>
+              ) : null}
+
+              {detailPanel === 'transfer' ? (
+                <section aria-labelledby="transfer-workflow-heading">
+                  <h2 className="text-3xl font-semibold" id="transfer-workflow-heading">
+                    Transfer balance
+                  </h2>
+                  <div className="mt-8">
+                    <RecordTransferForm
+                      busy={saving}
+                      debt={selectedDebt}
+                      debts={debts}
+                      fieldErrors={fieldErrors}
+                      onCancel={() => setDetailPanel('overview')}
+                      onSubmit={(request) => void recordTransfer(request)}
                     />
                   </div>
                 </section>
@@ -2003,6 +2091,11 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   setFieldErrors(undefined);
                   setSuccessMessage(null);
                   setDetailPanel('refinance');
+                }}
+                onRecordTransfer={() => {
+                  setError(null);
+                  setFieldErrors(undefined);
+                  setDetailPanel('transfer');
                 }}
                 onRemoveScheduledPaymentConfirmation={() =>
                   void removeScheduledPaymentConfirmation()

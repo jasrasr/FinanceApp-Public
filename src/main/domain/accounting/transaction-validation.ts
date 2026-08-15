@@ -19,6 +19,7 @@ export interface TransactionSignInput {
 
 const POSITIVE_TRANSACTION_TYPES = new Set<TransactionType>([
   'borrowing_draw',
+  'purchase',
   'fee',
   'penalty',
   'interest_charge',

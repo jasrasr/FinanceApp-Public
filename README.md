@@ -10,6 +10,15 @@ drill-through monthly detail. Revolving-debt outlooks use recorded required
 payments only; future purchases, draws, and changing statement minimums are
 not forecast.
 
+Version 1.8.0 adds a read-only Refinance analysis comparison for current versus
+proposed replacement debt, including payoff, interest, cash-cost, break-even,
+and chart results. It does not post or alter ledger activity.
+
+The ledger also distinguishes credit-card purchases from borrowing draws and
+supports atomic linked debt-to-debt balance transfers. Transfers affect source
+and destination balances but are excluded from payment cash flow, principal-
+paid, and new-borrowing totals.
+
 Version 1.7.1 refines Interest analysis presentation with standard percentage
 and dollar formatting and clearer freed-up-payment savings terminology. It does
 not change calculations or ledger data.

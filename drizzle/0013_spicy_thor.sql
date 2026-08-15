@@ -1,0 +1,1 @@
+CREATE INDEX `debt_transactions_transfer_idx` ON `debt_transactions` (`transfer_id`);

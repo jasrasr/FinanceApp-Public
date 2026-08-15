@@ -4,6 +4,7 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  createDebtTransferRequestSchema,
   editDebtTransactionRequestSchema,
   createManualBackupRequestSchema,
   createPayoffScenarioRequestSchema,
@@ -18,6 +19,7 @@ import {
   milestonesDtoSchema,
   debtOutlookDtoSchema,
   interestAnalysisDtoSchema,
+  refinanceAnalysisDtoSchema,
   dataExportDtoSchema,
   dataManagementStatusDtoSchema,
   deleteBackupRequestSchema,
@@ -33,6 +35,7 @@ import {
   getMilestonesRequestSchema,
   getDebtOutlookRequestSchema,
   getInterestAnalysisRequestSchema,
+  getRefinanceAnalysisRequestSchema,
   acceptCurrentBalanceRequestSchema,
   getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
@@ -217,6 +220,14 @@ export const registerDebtIpcHandlers = (
     debtSummaryListSchema,
     isTrustedSender,
     (request) => service.listDebts(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.refinanceAnalysis,
+    getRefinanceAnalysisRequestSchema,
+    refinanceAnalysisDtoSchema,
+    isTrustedSender,
+    (request) => service.getRefinanceAnalysis!(request),
   );
   registerHandler(
     ipcMain,
@@ -464,6 +475,14 @@ export const registerDebtIpcHandlers = (
     debtDetailDtoSchema,
     isTrustedSender,
     (request) => service.createDebtTransaction(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.createTransfer,
+    createDebtTransferRequestSchema,
+    debtDetailDtoSchema,
+    isTrustedSender,
+    (request) => service.createDebtTransfer(request),
   );
   registerHandler(
     ipcMain,

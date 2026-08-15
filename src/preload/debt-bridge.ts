@@ -6,6 +6,7 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  createDebtTransferRequestSchema,
   editDebtTransactionRequestSchema,
   createManualBackupRequestSchema,
   createPayoffScenarioRequestSchema,
@@ -20,6 +21,7 @@ import {
   milestonesResultSchema,
   debtOutlookResultSchema,
   interestAnalysisResultSchema,
+  refinanceAnalysisResultSchema,
   acceptCurrentBalanceRequestSchema,
   dataExportResultSchema,
   dataManagementStatusResultSchema,
@@ -36,6 +38,7 @@ import {
   getMilestonesRequestSchema,
   getDebtOutlookRequestSchema,
   getInterestAnalysisRequestSchema,
+  getRefinanceAnalysisRequestSchema,
   getDataManagementStatusRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -65,6 +68,7 @@ import {
   type CreateBalanceReconciliationRequest,
   type CreateBalanceSnapshotRequest,
   type CreateDebtTransactionRequest,
+  type CreateDebtTransferRequest,
   type EditDebtTransactionRequest,
   type CreateManualBackupRequest,
   type CreatePayoffScenarioRequest,
@@ -83,6 +87,7 @@ import {
   type GetMilestonesRequest,
   type GetDebtOutlookRequest,
   type GetInterestAnalysisRequest,
+  type GetRefinanceAnalysisRequest,
   type AcceptCurrentBalanceRequest,
   type GetDataManagementStatusRequest,
   type GetDebtReportsRequest,
@@ -112,7 +117,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 26,
+    bridgeVersion: 27,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -151,6 +156,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.interestAnalysis,
           getInterestAnalysisRequestSchema.parse(request),
+        ),
+      ),
+    getRefinanceAnalysis: async (request: GetRefinanceAnalysisRequest) =>
+      refinanceAnalysisResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.refinanceAnalysis,
+          getRefinanceAnalysisRequestSchema.parse(request),
         ),
       ),
     acceptCurrentBalance: async (request: AcceptCurrentBalanceRequest) =>
@@ -317,6 +329,13 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.createTransaction,
           createDebtTransactionRequestSchema.parse(request),
+        ),
+      ),
+    createDebtTransfer: async (request: CreateDebtTransferRequest) =>
+      debtDetailResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.createTransfer,
+          createDebtTransferRequestSchema.parse(request),
         ),
       ),
     editDebtTransaction: async (request: EditDebtTransactionRequest) =>

@@ -662,7 +662,8 @@ export const createDataManagementService = ({
       queryRows(
         sqlite,
         `select id, debt_id, transaction_type, effective_date as transaction_date,
-          total_amount_cents, status, description, reversal_of_transaction_id,
+          total_amount_cents, status, description, transfer_id,
+          reversal_of_transaction_id,
           supersedes_transaction_id, created_at_utc, updated_at_utc,
           'actual/posted ledger activity' as value_basis
         from debt_transactions order by effective_date, created_at_utc`,

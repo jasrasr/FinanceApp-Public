@@ -47,6 +47,15 @@ const PRIOR_0005_MIGRATION_TAGS = [
   ...PRIOR_MIGRATION_TAGS,
   '0005_large_omega_sentinel',
 ] as const;
+const PRIOR_0011_MIGRATION_TAGS = [
+  ...PRIOR_0005_MIGRATION_TAGS,
+  '0006_famous_archangel',
+  '0007_bumpy_patriot',
+  '0008_in_place_refinance_events',
+  '0009_mysterious_weapon_omega',
+  '0010_amusing_elektra',
+  '0011_configurable_data_locations',
+] as const;
 const FIXED_TIMESTAMP = '2026-07-27T13:00:00.000Z';
 
 let context: DatabaseContext;
@@ -404,6 +413,86 @@ describe('database migrations and isolation', () => {
     rmSync(priorMigrationFolder, { force: true, recursive: true });
   });
 
+  it('upgrades a migration 0011 database without changing transaction history or balances', () => {
+    context.close();
+    temporary.cleanup();
+
+    const priorMigrationFolder = createPriorMigrationFolder(PRIOR_0011_MIGRATION_TAGS);
+    temporary = createTemporaryDatabaseLocation();
+    context = openMigratedDatabase(temporary.databasePath, priorMigrationFolder);
+
+    const debtId = createFictionalDebt();
+    const insertTransaction = context.sqlite.prepare(
+      `INSERT INTO debt_transactions (
+        id, debt_id, transaction_type, effective_date, posting_date,
+        total_amount_cents, status, description, source_type, source_reference,
+        reversal_of_transaction_id, supersedes_transaction_id, created_at_utc,
+        updated_at_utc
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const historicalTypes = ['payment', 'borrowing_draw', 'fee'] as const;
+    historicalTypes.forEach((transactionType, index) => {
+      insertTransaction.run(
+        randomUUID(),
+        debtId,
+        transactionType,
+        `2026-0${index + 1}-15`,
+        `2026-0${index + 1}-15`,
+        transactionType === 'payment' ? -10_000 : 2_500,
+        'posted',
+        `Generated migration 0011 ${transactionType}.`,
+        'manual',
+        null,
+        null,
+        null,
+        FIXED_TIMESTAMP,
+        FIXED_TIMESTAMP,
+      );
+    });
+
+    const before = context.sqlite
+      .prepare(
+        `SELECT transaction_type, total_amount_cents
+         FROM debt_transactions ORDER BY effective_date, id`,
+      )
+      .all();
+    const beforeBalance = context.sqlite
+      .prepare(
+        'SELECT COALESCE(SUM(total_amount_cents), 0) AS balance FROM debt_transactions',
+      )
+      .get() as { balance: number };
+    context.close();
+
+    context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+    const after = context.sqlite
+      .prepare(
+        `SELECT transaction_type, transfer_id, total_amount_cents
+         FROM debt_transactions ORDER BY effective_date, id`,
+      )
+      .all() as {
+      transaction_type: string;
+      transfer_id: string | null;
+      total_amount_cents: number;
+    }[];
+    const afterBalance = context.sqlite
+      .prepare(
+        'SELECT COALESCE(SUM(total_amount_cents), 0) AS balance FROM debt_transactions',
+      )
+      .get() as { balance: number };
+
+    expect(
+      after.map(({ transaction_type, total_amount_cents }) => ({
+        transaction_type,
+        total_amount_cents,
+      })),
+    ).toEqual(before);
+    expect(after.every((row) => row.transfer_id === null)).toBe(true);
+    expect(afterBalance).toEqual(beforeBalance);
+    expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
+    expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+    rmSync(priorMigrationFolder, { force: true, recursive: true });
+  });
+
   it('upgrades a representative 0005 database with transaction foreign-key references through 0006', () => {
     context.close();
     temporary.cleanup();
@@ -715,7 +804,7 @@ describe('database migrations and isolation', () => {
       { status: 'superseded', count: 1 },
     ]);
     expect(temporaryRebuildTable).toBeUndefined();
-    expect(migrationCount.count).toBe(12);
+    expect(migrationCount.count).toBe(14);
     expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
     expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
 

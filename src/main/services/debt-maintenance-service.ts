@@ -6,6 +6,7 @@ import type {
   CreateBalanceReconciliationRequest,
   CreateBalanceSnapshotRequest,
   CreateDebtTransactionRequest,
+  CreateDebtTransferRequest,
   EditDebtTransactionRequest,
   ArchiveDebtRequest,
   CreateDebtRequest,
@@ -16,6 +17,7 @@ import type {
   DashboardDto,
   DebtOutlookDto,
   InterestAnalysisDto,
+  RefinanceAnalysisDto,
   DataHealthDto,
   MilestonesDto,
   AcceptCurrentBalanceRequest,
@@ -30,6 +32,7 @@ import type {
   GetMilestonesRequest,
   GetDebtOutlookRequest,
   GetInterestAnalysisRequest,
+  GetRefinanceAnalysisRequest,
   GetDebtReportsRequest,
   GetDebtRequest,
   GetPayoffScenarioRequest,
@@ -53,6 +56,7 @@ import {
   createBalanceReconciliationRequestSchema,
   createBalanceSnapshotRequestSchema,
   createDebtTransactionRequestSchema,
+  createDebtTransferRequestSchema,
   editDebtTransactionRequestSchema,
   createDebtRequestSchema,
   createPayoffScenarioRequestSchema,
@@ -65,6 +69,7 @@ import {
   getMilestonesRequestSchema,
   getDebtOutlookRequestSchema,
   getInterestAnalysisRequestSchema,
+  getRefinanceAnalysisRequestSchema,
   acceptCurrentBalanceRequestSchema,
   getDebtReportsRequestSchema,
   getDebtRequestSchema,
@@ -91,6 +96,7 @@ import {
   createBalanceReconciliationRecord,
   createBalanceSnapshotRecord,
   createPostedTransactionRecord,
+  createDebtTransferRecord,
   deleteDebtPermanentlyRecord,
   createPaymentScheduleOverride,
   removePaymentScheduleOverride,
@@ -176,6 +182,7 @@ export interface DebtMaintenanceService {
   getMilestones?(request: GetMilestonesRequest): MilestonesDto;
   getDebtOutlook?(request: GetDebtOutlookRequest): DebtOutlookDto;
   getInterestAnalysis?(request: GetInterestAnalysisRequest): InterestAnalysisDto;
+  getRefinanceAnalysis?(request: GetRefinanceAnalysisRequest): RefinanceAnalysisDto;
   acceptCurrentBalance?(request: AcceptCurrentBalanceRequest): DebtDetailDto;
   getDebtReports(request: GetDebtReportsRequest): DebtReportsDto;
   listPayoffScenarios(
@@ -195,6 +202,7 @@ export interface DebtMaintenanceService {
   updateDebt(request: UpdateDebtRequest): DebtDetailDto;
   addDebtTerm(request: AddDebtTermRequest): DebtDetailDto;
   createDebtTransaction(request: CreateDebtTransactionRequest): DebtDetailDto;
+  createDebtTransfer(request: CreateDebtTransferRequest): DebtDetailDto;
   editDebtTransaction(request: EditDebtTransactionRequest): DebtDetailDto;
   reverseDebtTransaction(request: ReverseDebtTransactionRequest): DebtDetailDto;
   voidDebtTransaction(request: VoidDebtTransactionRequest): DebtDetailDto;
@@ -645,6 +653,7 @@ const mapTransaction = (
   description: record.transaction.description,
   sourceType: record.transaction.sourceType,
   sourceReference: record.transaction.sourceReference,
+  transferId: record.transaction.transferId,
   reversalOfTransactionId: record.transaction.reversalOfTransactionId,
   supersedesTransactionId: record.transaction.supersedesTransactionId,
   allocations: record.allocations.map(mapTransactionAllocation),
@@ -2250,6 +2259,9 @@ const createRollforward = (
     const end = clampDate(periodEnd(period, frequency), startDate, endDate);
     const beginningDate = previousFinancialDate(start);
     let borrowings = 0;
+    let purchases = 0;
+    let transferIn = 0;
+    let transferOut = 0;
     let payments = 0;
     let principalReduction = 0;
     let interestActivity = 0;
@@ -2277,6 +2289,13 @@ const createRollforward = (
 
         if (effectiveTransactionType === 'borrowing_draw')
           borrowings += allocationTotal(allocations, ['principal', 'extra_principal']);
+        if (effectiveTransactionType === 'purchase')
+          purchases += allocationTotal(allocations, ['principal']);
+        if (effectiveTransactionType === 'transfer') {
+          const transferPrincipal = allocationTotal(allocations, ['principal']);
+          if (transferPrincipal >= 0) transferIn += transferPrincipal;
+          else transferOut -= transferPrincipal;
+        }
         if (effectiveTransactionType === 'payment')
           payments -= transaction.totalAmountCents;
         const principal = allocationTotal(allocations, [
@@ -2285,7 +2304,11 @@ const createRollforward = (
         ]);
         if (effectiveTransactionType === 'payment') {
           principalReduction -= principal;
-        } else if (effectiveTransactionType !== 'borrowing_draw') {
+        } else if (
+          effectiveTransactionType !== 'borrowing_draw' &&
+          effectiveTransactionType !== 'purchase' &&
+          effectiveTransactionType !== 'transfer'
+        ) {
           principalAdjustments += principal;
         }
         interestActivity += allocationTotal(allocations, ['interest']);
@@ -2304,7 +2327,10 @@ const createRollforward = (
     );
     const rollforwardCheck =
       beginningBalance +
-      borrowings -
+      borrowings +
+      purchases +
+      transferIn -
+      transferOut -
       principalReduction +
       principalAdjustments -
       endingBalance;
@@ -2313,6 +2339,10 @@ const createRollforward = (
       period,
       beginningBalance: centsToDollars(beginningBalance),
       borrowings: centsToDollars(borrowings),
+      purchases: centsToDollars(purchases),
+      transferIn: centsToDollars(transferIn),
+      transferOut: centsToDollars(transferOut),
+      netTransfers: centsToDollars(transferIn - transferOut),
       payments: centsToDollars(payments),
       principalReduction: centsToDollars(principalReduction),
       interestActivity: centsToDollars(Math.abs(interestActivity)),
@@ -2421,6 +2451,10 @@ const createDebtReports = (
     interestActivity: row.interestActivity,
     borrowings: row.borrowings,
     payments: row.payments,
+    purchases: row.purchases,
+    transferIn: row.transferIn,
+    transferOut: row.transferOut,
+    netTransfers: row.netTransfers,
   }));
   const annualInterestByDebt = records.flatMap((record) =>
     periodKeys(startDate, endDate, 'annual').flatMap((period) => {
@@ -3274,6 +3308,260 @@ const createInterestAnalysis = (
   };
 };
 
+const monthlyPaymentForRefinance = (
+  principal: number,
+  rateMicros: number,
+  months: number,
+): number => {
+  if (months <= 0) return principal;
+  if (rateMicros === 0) return Math.ceil(principal / months);
+  const monthlyRate = rateMicros / 1_000_000 / 12;
+  return Math.ceil(
+    (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months)),
+  );
+};
+
+const createRefinanceAnalysis = (
+  database: AppDatabase,
+  request: GetRefinanceAnalysisRequest,
+): RefinanceAnalysisDto => {
+  const parsed = getRefinanceAnalysisRequestSchema.parse(request);
+  const record = getDebtActivityRecord(database, parsed.debtId);
+  if (!record || record.debt.status !== 'active')
+    throw new ApplicationServiceError(
+      'not_found',
+      'Eligible active debt was not found.',
+    );
+  const balance = calculateLedgerBalanceThroughDate(
+    database,
+    parsed.debtId,
+    parsed.refinanceDate,
+  );
+  if (balance <= 0)
+    throw new ApplicationServiceError(
+      'validation',
+      'The selected debt has no positive calculated balance on the refinance date.',
+    );
+  const currentInput = buildPayoffDebtInputs(database, parsed.refinanceDate).find(
+    (input) => input.debtId === parsed.debtId,
+  );
+  if (!currentInput)
+    throw new ApplicationServiceError(
+      'validation',
+      'The selected debt cannot be projected with its current terms.',
+    );
+  const current = projectPayoffScenario([currentInput], {
+    scenarioStartDate: parsed.refinanceDate,
+    strategy: 'baseline',
+    extraMonthlyPaymentCents: 0,
+    customPriority: [],
+    variableRateOverrides: {},
+    maxProjectionMonths: parsed.maxProjectionMonths,
+  });
+  const newPrincipal =
+    currencyInputToCents(parsed.newPrincipal) +
+    currencyInputToCents(parsed.financedClosingCosts ?? '0');
+  const rateMicros = percentageInputToRateMicros(parsed.newAnnualInterestRatePercent);
+  const payment = parsed.newRequiredPayment
+    ? currencyInputToCents(parsed.newRequiredPayment)
+    : monthlyPaymentForRefinance(newPrincipal, rateMicros, parsed.newTermMonths);
+  const refinanceInput: PayoffDebtInput = {
+    debtId: `${parsed.debtId}-refinance`,
+    debtName: record.debt.name,
+    creditor: record.debt.creditor,
+    debtType: record.debt.debtType,
+    startingBalanceCents: newPrincipal,
+    maturityDate: parsed.newMaturityDate ?? null,
+    terms: [
+      {
+        effectiveStartDate: parsed.refinanceDate,
+        effectiveEndDate: null,
+        interestRateType: parsed.newRateType ?? 'fixed',
+        interestRateMicros: rateMicros,
+        requiredPaymentCents: payment,
+        paymentFrequency: 'monthly',
+        dayCountConvention: 'monthly',
+        calculationConvention: 'amortized_monthly',
+      },
+    ],
+  };
+  const refinance = projectPayoffScenario([refinanceInput], {
+    scenarioStartDate: parsed.refinanceDate,
+    strategy: 'baseline',
+    extraMonthlyPaymentCents: 0,
+    customPriority: [],
+    variableRateOverrides: {},
+    maxProjectionMonths: parsed.maxProjectionMonths,
+  });
+  const currentDebt = current.debts[0]!;
+  const refinanceDebt = refinance.debts[0]!;
+  const cashCosts = currencyInputToCents(parsed.cashClosingCosts ?? '0');
+  const cashOut = currencyInputToCents(parsed.cashOutAmount ?? '0');
+  const toSeries = (result: PayoffProjectionResult, extraInitialCash: number) => {
+    let cumulative = extraInitialCash;
+    return result.monthlySchedule.map((point) => {
+      cumulative += point.totalPaymentCents;
+      return {
+        date: point.month,
+        balance: centsToDollars(point.totalProjectedBalanceCents),
+        cumulativeCashOutflow: centsToDollars(cumulative),
+        interest: centsToDollars(point.interestCents ?? 0),
+      };
+    });
+  };
+  const currentSeries = toSeries(current, 0);
+  const refinanceSeries = toSeries(refinance, cashCosts);
+  const currentTotal =
+    currentDebt.projectedInterestCents === null
+      ? null
+      : currentSeries.reduce(
+          (sum, point) => sum + currencyInputToCents(point.interest),
+          0,
+        );
+  const refinanceTotal =
+    refinanceDebt.projectedInterestCents === null
+      ? null
+      : refinanceSeries.reduce(
+          (sum, point) => sum + currencyInputToCents(point.interest),
+          0,
+        );
+  const breakEvenIndex = refinanceSeries.findIndex(
+    (point, index) =>
+      currencyInputToCents(point.cumulativeCashOutflow) <=
+      currencyInputToCents(
+        currentSeries[index]?.cumulativeCashOutflow ?? point.cumulativeCashOutflow,
+      ),
+  );
+  const paymentChange = payment - currentDebt.requiredMonthlyPaymentCents;
+  const totalCashDifference =
+    currentSeries.length && refinanceSeries.length
+      ? currencyInputToCents(currentSeries.at(-1)!.cumulativeCashOutflow) -
+        currencyInputToCents(refinanceSeries.at(-1)!.cumulativeCashOutflow)
+      : null;
+  const monthsDifference =
+    currentDebt.projectedPayoffDate && refinanceDebt.projectedPayoffDate
+      ? Math.round(
+          (Date.parse(`${refinanceDebt.projectedPayoffDate}T00:00:00Z`) -
+            Date.parse(`${currentDebt.projectedPayoffDate}T00:00:00Z`)) /
+            (86400000 * 30.4375),
+        )
+      : null;
+  const interestDifference =
+    currentTotal !== null && refinanceTotal !== null
+      ? currentTotal - refinanceTotal
+      : null;
+  const winner = (
+    left: number | null,
+    right: number | null,
+  ): 'current' | 'refinance' | 'tie' =>
+    left === null || right === null
+      ? 'tie'
+      : left === right
+        ? 'tie'
+        : left < right
+          ? 'current'
+          : 'refinance';
+  return {
+    debtId: parsed.debtId,
+    debtName: record.debt.name,
+    effectiveDate: parsed.refinanceDate,
+    current: {
+      balance: centsToDollars(balance),
+      rate: rateMicrosToPercentString(
+        currentInput.terms.find(
+          (term) => term.effectiveStartDate <= parsed.refinanceDate,
+        )?.interestRateMicros ?? 0,
+      ),
+      requiredPayment: centsToDollars(currentDebt.requiredMonthlyPaymentCents),
+      payoffDate: currentDebt.projectedPayoffDate,
+      projectedInterest: currentTotal === null ? null : centsToDollars(currentTotal),
+      series: currentSeries,
+    },
+    refinance: {
+      principal: centsToDollars(newPrincipal),
+      rate: rateMicrosToPercentString(rateMicros),
+      requiredPayment: centsToDollars(payment),
+      payoffDate: refinanceDebt.projectedPayoffDate,
+      projectedInterest:
+        refinanceTotal === null ? null : centsToDollars(refinanceTotal),
+      cashClosingCosts: centsToDollars(cashCosts),
+      financedClosingCosts: centsToDollars(
+        currencyInputToCents(parsed.financedClosingCosts ?? '0'),
+      ),
+      cashOutAmount: centsToDollars(cashOut),
+      series: refinanceSeries,
+    },
+    paymentChange: centsToDollars(paymentChange),
+    interestDifference:
+      interestDifference === null ? '0.00' : centsToDollars(interestDifference),
+    totalCashDifference:
+      totalCashDifference === null ? '0.00' : centsToDollars(totalCashDifference),
+    monthsDifference,
+    breakEvenMonth: breakEvenIndex < 0 ? null : breakEvenIndex + 1,
+    breakEvenDate: breakEvenIndex < 0 ? null : refinanceSeries[breakEvenIndex]!.date,
+    netBenefitThroughPayoff:
+      totalCashDifference === null ? '0.00' : centsToDollars(totalCashDifference),
+    interpretations: [
+      {
+        label: 'Monthly payment',
+        winner: paymentChange < 0 ? 'refinance' : paymentChange > 0 ? 'current' : 'tie',
+        detail: centsToDollars(Math.abs(paymentChange)),
+      },
+      {
+        label: 'Earliest payoff',
+        winner:
+          monthsDifference === null
+            ? 'tie'
+            : monthsDifference < 0
+              ? 'refinance'
+              : monthsDifference > 0
+                ? 'current'
+                : 'tie',
+        detail:
+          monthsDifference === null
+            ? 'Not available'
+            : `${Math.abs(monthsDifference)} months`,
+      },
+      {
+        label: 'Total interest',
+        winner: winner(currentTotal, refinanceTotal),
+        detail:
+          interestDifference === null
+            ? 'Not available'
+            : centsToDollars(Math.abs(interestDifference)),
+      },
+      {
+        label: 'Break-even',
+        winner: breakEvenIndex < 0 ? 'current' : 'refinance',
+        detail:
+          breakEvenIndex < 0 ? 'Never reached' : refinanceSeries[breakEvenIndex]!.date,
+      },
+      {
+        label: 'Net benefit through payoff',
+        winner:
+          totalCashDifference === null
+            ? 'tie'
+            : totalCashDifference > 0
+              ? 'refinance'
+              : totalCashDifference < 0
+                ? 'current'
+                : 'tie',
+        detail:
+          totalCashDifference === null
+            ? 'Not available'
+            : centsToDollars(Math.abs(totalCashDifference)),
+      },
+    ],
+    warnings: [
+      ...current.warnings,
+      ...refinance.warnings,
+      ...(cashOut > 0
+        ? ['Cash-out proceeds are shown separately and are not treated as savings.']
+        : []),
+    ],
+  };
+};
+
 const normalizeError = (error: unknown): never => {
   if (error instanceof ApplicationServiceError) {
     throw error;
@@ -3454,6 +3742,14 @@ export const createDebtMaintenanceService = ({
           parsed,
           calculatePayoffResult,
         );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getRefinanceAnalysis: (request) => {
+      try {
+        return createRefinanceAnalysis(database, request);
       } catch (error) {
         return normalizeError(error);
       }
@@ -4728,6 +5024,33 @@ export const createDebtMaintenanceService = ({
           );
         }
 
+        if (parsed.transaction.transactionType === 'transfer') {
+          throw new ApplicationServiceError(
+            'validation',
+            'Use the debt transfer workflow so both ledger sides are created atomically.',
+          );
+        }
+        if (parsed.transaction.transferId) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Transfer identifiers are reserved for linked transfer records.',
+          );
+        }
+        if (
+          parsed.transaction.transactionType === 'purchase' &&
+          existing.debt.debtType !== 'credit_card'
+        ) {
+          throw new ApplicationServiceError(
+            'validation',
+            'Purchase/Charge transactions are available only for credit-card debts.',
+            {
+              'transaction.transactionType': [
+                'Select a credit-card debt for a purchase/charge.',
+              ],
+            },
+          );
+        }
+
         const effectiveDate = ensureNotBefore(
           'transaction.effectiveDate',
           ensureCalendarDate(
@@ -4776,6 +5099,7 @@ export const createDebtMaintenanceService = ({
             `Manual ${parsed.transaction.transactionType.replaceAll('_', ' ')} recorded.`,
           sourceType: parsed.transaction.sourceType,
           sourceReference: nullableText(parsed.transaction.sourceReference),
+          transferId: parsed.transaction.transferId ?? null,
           reversalOfTransactionId: null,
           supersedesTransactionId: null,
           createdAtUtc: timestamp,
@@ -4828,6 +5152,124 @@ export const createDebtMaintenanceService = ({
       }
     },
 
+    createDebtTransfer: (request) => {
+      try {
+        const parsed = createDebtTransferRequestSchema.parse(request);
+        const source = getRecordOrThrow(parsed.sourceDebtId);
+        const destination = getRecordOrThrow(parsed.destinationDebtId);
+        if (source.debt.archivedAtUtc || destination.debt.archivedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Restore both debts before recording a transfer.',
+          );
+        }
+        const effectiveDate = ensureCalendarDate('effectiveDate', parsed.effectiveDate);
+        const postingDate = ensureCalendarDate('postingDate', parsed.postingDate);
+        const amountCents = convertMoney('amount', parsed.amount);
+        if (amountCents <= 0)
+          throw new ApplicationServiceError(
+            'validation',
+            'Transfer amount must be positive.',
+            { amount: ['Enter a positive transfer amount.'] },
+          );
+        if (
+          calculateLedgerBalanceThroughDate(database, source.debt.id, effectiveDate) <
+          amountCents
+        ) {
+          throw new ApplicationServiceError(
+            'validation',
+            'The source debt does not have sufficient calculated balance for this transfer.',
+            { amount: ['Transfer amount exceeds the source debt balance.'] },
+          );
+        }
+        const timestamp = nextTimestamp(
+          now,
+          source.debt.updatedAtUtc > destination.debt.updatedAtUtc
+            ? source.debt.updatedAtUtc
+            : destination.debt.updatedAtUtc,
+        );
+        const transferId = createId();
+        const sourceId = createId();
+        const destinationId = createId();
+        const description =
+          nullableText(parsed.description) ?? 'Debt-to-debt balance transfer.';
+        const makeTransaction = (
+          id: string,
+          debtId: string,
+          totalAmountCents: number,
+        ): DebtTransactionInsert => ({
+          id,
+          debtId,
+          transactionType: 'transfer',
+          effectiveDate,
+          postingDate,
+          totalAmountCents,
+          status: 'posted',
+          description,
+          sourceType: 'manual',
+          sourceReference: nullableText(parsed.sourceReference),
+          transferId,
+          reversalOfTransactionId: null,
+          supersedesTransactionId: null,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+        });
+        const makeAllocation = (
+          transactionId: string,
+          amount: number,
+        ): TransactionAllocationInsert => ({
+          id: createId(),
+          transactionId,
+          allocationType: 'principal',
+          amountCents: amount,
+          notes: 'Transfer principal movement.',
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+        });
+        createDebtTransferRecord(database, {
+          source: {
+            transaction: makeTransaction(sourceId, source.debt.id, -amountCents),
+            allocations: [makeAllocation(sourceId, -amountCents)],
+          },
+          destination: {
+            transaction: makeTransaction(
+              destinationId,
+              destination.debt.id,
+              amountCents,
+            ),
+            allocations: [makeAllocation(destinationId, amountCents)],
+          },
+          auditInputs: [
+            createTransactionAudit(
+              createId(),
+              sourceId,
+              'debt_transfer_created',
+              'create',
+              timestamp,
+              'Transfer-out ledger side recorded.',
+              { transferId, direction: 'out' },
+            ),
+            createTransactionAudit(
+              createId(),
+              destinationId,
+              'debt_transfer_created',
+              'create',
+              timestamp,
+              'Transfer-in ledger side recorded.',
+              { transferId, direction: 'in' },
+            ),
+          ],
+        });
+        return mapDetail(
+          database,
+          getRecordOrThrow(source.debt.id),
+          currentFinancialDate(now),
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
     editDebtTransaction: (request) => {
       try {
         const parsed = editDebtTransactionRequestSchema.parse(request);
@@ -4870,6 +5312,13 @@ export const createDebtMaintenanceService = ({
           throw new ApplicationServiceError(
             'conflict',
             'Reversal transactions cannot be edited.',
+          );
+        }
+
+        if (original.transferId) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Linked transfers cannot be edited as a single debt transaction. Reverse both linked sides atomically, then record a new transfer.',
           );
         }
 
@@ -5073,6 +5522,13 @@ export const createDebtMaintenanceService = ({
           throw new ApplicationServiceError(
             'conflict',
             'Restore this debt before reversing activity.',
+          );
+        }
+
+        if (original.transactionType === 'reversal') {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Generated reversal transactions cannot be reversed.',
           );
         }
 

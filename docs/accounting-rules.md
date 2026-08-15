@@ -6,6 +6,18 @@ Debt balances are positive obligations. Original principal, ledger activity,
 confirmed snapshots, application-calculated balances, projections, and scenarios
 are distinct concepts.
 
+## Transfers and credit-card purchases
+
+Debt-to-debt transfers use two linked `transfer` transactions sharing one
+transfer identifier. The source has a negative principal allocation and the
+destination has a positive principal allocation. Transfers are not payments,
+borrowings, or cash flow; portfolio net transfers are zero. Creation and
+reversal of both sides are atomic.
+
+Credit-card `purchase` transactions increase principal but are reported as
+charges/purchases rather than new borrowing. Loan proceeds, borrowing draws,
+and HELOC advances remain `borrowing_draw` activity.
+
 - Original principal is an opening fact and is never treated as a mutable current
   balance.
 - Normal user-facing debt cards and debt detail emphasize the

@@ -100,6 +100,12 @@ export interface PostedTransactionInput {
   readonly allocations: readonly TransactionAllocationInsert[];
 }
 
+export interface DebtTransferRecordInput {
+  readonly source: PostedTransactionInput;
+  readonly destination: PostedTransactionInput;
+  readonly auditInputs: readonly AuditEventInsert[];
+}
+
 export interface RecordInPlaceRefinanceRecordInput {
   readonly debtId: string;
   readonly expectedDebtUpdatedAtUtc: string;
@@ -752,6 +758,32 @@ export const deleteDebtPermanentlyRecord = (
       throw new RepositoryConflictError('Debt changed before deletion was confirmed.');
     }
 
+    const transferIds = transaction
+      .select({ transferId: debtTransactions.transferId })
+      .from(debtTransactions)
+      .where(inArray(debtTransactions.id, related.transactionIds))
+      .all()
+      .map((row) => row.transferId)
+      .filter((transferId): transferId is string => transferId !== null);
+    if (transferIds.length > 0) {
+      const linkedTransfer = transaction
+        .select({ id: debtTransactions.id })
+        .from(debtTransactions)
+        .where(
+          and(
+            inArray(debtTransactions.transferId, transferIds),
+            ne(debtTransactions.debtId, input.debtId),
+          ),
+        )
+        .limit(1)
+        .get();
+      if (linkedTransfer) {
+        throw new RepositoryConflictError(
+          'Debt deletion is blocked because its transfer history is linked to another debt. Reverse or otherwise remove the transfer history first.',
+        );
+      }
+    }
+
     transaction
       .update(debts)
       .set({
@@ -927,6 +959,12 @@ export const createPostedTransactionRecord = (
   );
   const audit = auditInputs.map((event) => auditEventInsertSchema.parse(event));
 
+  if (transaction.transactionType === 'transfer') {
+    throw new Error(
+      'Transfer transactions must be created through the linked debt transfer workflow.',
+    );
+  }
+
   if (allocations.some((allocation) => allocation.transactionId !== transaction.id)) {
     throw new Error('Every allocation must reference its transaction.');
   }
@@ -940,6 +978,82 @@ export const createPostedTransactionRecord = (
   database.transaction((transactionDb) => {
     transactionDb.insert(debtTransactions).values(transaction).run();
     transactionDb.insert(transactionAllocations).values(allocations).run();
+    transactionDb.insert(auditEvents).values(audit).run();
+  });
+};
+
+export const createDebtTransferRecord = (
+  database: AppDatabase,
+  input: DebtTransferRecordInput,
+): void => {
+  const source = parsePostedTransactionInput(input.source);
+  const destination = parsePostedTransactionInput(input.destination);
+  const audit = input.auditInputs.map((event) => auditEventInsertSchema.parse(event));
+  if (!source || !destination) throw new Error('Both transfer sides are required.');
+  if (
+    source.transaction.transactionType !== 'transfer' ||
+    destination.transaction.transactionType !== 'transfer'
+  )
+    throw new Error('Transfer sides must use the transfer transaction type.');
+  if (
+    !source.transaction.transferId ||
+    source.transaction.transferId !== destination.transaction.transferId
+  )
+    throw new Error('Transfer sides must share one transfer identifier.');
+  if (source.transaction.debtId === destination.transaction.debtId)
+    throw new Error('A debt cannot transfer to itself.');
+  if (
+    source.transaction.totalAmountCents >= 0 ||
+    destination.transaction.totalAmountCents <= 0
+  )
+    throw new Error(
+      'Transfer sides must have one negative source and one positive destination amount.',
+    );
+  if (
+    Math.abs(source.transaction.totalAmountCents) !==
+    Math.abs(destination.transaction.totalAmountCents)
+  )
+    throw new Error('Transfer sides must have equal amounts.');
+  const sourcePrincipal = source.allocations
+    .filter((allocation) => allocation.allocationType === 'principal')
+    .reduce((total, allocation) => total + allocation.amountCents, 0);
+  const destinationPrincipal = destination.allocations
+    .filter((allocation) => allocation.allocationType === 'principal')
+    .reduce((total, allocation) => total + allocation.amountCents, 0);
+  if (sourcePrincipal >= 0 || destinationPrincipal <= 0) {
+    throw new Error(
+      'Transfer sides must have one negative source and one positive destination principal allocation.',
+    );
+  }
+  if (Math.abs(sourcePrincipal) !== Math.abs(destinationPrincipal)) {
+    throw new Error('Transfer principal allocations must have equal amounts.');
+  }
+  if (
+    sourcePrincipal !== source.transaction.totalAmountCents ||
+    destinationPrincipal !== destination.transaction.totalAmountCents
+  ) {
+    throw new Error('Transfer principal allocations must equal the transfer amounts.');
+  }
+  const existingTransfer = database
+    .select({ id: debtTransactions.id })
+    .from(debtTransactions)
+    .where(eq(debtTransactions.transferId, source.transaction.transferId))
+    .limit(1)
+    .get();
+  if (existingTransfer) {
+    throw new Error('A transfer with this identifier already exists.');
+  }
+  database.transaction((transactionDb) => {
+    transactionDb.insert(debtTransactions).values(source.transaction).run();
+    transactionDb
+      .insert(transactionAllocations)
+      .values([...source.allocations])
+      .run();
+    transactionDb.insert(debtTransactions).values(destination.transaction).run();
+    transactionDb
+      .insert(transactionAllocations)
+      .values([...destination.allocations])
+      .run();
     transactionDb.insert(auditEvents).values(audit).run();
   });
 };
