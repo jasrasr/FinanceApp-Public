@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it, vi } from 'vitest';
+import packageMetadata from '../../package.json';
 import { DEBT_IPC_CHANNELS } from '../shared/debt-ipc';
 import { createAppBridge } from './debt-bridge';
 
@@ -60,7 +61,7 @@ describe('typed preload bridge', () => {
     ]);
     expect(bridge.bridgeVersion).toBe(27);
     expect(bridge.appMetadata).toEqual({
-      version: '1.8.0',
+      version: packageMetadata.version,
       lastChangedAtUtc: '2026-08-15T00:00:00.000Z',
     });
     expect('invoke' in bridge).toBe(false);

@@ -132,6 +132,8 @@ Known non-blocking limitations:
   native module handling and packaged-app smoke tests.
 - Restrained in-app display of the current package version and automatically
   generated last-changed timestamp.
+- Read-only Debt Progress / Trends reporting with balance, principal, purchase,
+  borrowing, transfer, interest, fee, and net-reduction breakdowns.
 - Narrow typed IPC methods with request, response, and trusted-sender validation.
 - Automatic development-database initialization and migration under Electron's
   user-data directory.

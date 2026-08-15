@@ -2,6 +2,7 @@ import { expect, test, _electron as electron } from '@playwright/test';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import packageMetadata from '../package.json';
 
 test('completes the manual debt-maintenance workflow', async () => {
   const userDataDirectory = mkdtempSync(join(tmpdir(), 'debt-tracker-e2e-user-data-'));
@@ -21,7 +22,7 @@ test('completes the manual debt-maintenance workflow', async () => {
   try {
     const window = await application.firstWindow();
     await expect(window.getByRole('heading', { name: 'Debt overview' })).toBeVisible();
-    await expect(window.getByText('Version 1.8.0')).toBeVisible();
+    await expect(window.getByText(`Version ${packageMetadata.version}`)).toBeVisible();
     await expect(window.getByText(/^Last changed: /)).toBeVisible();
     await expect(window.getByRole('button', { name: 'Workbook import' })).toHaveCount(
       0,

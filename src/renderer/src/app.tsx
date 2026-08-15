@@ -46,6 +46,7 @@ import { RecordBalanceReconciliationForm } from './components/record-balance-rec
 import { ConfirmationDialog } from './components/confirmation-dialog';
 import { CreateDebtForm } from './components/create-debt-form';
 import { Dashboard } from './components/dashboard';
+import { DebtProgress } from './components/debt-progress';
 import { DataManagement } from './components/data-management';
 import { DataHealth } from './components/data-health';
 import { Milestones } from './components/milestones';
@@ -71,6 +72,7 @@ import {
 type View =
   | 'dashboard'
   | 'list'
+  | 'debt-progress'
   | 'create'
   | 'detail'
   | 'edit'
@@ -572,6 +574,33 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     void loadDebts();
   };
 
+  const showDebtProgress = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'debt-progress',
+        },
+        '',
+        '#debt-progress',
+      );
+    }
+    setView('debt-progress');
+    setSelectedDebt(null);
+    setDetailPanel('overview');
+    setError(null);
+    setFieldErrors(undefined);
+    if (debts.length === 0) {
+      void invokeBridge(() => bridge.listDebts({ includeArchived: false })).then(
+        (result) => {
+          if (result.ok) setDebts(result.value);
+        },
+      );
+    }
+    if (!reports) void loadReports();
+  };
+
   const showPayoffScenarios = (): void => {
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
@@ -1023,6 +1052,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setView(nextView);
       if (nextView === 'dashboard') void loadDashboard();
       if (nextView === 'list') void loadDebts();
+      if (nextView === 'debt-progress' && !reports) void loadReports();
       if (nextView === 'reports' && !reports) void loadReports();
       if (nextView === 'milestones') void loadMilestones();
       if (nextView === 'debt-outlook') void loadDebtOutlook();
@@ -1579,6 +1609,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'debt-progress' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'debt-progress')}
+                onClick={showDebtProgress}
+                type="button"
+              >
+                Debt Progress / Trends
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-current={view === 'milestones' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'milestones')}
                 onClick={showMilestones}
@@ -1701,21 +1741,23 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 onRetry={
                   view === 'list'
                     ? () => void loadDebts()
-                    : view === 'dashboard'
-                      ? () => void loadDashboard()
-                      : view === 'payoff'
-                        ? () => void loadPayoffScenarios()
-                        : view === 'reports'
-                          ? () => void loadReports()
-                          : view === 'data-management'
-                            ? () => void loadDataManagementStatus()
-                            : view === 'data-health'
-                              ? () => void loadDataHealth()
-                              : view === 'milestones'
-                                ? () => void loadMilestones()
-                                : view === 'escrow-detail'
-                                  ? () => void loadEscrowDetail()
-                                  : undefined
+                    : view === 'debt-progress'
+                      ? () => void loadReports()
+                      : view === 'dashboard'
+                        ? () => void loadDashboard()
+                        : view === 'payoff'
+                          ? () => void loadPayoffScenarios()
+                          : view === 'reports'
+                            ? () => void loadReports()
+                            : view === 'data-management'
+                              ? () => void loadDataManagementStatus()
+                              : view === 'data-health'
+                                ? () => void loadDataHealth()
+                                : view === 'milestones'
+                                  ? () => void loadMilestones()
+                                  : view === 'escrow-detail'
+                                    ? () => void loadEscrowDetail()
+                                    : undefined
                 }
               />
             </div>
@@ -1745,6 +1787,15 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onSelectDebt={(id) => void selectDebt(id)}
               onShowDebts={showList}
               onShowEscrowDetail={showEscrowDetail}
+            />
+          ) : null}
+
+          {view === 'debt-progress' ? (
+            <DebtProgress
+              debts={debts}
+              loading={loading}
+              onApplyFilters={(request) => void loadReports(request)}
+              reports={reports}
             />
           ) : null}
 

@@ -976,6 +976,7 @@ const rollforwardRowDtoSchema = z
     transferIn: z.string().optional(),
     transferOut: z.string().optional(),
     netTransfers: z.string().optional(),
+    fees: z.string().optional(),
     payments: z.string(),
     principalReduction: z.string(),
     interestActivity: z.string(),
@@ -1062,6 +1063,33 @@ const exceptionRowDtoSchema = z
 export const debtReportsDtoSchema = z
   .object({
     filters: debtReportFilterDtoSchema,
+    progressSummary: z
+      .object({
+        beginningBalance: z.string(),
+        endingBalance: z.string(),
+        principalPaid: z.string(),
+        purchases: z.string(),
+        newBorrowing: z.string(),
+        netDebtReduction: z.string(),
+        interestPaid: z.string(),
+        fees: z.string(),
+        transferIn: z.string(),
+        transferOut: z.string(),
+        netTransfers: z.string(),
+        comparison: z
+          .object({
+            startDate: financialDateInputSchema,
+            endDate: financialDateInputSchema,
+            principalPaid: z.string(),
+            netDebtReduction: z.string(),
+            interestPaid: z.string(),
+            endingDebt: z.string(),
+          })
+          .strict()
+          .nullable(),
+      })
+      .strict()
+      .optional(),
     monthlyRollforward: z
       .object({ basis: reportBasisDtoSchema, rows: z.array(rollforwardRowDtoSchema) })
       .strict(),
