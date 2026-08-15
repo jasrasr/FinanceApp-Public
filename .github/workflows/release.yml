@@ -1,0 +1,58 @@
+name: Windows release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    # The activation commit is marked [skip release] so enabling this workflow
+    # does not create an additional patch release.
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip release]')
+    runs-on: windows-latest
+    steps:
+      - name: Check out merged main
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and verify Windows installer
+        run: npm run package
+
+      - name: Publish synchronized version metadata
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "chore: release $(node -p "require('./package.json').version")"
+            git push
+          }
+
+      - name: Report installer path and upload artifact
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $installer = (Resolve-Path "dist/Debt Tracker Setup $version.exe").Path
+          "Installer version: $version" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "Installer path: $installer" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "Installer path: $installer"
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: debt-tracker-windows-installer
+          path: dist/Debt Tracker Setup *.exe
+          if-no-files-found: error
