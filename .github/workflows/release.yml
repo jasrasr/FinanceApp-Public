@@ -25,7 +25,9 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # The legacy postinstall references an undeclared install-electron
+        # command. Native Electron setup is performed explicitly below.
+        run: npm ci --ignore-scripts
 
       - name: Build and verify Windows installer
         run: npm run package
