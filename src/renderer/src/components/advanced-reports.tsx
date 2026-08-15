@@ -607,6 +607,10 @@ const ReportRollforward = ({
               <th className="px-3 py-2">Period</th>
               <th className="px-3 py-2 text-right">Beginning</th>
               <th className="px-3 py-2 text-right">Borrowings</th>
+              <th className="px-3 py-2 text-right">Charges / purchases</th>
+              <th className="px-3 py-2 text-right">Transfer in</th>
+              <th className="px-3 py-2 text-right">Transfer out</th>
+              <th className="px-3 py-2 text-right">Net transfers</th>
               <th className="px-3 py-2 text-right">Cash payments</th>
               <th className="px-3 py-2 text-right">Principal reduction</th>
               <th className="px-3 py-2 text-right">Interest</th>
@@ -621,6 +625,10 @@ const ReportRollforward = ({
                 <td className="px-3 py-2">{row.period}</td>
                 <MoneyCell value={row.beginningBalance} />
                 <MoneyCell value={row.borrowings} />
+                <MoneyCell value={row.purchases ?? '0.00'} />
+                <MoneyCell value={row.transferIn ?? '0.00'} />
+                <MoneyCell value={row.transferOut ?? '0.00'} />
+                <MoneyCell value={row.netTransfers ?? '0.00'} />
                 <MoneyCell value={row.payments} />
                 <MoneyCell value={row.principalReduction} />
                 <MoneyCell value={row.interestActivity} />
@@ -1547,6 +1555,10 @@ const ReportInterestAnalysis = ({
                     <th className="px-3 py-2 text-right">Interest expense</th>
                     <th className="px-3 py-2 text-right">Principal reduction</th>
                     <th className="px-3 py-2 text-right">Borrowings</th>
+                    <th className="px-3 py-2 text-right">Charges / purchases</th>
+                    <th className="px-3 py-2 text-right">Transfer in</th>
+                    <th className="px-3 py-2 text-right">Transfer out</th>
+                    <th className="px-3 py-2 text-right">Net transfers</th>
                     <th className="px-3 py-2 text-right">Cash payments</th>
                   </tr>
                 </thead>
@@ -1557,6 +1569,10 @@ const ReportInterestAnalysis = ({
                       <MoneyCell value={row.interestActivity} />
                       <MoneyCell value={row.principalReduction} />
                       <MoneyCell value={row.borrowings} />
+                      <MoneyCell value={row.purchases ?? '0.00'} />
+                      <MoneyCell value={row.transferIn ?? '0.00'} />
+                      <MoneyCell value={row.transferOut ?? '0.00'} />
+                      <MoneyCell value={row.netTransfers ?? '0.00'} />
                       <MoneyCell value={row.payments} />
                     </tr>
                   ))}

@@ -2216,3 +2216,25 @@ year`.
   passed installer launch and upgrade preservation.
 - Known limitation: none beyond existing unsupported projection warnings.
 - Recommended next phase: first-user review of Interest analysis readability.
+
+## Phase 46: Refinance analysis
+
+- Completion date: 2026-08-15
+- Application version: 1.8.0
+- Added a read-only refinance decision tool comparing current application-calculated debt terms with proposed replacement terms through the existing payoff engine.
+- Financed closing costs increase proposed principal; cash closing costs affect cash break-even; cash-out proceeds remain separate and are never savings.
+- Added typed `debt:refinance-analysis` IPC; no database schema, ledger, refinance-posting, backup, report, milestone, outlook, or scenario behavior changed.
+- Added navigation with Dashboard and Debts as the permanent top two items, and Refinance analysis after Interest analysis and before Reports.
+- Validation and smoke-test results: pending completion of the configured validation commands for this change.
+- Known limitation: analysis is session-only and chart rendering is SVG-based; saved analysis records are intentionally not added.
+- Recommended next phase: execute user-acceptance review of refinance inputs and interpretation wording.
+
+## Phase 47: Transfer and purchase ledger semantics
+
+- Completion date: 2026-08-15
+- Added borrowing principal defaulting in the transaction form while preserving manual overrides.
+- Added `purchase` and linked `transfer` transaction classifications; transfer creation and reversal are atomic and session/UI accessible.
+- Added migrations 0012 and 0013 to preserve historical rows, add nullable transfer linkage, and index transfer lookup.
+- Reports expose purchases, transfer in, transfer out, and net transfers separately; transfers do not affect portfolio debt, payments, or borrowing totals.
+- Validation results: pending final full validation after regression coverage.
+- Known limitation: historical generic transactions are not automatically reclassified; only newly entered credit-card purchases use `purchase`.

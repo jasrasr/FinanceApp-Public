@@ -244,6 +244,165 @@ describe('debt creation', () => {
     expect(eventTypes).toContain('transaction_recorded');
   });
 
+  it('records linked transfers without changing portfolio debt, payment cash flow, or borrowing totals', () => {
+    const source = service.createDebt(validRequest('Fictional Card A'));
+    const destination = service.createDebt(validRequest('Fictional HELOC B'));
+    const before = service.getDashboard({}).totals;
+    const sourceAfter = service.createDebtTransfer({
+      sourceDebtId: source.id,
+      destinationDebtId: destination.id,
+      effectiveDate: '2026-02-01',
+      postingDate: '2026-02-01',
+      amount: '8000.00',
+      description: 'Generated balance transfer.',
+      sourceReference: 'TRANSFER-8000',
+    });
+    const destinationAfter = service.getDebt({ id: destination.id });
+    expect(sourceAfter.currentBalance).toBe('117000.13');
+    expect(destinationAfter.currentBalance).toBe('133000.13');
+    expect(service.getDashboard({}).totals.activeDebt).toBe(before.activeDebt);
+    expect(service.getDashboard({}).totals.newBorrowingsYtd).toBe(
+      before.newBorrowingsYtd,
+    );
+    expect(service.getDashboard({}).totals.principalReductionYtd).toBe(
+      before.principalReductionYtd,
+    );
+    const transferRows = sourceAfter.transactions.filter(
+      (transaction) => transaction.transactionType === 'transfer',
+    );
+    expect(transferRows).toHaveLength(1);
+    expect(transferRows[0]?.transferId).toBeTruthy();
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-02-28',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+    const february = reports.monthlyRollforward.rows.find(
+      (row) => row.period === '2026-02',
+    );
+    expect(february).toMatchObject({
+      purchases: '0.00',
+      transferIn: '8000.00',
+      transferOut: '8000.00',
+      netTransfers: '0.00',
+      principalReduction: '0.00',
+      payments: '0.00',
+      borrowings: '0.00',
+    });
+    const transfer = transferRows[0]!;
+    service.reverseDebtTransaction({
+      id: transfer.id,
+      expectedUpdatedAtUtc: transfer.updatedAtUtc,
+      reversalDate: '2026-02-02',
+      confirmed: true,
+    });
+    expect(service.getDebt({ id: source.id }).currentBalance).toBe('125000.13');
+    expect(service.getDebt({ id: destination.id }).currentBalance).toBe('125000.13');
+    const linkedRows = context.database
+      .select()
+      .from(debtTransactions)
+      .all()
+      .filter((row) => row.transferId === transfer.transferId);
+    expect(linkedRows.filter((row) => row.transactionType === 'reversal')).toHaveLength(
+      2,
+    );
+    expect(() =>
+      service.reverseDebtTransaction({
+        id: transfer.id,
+        expectedUpdatedAtUtc: transfer.updatedAtUtc,
+        reversalDate: '2026-02-03',
+        confirmed: true,
+      }),
+    ).toThrow('Only a currently posted transaction can be reversed.');
+    const reversal = linkedRows.find((row) => row.transactionType === 'reversal')!;
+    expect(() =>
+      service.reverseDebtTransaction({
+        id: reversal.id,
+        expectedUpdatedAtUtc: reversal.updatedAtUtc,
+        reversalDate: '2026-02-03',
+        confirmed: true,
+      }),
+    ).toThrow('Generated reversal transactions cannot be reversed.');
+  });
+
+  it('rejects isolated transfer creation and blocks deletion that would orphan transfer history', () => {
+    const source = service.createDebt(validRequest('Fictional Transfer Source'));
+    const destination = service.createDebt(
+      validRequest('Fictional Transfer Destination'),
+    );
+    expect(() =>
+      service.createDebtTransaction({
+        debtId: source.id,
+        transaction: {
+          ...validBorrowingRequest(source.id).transaction,
+          transactionType: 'transfer',
+          transferId: randomUUID(),
+        },
+      }),
+    ).toThrow('Use the debt transfer workflow');
+
+    const sourceAfter = service.createDebtTransfer({
+      sourceDebtId: source.id,
+      destinationDebtId: destination.id,
+      effectiveDate: '2026-02-01',
+      postingDate: '2026-02-01',
+      amount: '8000.00',
+      description: 'Generated deletion-protection transfer.',
+      sourceReference: 'TRANSFER-DELETE-GUARD',
+    });
+    expect(() =>
+      service.deleteDebtPermanently(
+        {
+          id: source.id,
+          expectedUpdatedAtUtc: sourceAfter.updatedAtUtc,
+          typedDebtName: 'Fictional Transfer Source',
+          confirmed: true,
+          secondConfirmed: true,
+        },
+        'validated-generated-backup.sqlite3',
+      ),
+    ).toThrow('transfer history is linked to another debt');
+    expect(service.getDebt({ id: destination.id }).transactions).toHaveLength(1);
+  });
+
+  it('keeps credit-card purchases separate from borrowing draws', () => {
+    const request = validRequest('Fictional Credit Card');
+    request.debt.debtType = 'credit_card';
+    request.debt.creditLimit = '25000.00';
+    const card = service.createDebt(request);
+    service.createDebtTransaction({
+      debtId: card.id,
+      transaction: {
+        ...validBorrowingRequest(card.id).transaction,
+        transactionType: 'purchase',
+        totalAmount: '800.00',
+        description: 'Generated card purchase.',
+        allocations: {
+          ...validBorrowingRequest(card.id).transaction.allocations,
+          principal: '800.00',
+        },
+      },
+    });
+    service.createDebtTransaction(validBorrowingRequest(card.id));
+    expect(service.getDebt({ id: card.id }).currentBalance).toBe('126800.13');
+    const reports = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-02-28',
+      debtId: card.id,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    });
+    const february = reports.monthlyRollforward.rows.find(
+      (row) => row.period === '2026-02',
+    );
+    expect(february).toMatchObject({ purchases: '800.00', borrowings: '1000.00' });
+    expect(february?.rollforwardCheck).toBe('0.00');
+  });
+
   it('accepts positive simplified transaction input without user-facing source or description fields', () => {
     const created = service.createDebt(validRequest());
     const updated = service.createDebtTransaction({
@@ -3413,6 +3572,43 @@ describe('debt maintenance', () => {
 
   it('restores from a validated backup and creates a pre-restore safety backup', async () => {
     const original = service.createDebt(validRequest('Generated Restored Note'));
+    const restoredCardRequest = validRequest('Generated Restored Card');
+    restoredCardRequest.debt.debtType = 'credit_card';
+    restoredCardRequest.debt.creditLimit = '250000.00';
+    const restoredCard = service.createDebt(restoredCardRequest);
+    const restoredTransferDestination = service.createDebt(
+      validRequest('Generated Restored Transfer Destination'),
+    );
+    service.createDebtTransaction({
+      debtId: restoredCard.id,
+      transaction: {
+        ...validBorrowingRequest(restoredCard.id).transaction,
+        transactionType: 'purchase',
+        totalAmount: '800.00',
+        allocations: {
+          ...validBorrowingRequest(restoredCard.id).transaction.allocations,
+          principal: '800.00',
+        },
+      },
+    });
+    const restoredTransferSource = service.createDebtTransfer({
+      sourceDebtId: restoredCard.id,
+      destinationDebtId: restoredTransferDestination.id,
+      effectiveDate: '2026-02-01',
+      postingDate: '2026-02-01',
+      amount: '8000.00',
+      description: 'Generated restorable transfer.',
+      sourceReference: 'TRANSFER-RESTORE',
+    });
+    const transferRow = restoredTransferSource.transactions.find(
+      (transaction) => transaction.transactionType === 'transfer',
+    )!;
+    service.reverseDebtTransaction({
+      id: transferRow.id,
+      expectedUpdatedAtUtc: transferRow.updatedAtUtc,
+      reversalDate: '2026-02-02',
+      confirmed: true,
+    });
     const backupRoot = mkdtempSync(join(tmpdir(), 'debt-tracker-restore-'));
     const dataService = createDataManagementService({
       applicationRootDirectory: process.cwd(),
@@ -3440,7 +3636,7 @@ describe('debt maintenance', () => {
       const postBackupDebt = service.createDebt(
         validRequest('Generated Temporary Note'),
       );
-      expect(service.listDebts({ includeArchived: true })).toHaveLength(2);
+      expect(service.listDebts({ includeArchived: true })).toHaveLength(4);
 
       const restoredStatus = await dataService.restoreBackup({
         backupId: backupStatus.availableBackups[0]!.id,
@@ -3448,12 +3644,35 @@ describe('debt maintenance', () => {
       });
 
       const restoredDebts = service.listDebts({ includeArchived: true });
-      expect(restoredDebts).toHaveLength(1);
-      expect(restoredDebts.map((debt) => debt.id)).toEqual([original.id]);
+      expect(restoredDebts).toHaveLength(3);
+      expect(restoredDebts.map((debt) => debt.id)).toEqual(
+        expect.arrayContaining([
+          original.id,
+          restoredCard.id,
+          restoredTransferDestination.id,
+        ]),
+      );
       expect(() => service.getDebt({ id: postBackupDebt.id })).toThrow(
         'Debt was not found.',
       );
       expect(service.getDebt({ id: original.id }).name).toBe('Generated Restored Note');
+      const restoredCardDetail = service.getDebt({ id: restoredCard.id });
+      expect(
+        restoredCardDetail.transactions.some(
+          (transaction) => transaction.transactionType === 'purchase',
+        ),
+      ).toBe(true);
+      const restoredTransferRows = context.database
+        .select()
+        .from(debtTransactions)
+        .all()
+        .filter((transaction) => transaction.transferId === transferRow.transferId);
+      expect(restoredTransferRows).toHaveLength(4);
+      expect(
+        restoredTransferRows.every(
+          (transaction) => transaction.transferId === transferRow.transferId,
+        ),
+      ).toBe(true);
       expect(
         restoredStatus.availableBackups.some((backup) => backup.kind === 'pre_restore'),
       ).toBe(true);

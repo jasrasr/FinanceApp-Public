@@ -42,6 +42,7 @@ export interface DebtDetailProps {
   readonly onRemoveScheduledPaymentConfirmation?: () => void;
   readonly onEdit: () => void;
   readonly onRecordRefinance: () => void;
+  readonly onRecordTransfer: () => void;
   readonly onRecordReconciliation: () => void;
   readonly onCorrectReconciliation: (reconciliation: BalanceReconciliationDto) => void;
   readonly onVoidReconciliation: (reconciliation: BalanceReconciliationDto) => void;
@@ -98,6 +99,7 @@ export const DebtDetail = ({
   onRemoveScheduledPaymentConfirmation,
   onEdit,
   onRecordRefinance,
+  onRecordTransfer,
   onRecordReconciliation,
   onCorrectReconciliation,
   onVoidReconciliation,
@@ -156,6 +158,13 @@ export const DebtDetail = ({
               type="button"
             >
               Record refinance
+            </button>
+            <button
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              onClick={onRecordTransfer}
+              type="button"
+            >
+              Transfer balance
             </button>
             <button
               className="rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"

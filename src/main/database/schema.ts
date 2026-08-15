@@ -296,6 +296,7 @@ export const debtTransactions = sqliteTable(
       enum: TRANSACTION_SOURCE_TYPES,
     }).notNull(),
     sourceReference: text('source_reference'),
+    transferId: text('transfer_id'),
     reversalOfTransactionId: text('reversal_of_transaction_id').references(
       (): AnySQLiteColumn => debtTransactions.id,
       { onDelete: 'restrict', onUpdate: 'cascade' },
@@ -317,6 +318,7 @@ export const debtTransactions = sqliteTable(
     index('debt_transactions_debt_effective_idx').on(table.debtId, table.effectiveDate),
     index('debt_transactions_debt_posting_idx').on(table.debtId, table.postingDate),
     index('debt_transactions_status_idx').on(table.status),
+    index('debt_transactions_transfer_idx').on(table.transferId),
     check(
       'debt_transactions_type_valid',
       sql`${table.transactionType} IN (${sqlList(TRANSACTION_TYPES)})`,

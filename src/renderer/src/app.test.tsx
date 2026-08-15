@@ -25,9 +25,9 @@ import { RecordTransactionForm } from './components/record-transaction-form';
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 26,
+  bridgeVersion: 27,
   appMetadata: {
-    version: '1.7.1',
+    version: '1.8.0',
     lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
   },
   listDebts: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -117,6 +117,7 @@ const createBridge = (): AppBridge => ({
   updateDebt: vi.fn(),
   addDebtTerm: vi.fn(),
   createDebtTransaction: vi.fn(),
+  createDebtTransfer: vi.fn(),
   editDebtTransaction: vi.fn(),
   reverseDebtTransaction: vi.fn(),
   voidDebtTransaction: vi.fn(),
@@ -723,6 +724,7 @@ const sampleDebtDetail: DebtDetailDto = {
       description: 'Generated payment.',
       sourceType: 'manual',
       sourceReference: 'CHK-1001',
+      transferId: null,
       reversalOfTransactionId: null,
       supersedesTransactionId: null,
       allocations: [
@@ -1845,7 +1847,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    expect(await screen.findByText('Version 1.7.1')).toBeVisible();
+    expect(await screen.findByText('Version 1.8.0')).toBeVisible();
     expect(
       screen.getByText(
         `Last changed: ${formatLastChanged(bridge.appMetadata.lastChangedAtUtc)}`,
@@ -2426,7 +2428,7 @@ describe('debt maintenance application', () => {
 
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     await waitFor(() =>
-      expect(within(navigation).getAllByRole('button')).toHaveLength(10),
+      expect(within(navigation).getAllByRole('button')).toHaveLength(11),
     );
     expect(
       within(navigation)
@@ -2434,10 +2436,11 @@ describe('debt maintenance application', () => {
         .map((button) => button.textContent),
     ).toEqual([
       'Dashboard',
+      'Debts',
       'Milestones',
       'Debt outlook',
       'Interest analysis',
-      'Debts',
+      'Refinance analysis',
       'Extra-cash allocation',
       'Payoff scenarios',
       'Reports',
@@ -2604,6 +2607,62 @@ describe('debt maintenance application', () => {
         }),
       }),
     );
+  });
+
+  it('defaults borrowing principal to Amount while preserving a manual override', () => {
+    const onSubmit = vi.fn();
+    render(
+      <RecordTransactionForm
+        busy={false}
+        debt={sampleDebtDetail}
+        onCancel={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Transaction type/), {
+      target: { value: 'borrowing_draw' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), {
+      target: { value: '8000.00' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('8000.00');
+    fireEvent.change(screen.getByLabelText(/Principal/), {
+      target: { value: '7500.00' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), {
+      target: { value: '9000.00' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('7500.00');
+    fireEvent.click(screen.getByRole('button', { name: 'Record transaction' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transaction: expect.objectContaining({
+          transactionType: 'borrowing_draw',
+          allocations: expect.objectContaining({ principal: '7500.00' }),
+        }),
+      }),
+    );
+  });
+
+  it('defaults credit-card balance-increasing entry to Purchase/Charge', () => {
+    render(
+      <RecordTransactionForm
+        busy={false}
+        debt={{
+          ...sampleDebtDetail,
+          debtType: 'credit_card',
+          creditLimit: '25000.00',
+        }}
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Transaction type/)).toHaveValue('purchase');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), {
+      target: { value: '125.00' },
+    });
+    expect(screen.getByLabelText(/Principal/)).toHaveValue('125.00');
   });
 
   it('blocks payment posting when nonprincipal allocations exceed the amount', () => {

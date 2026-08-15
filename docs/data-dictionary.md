@@ -114,6 +114,11 @@ Unified posted transaction ledger for payments, draws, charges, adjustments,
 reversals, mortgage escrow activity, and other explicitly classified actual
 activity.
 
+The transaction type set includes `purchase` for credit-card charges and
+`transfer` for one side of an atomic debt-to-debt transfer. `transfer_id` is
+nullable for legacy and non-transfer activity and is shared by the two
+transfer sides. Existing rows are migrated with a null transfer identifier.
+
 | Column                       |    Type | Required | Rule                                                            |
 | ---------------------------- | ------: | :------: | --------------------------------------------------------------- |
 | `id`                         |    text |   Yes    | Primary key; UUID                                               |

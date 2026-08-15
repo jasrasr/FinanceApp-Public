@@ -79,6 +79,8 @@ export const ALLOCATION_TYPES = [
 export const POSTED_ACTIVITY_TRANSACTION_TYPES = [
   'payment',
   'borrowing_draw',
+  'purchase',
+  'transfer',
   'fee',
   'penalty',
   'interest_charge',

@@ -15,6 +15,8 @@ export {
 export const TRANSACTION_TYPES = [
   'payment',
   'borrowing_draw',
+  'purchase',
+  'transfer',
   'fee',
   'penalty',
   'interest_charge',

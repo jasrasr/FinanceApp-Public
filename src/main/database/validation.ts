@@ -172,6 +172,7 @@ export const debtTransactionInsertSchema = z
     description: requiredText,
     sourceType: z.enum(TRANSACTION_SOURCE_TYPES),
     sourceReference: optionalText,
+    transferId: idSchema.nullable().optional(),
     reversalOfTransactionId: idSchema.nullable().optional(),
     supersedesTransactionId: idSchema.nullable().optional(),
     createdAtUtc: utcTimestampSchema,

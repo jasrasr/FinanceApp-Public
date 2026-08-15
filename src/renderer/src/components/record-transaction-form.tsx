@@ -63,6 +63,8 @@ const parseCurrencyInputCents = (raw: string): number | null => {
 const currencyInputFromCents = (cents: number): string => (cents / 100).toFixed(2);
 const absoluteCurrencyInput = (value: string): string =>
   Math.abs(Number(value)).toFixed(2);
+const principalDefaultsToAmount = (transactionType: EditableTransactionType): boolean =>
+  transactionType === 'borrowing_draw' || transactionType === 'purchase';
 
 const allocationInputValue = (
   transaction: DebtTransactionDto | undefined,
@@ -89,12 +91,18 @@ export const RecordTransactionForm = ({
       (option) => option === initialTransaction.transactionType,
     )
       ? (initialTransaction.transactionType as EditableTransactionType)
-      : 'payment';
+      : debt.debtType === 'credit_card'
+        ? 'purchase'
+        : 'payment';
   const [transactionType, setTransactionType] =
     useState<EditableTransactionType>(initialTransactionType);
   const [totalAmount, setTotalAmount] = useState(
     initialTransaction ? absoluteCurrencyInput(initialTransaction.totalAmount) : '',
   );
+  const [principalAmount, setPrincipalAmount] = useState(
+    initialTransaction ? allocationInputValue(initialTransaction, 'principal') : '',
+  );
+  const [principalTouched, setPrincipalTouched] = useState(Boolean(initialTransaction));
   const [nonPrincipalAllocations, setNonPrincipalAllocations] = useState({
     interest: allocationInputValue(initialTransaction, 'interest'),
     escrow: allocationInputValue(initialTransaction, 'escrow'),
@@ -232,7 +240,12 @@ export const RecordTransactionForm = ({
             id="transaction.totalAmount"
             inputMode="decimal"
             name="transaction.totalAmount"
-            onChange={(event) => setTotalAmount(event.target.value)}
+            onChange={(event) => {
+              setTotalAmount(event.target.value);
+              if (principalDefaultsToAmount(transactionType) && !principalTouched) {
+                setPrincipalAmount(event.target.value);
+              }
+            }}
             required
             value={totalAmount}
           />
@@ -292,7 +305,13 @@ export const RecordTransactionForm = ({
                           ...current,
                           [fieldName]: event.target.value,
                         }))
-                    : undefined
+                    : principalDefaultsToAmount(transactionType) &&
+                        fieldName === 'principal'
+                      ? (event) => {
+                          setPrincipalTouched(true);
+                          setPrincipalAmount(event.target.value);
+                        }
+                      : undefined
                 }
                 readOnly={transactionType === 'payment' && fieldName === 'principal'}
                 value={
@@ -302,12 +321,22 @@ export const RecordTransactionForm = ({
                       : isNonPrincipalPaymentAllocationField(fieldName)
                         ? nonPrincipalAllocations[fieldName]
                         : ''
-                    : undefined
+                    : principalDefaultsToAmount(transactionType) &&
+                        fieldName === 'principal'
+                      ? principalTouched
+                        ? principalAmount
+                        : totalAmount
+                      : undefined
                 }
                 defaultValue={
                   transactionType === 'payment'
                     ? undefined
-                    : allocationInputValue(initialTransaction, fieldName)
+                    : fieldName === 'principal' &&
+                        principalDefaultsToAmount(transactionType)
+                      ? principalTouched
+                        ? principalAmount
+                        : totalAmount
+                      : allocationInputValue(initialTransaction, fieldName)
                 }
               />
             </Field>

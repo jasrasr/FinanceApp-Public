@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, lte, or } from 'drizzle-orm';
+import { and, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { calculateReconciliationDifference } from '../domain/accounting/reconciliation';
 import { validateTransactionSignConvention } from '../domain/accounting/transaction-validation';
@@ -84,6 +84,11 @@ export const insertPostedTransaction = (
   input: PostedTransactionInput,
 ): void => {
   const transaction = debtTransactionInsertSchema.parse(input.transaction);
+  if (transaction.transactionType === 'transfer') {
+    throw new Error(
+      'Transfer transactions must be created through the linked debt transfer workflow.',
+    );
+  }
   const allocations = input.allocations.map((allocation) =>
     transactionAllocationInsertSchema.parse(allocation),
   );
@@ -177,8 +182,128 @@ export const reversePostedTransaction = (
     throw new Error('Only a currently posted transaction can be reversed.');
   }
 
+  if (original.transactionType === 'reversal') {
+    throw new Error('Generated reversal transactions cannot be reversed.');
+  }
+
   if (original.updatedAtUtc !== input.expectedUpdatedAtUtc) {
     throw new Error('The transaction changed before the reversal was saved.');
+  }
+
+  if (original.transferId) {
+    const linked = database
+      .select()
+      .from(debtTransactions)
+      .where(
+        and(
+          eq(debtTransactions.transferId, original.transferId),
+          ne(debtTransactions.id, original.id),
+        ),
+      )
+      .get();
+    if (!linked || linked.status !== 'posted') {
+      throw new Error(
+        'A transfer must have two currently posted linked sides before it can be reversed.',
+      );
+    }
+    const originals = [original, linked];
+    const timestamp = input.occurredAtUtc;
+    const reversals = originals.map((side) => {
+      const reversalId = randomUUID();
+      const allocations = database
+        .select()
+        .from(transactionAllocations)
+        .where(eq(transactionAllocations.transactionId, side.id))
+        .all()
+        .map((allocation) =>
+          transactionAllocationInsertSchema.parse({
+            id: randomUUID(),
+            transactionId: reversalId,
+            allocationType: allocation.allocationType,
+            amountCents: -allocation.amountCents,
+            notes: 'Reversal of transfer allocation.',
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          }),
+        );
+      const transaction = debtTransactionInsertSchema.parse({
+        id: reversalId,
+        debtId: side.debtId,
+        transactionType: 'reversal',
+        effectiveDate: input.effectiveDate,
+        postingDate: input.postingDate,
+        totalAmountCents: -side.totalAmountCents,
+        status: 'posted',
+        description: input.description,
+        sourceType: 'system',
+        sourceReference: side.id,
+        transferId: original.transferId,
+        reversalOfTransactionId: side.id,
+        supersedesTransactionId: null,
+        createdAtUtc: timestamp,
+        updatedAtUtc: timestamp,
+      });
+      const errors = validateTransactionSignConvention(transaction, allocations);
+      if (errors.length > 0) throw new Error(errors.join(' '));
+      return { transaction, allocations };
+    });
+    database.transaction((databaseTransaction) => {
+      for (const reversal of reversals) {
+        databaseTransaction.insert(debtTransactions).values(reversal.transaction).run();
+        databaseTransaction
+          .insert(transactionAllocations)
+          .values(reversal.allocations)
+          .run();
+      }
+      for (const side of originals) {
+        databaseTransaction
+          .update(debtTransactions)
+          .set({ status: input.originalStatus ?? 'reversed', updatedAtUtc: timestamp })
+          .where(eq(debtTransactions.id, side.id))
+          .run();
+        databaseTransaction
+          .update(balanceReconciliations)
+          .set({
+            reconciliationStatus: 'exception',
+            explanation:
+              'A linked transfer was reversed; review the statement comparison.',
+            updatedAtUtc: timestamp,
+          })
+          .where(
+            and(
+              eq(balanceReconciliations.debtId, side.debtId),
+              eq(balanceReconciliations.lifecycleStatus, 'current'),
+              gte(balanceReconciliations.statementDate, input.effectiveDate),
+            ),
+          )
+          .run();
+        databaseTransaction
+          .insert(auditEvents)
+          .values(
+            auditEventInsertSchema.parse({
+              id: randomUUID(),
+              eventType: input.auditEventType ?? 'transaction_reversed',
+              entityType: 'debt_transaction',
+              entityId: side.id,
+              action: input.auditAction ?? 'reverse',
+              occurredAtUtc: timestamp,
+              source: 'system',
+              summary:
+                input.auditSummary ??
+                'Both linked transfer sides were reversed atomically.',
+              beforeMetadataJson: null,
+              afterMetadataJson: JSON.stringify({
+                reversalTransactionId: reversals.find(
+                  (item) => item.transaction.reversalOfTransactionId === side.id,
+                )?.transaction.id,
+                transferId: original.transferId,
+              }),
+            }),
+          )
+          .run();
+      }
+    });
+    return reversals[0]!.transaction.id;
   }
 
   const originalAllocations = database
