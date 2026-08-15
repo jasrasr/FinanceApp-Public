@@ -26,7 +26,7 @@
     "db:migrate": "npm run native:node && tsx scripts/migrate-database.ts --temporary",
     "db:check": "npm run native:node && tsx scripts/check-database.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run db:check && npm run test:e2e",
-    "package": "npm run release:version && npm run assets:icons && npm run build && npm run native:electron && electron-builder --win nsis --x64 && npm run release:verify",
+    "package": "npm run release:version && npm run assets:icons && npm run build && npm run native:electron && electron-builder --win nsis --x64 --publish never && npm run release:verify",
     "release:verify": "tsx scripts/verify-installer-version.ts",
     "package:dir": "npm run assets:icons && npm run build && npm run native:electron && electron-builder --win dir --x64",
     "package:smoke": "npm run package && tsx scripts/smoke-installed-app.ts"
