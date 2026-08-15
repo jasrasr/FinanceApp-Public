@@ -1508,6 +1508,7 @@ const createDashboard = (
   let activeDebtCents = 0;
   let escrowBalanceCents = 0;
   let principalReductionYtdCents = 0;
+  let purchaseChargesYtdCents = 0;
   let newBorrowingsYtdCents = 0;
   let interestActivityYtdCents = 0;
   let requiredMonthlyPaymentsCents = 0;
@@ -1654,6 +1655,16 @@ const createDashboard = (
         newBorrowingsYtdCents += transaction.totalAmountCents;
       }
 
+      if (effectiveTransactionType === 'purchase') {
+        purchaseChargesYtdCents += allocations
+          .filter(
+            (allocation) =>
+              allocation.allocationType === 'principal' ||
+              allocation.allocationType === 'extra_principal',
+          )
+          .reduce((total, allocation) => total + allocation.amountCents, 0);
+      }
+
       for (const allocation of allocations) {
         if (
           effectiveTransactionType === 'payment' &&
@@ -1752,7 +1763,11 @@ const createDashboard = (
     totals: {
       activeDebt: centsToDollars(activeDebtCents),
       principalReductionYtd: centsToDollars(principalReductionYtdCents),
+      purchaseChargesYtd: centsToDollars(purchaseChargesYtdCents),
       newBorrowingsYtd: centsToDollars(newBorrowingsYtdCents),
+      netDebtReductionYtd: centsToDollars(
+        principalReductionYtdCents - purchaseChargesYtdCents - newBorrowingsYtdCents,
+      ),
       interestActivityYtd: centsToDollars(Math.abs(interestActivityYtdCents)),
       escrowBalance: centsToDollars(escrowBalanceCents),
       requiredMonthlyPayments: centsToDollars(requiredMonthlyPaymentsCents),
@@ -1771,7 +1786,9 @@ const createDashboard = (
     metricBasis: {
       activeDebt: `Application-calculated ledger balances for active debts as of ${effectiveDate}; not confirmed snapshots or original principal.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected balances require review.' : ''}`,
       principalReductionYtd: `Net principal and extra-principal allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected YTD amounts require review.' : ''}`,
+      purchaseChargesYtd: `Principal and extra-principal allocations from posted Purchase/Charge activity dated ${ytdStart} through ${effectiveDate}; transfers are excluded from this portfolio metric.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected YTD amounts require review.' : ''}`,
       newBorrowingsYtd: `Opening principal for active debts originated from ${ytdStart} through ${effectiveDate}, plus posted non-superseded borrowing or draw transaction totals dated in the same period. Opening principal is not double-counted when a same-date borrowing/draw already represents it.`,
+      netDebtReductionYtd: `Principal paid YTD less Purchase/Charge activity and New Borrowing/Draw activity; portfolio transfers are excluded because Transfer In and Transfer Out net to zero.`,
       interestActivityYtd: `Positive display of interest allocations from posted non-superseded activity dated ${ytdStart} through ${effectiveDate}; internal payment allocations are stored as negative values.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected YTD amounts require review.' : ''}`,
       escrowBalance: `Application-calculated escrow balances for active debts as of ${effectiveDate}; excluded from debt principal balance.${hasDataIntegrityExceptions ? ' Data-integrity exceptions are present and affected escrow balances require review.' : ''}`,
       requiredMonthlyPayments: `Current effective debt terms as of ${effectiveDate}, normalized to monthly equivalents; irregular and other frequencies are excluded from the amount.`,

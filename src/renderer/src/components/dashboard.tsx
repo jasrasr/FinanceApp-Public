@@ -97,7 +97,7 @@ export const Dashboard = ({
       onClick: onShowDebts,
     },
     {
-      label: 'Principal reduction YTD',
+      label: 'Principal paid YTD',
       value: formatDollarString(dashboard.totals.principalReductionYtd),
       basis: dashboard.metricBasis.principalReductionYtd,
       effectiveDate: dashboard.effectiveDate,
@@ -112,6 +112,12 @@ export const Dashboard = ({
       label: 'New borrowings YTD',
       value: formatDollarString(dashboard.totals.newBorrowingsYtd),
       basis: dashboard.metricBasis.newBorrowingsYtd,
+      effectiveDate: dashboard.effectiveDate,
+    },
+    {
+      label: 'Net debt reduction YTD',
+      value: formatDollarString(dashboard.totals.netDebtReductionYtd),
+      basis: dashboard.metricBasis.netDebtReductionYtd,
       effectiveDate: dashboard.effectiveDate,
     },
     {
@@ -184,6 +190,41 @@ export const Dashboard = ({
               />
             ))}
           </div>
+
+          <section
+            aria-labelledby="ytd-debt-progress-heading"
+            className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+          >
+            <h3 className="text-lg font-semibold" id="ytd-debt-progress-heading">
+              YTD debt progress
+            </h3>
+            <dl className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+              <div>
+                <dt className="text-slate-500">Principal paid</dt>
+                <dd className="font-semibold">
+                  {formatDollarString(dashboard.totals.principalReductionYtd)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Less purchases/charges</dt>
+                <dd className="font-semibold">
+                  {formatDollarString(dashboard.totals.purchaseChargesYtd)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Less new borrowing</dt>
+                <dd className="font-semibold">
+                  {formatDollarString(dashboard.totals.newBorrowingsYtd)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Net debt reduction</dt>
+                <dd className="font-semibold">
+                  {formatDollarString(dashboard.totals.netDebtReductionYtd)}
+                </dd>
+              </div>
+            </dl>
+          </section>
 
           {showCreditCards ? (
             <section

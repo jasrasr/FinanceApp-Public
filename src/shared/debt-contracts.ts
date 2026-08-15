@@ -809,7 +809,9 @@ export const dashboardDtoSchema = z
       .object({
         activeDebt: z.string(),
         principalReductionYtd: z.string(),
+        purchaseChargesYtd: z.string(),
         newBorrowingsYtd: z.string(),
+        netDebtReductionYtd: z.string(),
         interestActivityYtd: z.string(),
         escrowBalance: z.string(),
         requiredMonthlyPayments: z.string(),
@@ -824,7 +826,9 @@ export const dashboardDtoSchema = z
       .object({
         activeDebt: z.string(),
         principalReductionYtd: z.string(),
+        purchaseChargesYtd: z.string(),
         newBorrowingsYtd: z.string(),
+        netDebtReductionYtd: z.string(),
         interestActivityYtd: z.string(),
         escrowBalance: z.string(),
         requiredMonthlyPayments: z.string(),

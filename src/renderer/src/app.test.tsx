@@ -177,7 +177,9 @@ const sampleDashboard: DashboardDto = {
   totals: {
     activeDebt: '124500.00',
     principalReductionYtd: '400.00',
+    purchaseChargesYtd: '0.00',
     newBorrowingsYtd: '0.00',
+    netDebtReductionYtd: '400.00',
     interestActivityYtd: '100.00',
     escrowBalance: '300.00',
     requiredMonthlyPayments: '2450.00',
@@ -192,8 +194,12 @@ const sampleDashboard: DashboardDto = {
       'Application-calculated ledger balances for active debts as of 2026-07-28.',
     principalReductionYtd:
       'Net principal allocations from posted activity dated 2026-01-01 through 2026-07-28.',
+    purchaseChargesYtd:
+      'Purchase/Charge principal allocations dated 2026-01-01 through 2026-07-28.',
     newBorrowingsYtd:
       'Posted borrowing transaction totals dated 2026-01-01 through 2026-07-28.',
+    netDebtReductionYtd:
+      'Principal paid YTD less Purchase/Charge activity and New Borrowing/Draw activity.',
     interestActivityYtd:
       'Positive interest expense dated 2026-01-01 through 2026-07-28.',
     escrowBalance: 'Calculated escrow balances as of 2026-07-28.',
@@ -1309,7 +1315,9 @@ describe('debt maintenance application', () => {
 
     expect(await screen.findByRole('heading', { name: 'Debt overview' })).toBeVisible();
     expect(screen.getByText('$124,500.00')).toBeVisible();
-    expect(screen.getByText('Principal reduction YTD')).toBeVisible();
+    expect(screen.getByText('Principal paid YTD')).toBeVisible();
+    expect(screen.getByText('Net debt reduction YTD')).toBeVisible();
+    expect(screen.getByText('YTD debt progress')).toBeVisible();
     expect(screen.queryByText(/Metrics use active debts only/)).toBeNull();
     expect(
       screen.getByRole('button', {
@@ -1318,7 +1326,7 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
     expect(
       screen.getByRole('region', {
-        name: 'Principal reduction YTD: $400.00 as of 2026-07-28',
+        name: 'Principal paid YTD: $400.00 as of 2026-07-28',
       }),
     ).toBeVisible();
     expect(
@@ -1727,14 +1735,15 @@ describe('debt maintenance application', () => {
     await screen.findByRole('heading', { name: 'Debt overview' });
     const cardLabels = screen
       .getAllByRole('heading', { level: 3 })
-      .slice(0, 4)
+      .slice(0, 5)
       .map((heading) => heading.textContent);
 
     expect(cardLabels).toEqual([
       'Total active debt',
-      'Principal reduction YTD',
+      'Principal paid YTD',
       'Interest activity YTD',
       'New borrowings YTD',
+      'Net debt reduction YTD',
     ]);
   });
 

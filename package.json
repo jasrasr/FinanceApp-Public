@@ -1,6 +1,6 @@
 {
   "name": "debt-tracker",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "private": true,
   "description": "A local desktop application for tracking debt paydown.",
   "author": "Debt Tracker",
@@ -9,6 +9,7 @@
     "postinstall": "install-electron --no",
     "app:metadata": "tsx scripts/run-with-app-metadata.ts",
     "assets:icons": "tsx scripts/generate-icons.ts",
+    "release:version": "npm version patch --no-git-tag-version --ignore-scripts",
     "native:node": "npm rebuild better-sqlite3",
     "native:electron": "tsx scripts/install-electron-native.ts",
     "dev": "npm run native:electron && npm run app:metadata -- electron-vite --config ./electron.vite.config.cjs",
@@ -25,7 +26,7 @@
     "db:migrate": "npm run native:node && tsx scripts/migrate-database.ts --temporary",
     "db:check": "npm run native:node && tsx scripts/check-database.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run db:check && npm run test:e2e",
-    "package": "npm run assets:icons && npm run build && npm run native:electron && electron-builder --win nsis --x64",
+    "package": "npm run release:version && npm run assets:icons && npm run build && npm run native:electron && electron-builder --win nsis --x64",
     "package:dir": "npm run assets:icons && npm run build && npm run native:electron && electron-builder --win dir --x64",
     "package:smoke": "npm run package && tsx scripts/smoke-installed-app.ts"
   },

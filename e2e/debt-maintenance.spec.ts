@@ -109,7 +109,9 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByRole('button', { name: 'Record transaction' }).nth(0).click();
     await expect(window.getByText('Posted transaction was recorded.')).toBeVisible();
     await window.getByRole('button', { name: 'Dashboard' }).click();
-    await expect(window.getByText('Principal reduction YTD')).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'Principal paid YTD' }),
+    ).toBeVisible();
     await expect(window.getByText('Interest activity YTD')).toBeVisible();
     await expect(window.getByText('$0.00', { exact: true }).first()).toBeVisible();
     await window.getByRole('button', { name: 'Debts', exact: true }).click();
@@ -203,9 +205,11 @@ test('completes the manual debt-maintenance workflow', async () => {
     await expect(window.getByText('Reconciled').first()).toBeVisible();
 
     await window.getByRole('button', { name: 'Dashboard' }).click();
-    await expect(window.getByText('Principal reduction YTD')).toBeVisible();
     await expect(
-      window.getByRole('region', { name: /Principal reduction YTD: \$450\.00/ }),
+      window.getByRole('heading', { name: 'Principal paid YTD' }),
+    ).toBeVisible();
+    await expect(
+      window.getByRole('region', { name: /Principal paid YTD: \$450\.00/ }),
     ).toBeVisible();
     await expect(window.getByText('Interest activity YTD')).toBeVisible();
     await expect(window.getByText('$50.00', { exact: true })).toBeVisible();

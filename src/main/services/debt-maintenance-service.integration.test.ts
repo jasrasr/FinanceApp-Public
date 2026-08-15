@@ -401,6 +401,12 @@ describe('debt creation', () => {
     );
     expect(february).toMatchObject({ purchases: '800.00', borrowings: '1000.00' });
     expect(february?.rollforwardCheck).toBe('0.00');
+    expect(service.getDashboard({}).totals).toMatchObject({
+      principalReductionYtd: '0.00',
+      purchaseChargesYtd: '800.00',
+      newBorrowingsYtd: '1000.00',
+      netDebtReductionYtd: '-1800.00',
+    });
   });
 
   it('accepts positive simplified transaction input without user-facing source or description fields', () => {
@@ -1634,7 +1640,9 @@ describe('debt maintenance', () => {
       totals: {
         activeDebt: '125600.13',
         principalReductionYtd: '400.00',
+        purchaseChargesYtd: '0.00',
         newBorrowingsYtd: '1000.00',
+        netDebtReductionYtd: '-600.00',
         interestActivityYtd: '100.00',
         requiredMonthlyPayments: '2450.00',
         weightedAverageInterestRate: '5.49',
@@ -2251,8 +2259,10 @@ describe('debt maintenance', () => {
     expect(dashboard.totals).toMatchObject({
       activeDebt: '124100.13',
       principalReductionYtd: '400.00',
+      purchaseChargesYtd: '0.00',
       interestActivityYtd: '100.00',
       newBorrowingsYtd: '500.00',
+      netDebtReductionYtd: '-100.00',
       escrowBalance: '600.00',
     });
   });
