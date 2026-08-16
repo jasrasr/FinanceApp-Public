@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { DashboardDto } from '../../../shared/debt-contracts';
+import type { DashboardDto, DebtGoalsDto } from '../../../shared/debt-contracts';
 import { combinedDebtLabel } from './debt-label';
 import { formatDollarString } from './display-format';
 import { labelFromValue } from './form-utils';
@@ -9,6 +9,7 @@ export interface DashboardProps {
   readonly onSelectDebt: (id: string) => void;
   readonly onShowDebts: () => void;
   readonly onShowEscrowDetail: () => void;
+  readonly goals?: DebtGoalsDto | null;
 }
 
 const MetricCard = ({
@@ -86,6 +87,7 @@ export const Dashboard = ({
   onSelectDebt,
   onShowDebts,
   onShowEscrowDetail,
+  goals,
 }: DashboardProps): React.JSX.Element => {
   const [showCreditCards, setShowCreditCards] = useState(false);
   const metricCards = [
@@ -225,6 +227,30 @@ export const Dashboard = ({
               </div>
             </dl>
           </section>
+
+          {goals?.goals.find((goal) => goal.status === 'active')
+            ? (() => {
+                const goal = goals.goals.find((item) => item.status === 'active')!;
+                return (
+                  <section
+                    aria-labelledby="dashboard-goals-heading"
+                    className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+                  >
+                    <h3 className="font-semibold" id="dashboard-goals-heading">
+                      Goals / milestones
+                    </h3>
+                    <p className="mt-2 text-sm text-slate-600">{goal.name}</p>
+                    <div className="mt-2 flex flex-wrap gap-4 text-sm">
+                      <span>{goal.progressPercent} complete</span>
+                      <span>{formatDollarString(goal.remainingAmount)} remaining</span>
+                      <span>
+                        Projected {goal.projectedAchievementDate ?? 'not available'}
+                      </span>
+                    </div>
+                  </section>
+                );
+              })()
+            : null}
 
           {showCreditCards ? (
             <section

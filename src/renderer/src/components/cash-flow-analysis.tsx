@@ -111,17 +111,24 @@ const Chart = ({
                 },
               ]
             : [{ key: 'totalPayments', label: 'Total payments', color: '#0f766e' }];
-  const rowValue = (row: ChartRow, key: string): number =>
-    value((row as unknown as Record<string, string | undefined>)[key]);
+  const rowValue = (row: ChartRow, key: string): number | null => {
+    const raw = (row as unknown as Record<string, string | null | undefined>)[key];
+    return raw === null || raw === undefined ? null : value(raw);
+  };
   const chartValues =
     kind === 'mix'
       ? visibleRows.map(
           (row) =>
-            rowValue(row, 'principal') +
-            rowValue(row, 'interest') +
-            rowValue(row, 'fees'),
+            (rowValue(row, 'principal') ?? 0) +
+            (rowValue(row, 'interest') ?? 0) +
+            (rowValue(row, 'fees') ?? 0),
         )
-      : series.flatMap((item) => visibleRows.map((row) => rowValue(row, item.key)));
+      : series.flatMap((item) =>
+          visibleRows.flatMap((row) => {
+            const current = rowValue(row, item.key);
+            return current === null ? [] : [current];
+          }),
+        );
   const scale = buildChartScale({
     values: chartValues,
     chartHeight: height - top - bottom,
@@ -287,9 +294,7 @@ const Chart = ({
                 x={left - 10}
                 y={yFor(tick) + 4}
               >
-                {kind === 'ratio'
-                  ? `${scale.formattedLabels[index]}%`
-                  : scale.formattedLabels[index]}
+                {scale.formattedLabels[index]}
               </text>
             </g>
           ))}
@@ -304,7 +309,7 @@ const Chart = ({
                   <g key={row.period}>
                     {series.map((item) => {
                       const start = cursor;
-                      cursor += rowValue(row, item.key);
+                      cursor += rowValue(row, item.key) ?? 0;
                       return (
                         <rect
                           fill={item.color}
@@ -314,7 +319,7 @@ const Chart = ({
                           x={xFor(index) - barWidth / 2}
                           y={yFor(cursor)}
                         >
-                          <title>{`${monthLabel(row.period)}\n${item.label}: ${money(rowValue(row, item.key))}`}</title>
+                          <title>{`${monthLabel(row.period)}\n${item.label}: ${money(rowValue(row, item.key) ?? 0)}`}</title>
                         </rect>
                       );
                     })}
@@ -326,9 +331,13 @@ const Chart = ({
                   fill="none"
                   key={item.key}
                   points={visibleRows
-                    .map(
-                      (row, index) => `${xFor(index)},${yFor(rowValue(row, item.key))}`,
-                    )
+                    .map((row, index) => {
+                      const current = rowValue(row, item.key);
+                      return current === null
+                        ? null
+                        : `${xFor(index)},${yFor(current)}`;
+                    })
+                    .filter((point): point is string => point !== null)
                     .join(' ')}
                   stroke={item.color}
                   strokeWidth="3"
@@ -358,7 +367,12 @@ const Chart = ({
               x={xFor(visibleRows.indexOf(row)) - 6}
               y={top}
             >
-              <title>{`${monthLabel(row.period)}\n${series.map((item) => `${item.label}: ${kind === 'ratio' ? `${rowValue(row, item.key).toFixed(1)}%` : money(rowValue(row, item.key))}`).join('\n')}`}</title>
+              <title>{`${monthLabel(row.period)}\n${series
+                .map((item) => {
+                  const current = rowValue(row, item.key);
+                  return `${item.label}: ${current === null ? 'Unavailable' : kind === 'ratio' ? `${current.toFixed(1)}%` : money(current)}`;
+                })
+                .join('\n')}`}</title>
             </rect>
           ))}
         </svg>
@@ -385,11 +399,6 @@ export const CashFlowAnalysis = ({
   const interest = rows.reduce((sum, row) => sum + value(row.interest), 0);
   const fees = rows.reduce((sum, row) => sum + value(row.fees), 0);
   const incomeRows = activity?.incomeRows ?? [];
-  const grossIncome = incomeRows.reduce(
-    (sum, row) => sum + (row.grossIncome === null ? 0 : value(row.grossIncome)),
-    0,
-  );
-  const grossIncomeAvailable = incomeRows.some((row) => row.grossIncome !== null);
   const netIncome = incomeRows.reduce(
     (sum, row) => sum + (row.netIncome === null ? 0 : value(row.netIncome)),
     0,
@@ -520,10 +529,6 @@ export const CashFlowAnalysis = ({
               [
                 'Net income received',
                 activity.incomeDataAvailable ? money(netIncome) : 'Not available',
-              ],
-              [
-                'Gross income received',
-                grossIncomeAvailable ? money(grossIncome) : 'Not entered',
               ],
               ['Total debt payments', money(totalPayments)],
               ['Principal paid', money(principal)],

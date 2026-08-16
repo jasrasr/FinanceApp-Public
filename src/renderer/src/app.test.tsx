@@ -2686,7 +2686,6 @@ describe('debt maintenance application', () => {
       expect.objectContaining({
         sourceId: source.id,
         netAmount: '3250.00',
-        grossAmount: null,
       }),
     );
     expect(bridge.createDebtTransaction).not.toHaveBeenCalled();

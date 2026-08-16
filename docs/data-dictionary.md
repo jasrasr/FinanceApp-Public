@@ -478,6 +478,24 @@ retaining the original source snapshot in `income_transactions`.
 | `updated_at_utc`  | ISO UTC timestamp | yes      | Last change time.                     |
 | `archived_at_utc` | ISO UTC timestamp | no       | Archive/restore state.                |
 
+### debt_goals
+
+Goal records are separate planning data. They store the goal definition and the
+calculated starting balance captured when the goal is created. Current progress,
+history, and projected achievement dates are calculated from the existing ledger
+and payoff engine; goals never post ledger activity.
+
+| Column                   | Type / unit      | Required | Meaning                                              |
+| ------------------------ | ---------------- | -------- | ---------------------------------------------------- |
+| `id`                     | text             | yes      | Stable goal identifier.                              |
+| `name`                   | text             | yes      | User-facing goal name.                               |
+| `goal_type`              | text             | yes      | `portfolio_target`, `debt_payoff`, or `debt_target`. |
+| `debt_id`                | text foreign key | no       | Target debt for individual goals.                    |
+| `target_amount_cents`    | integer cents    | yes      | Desired balance; zero represents payoff/debt-free.   |
+| `starting_balance_cents` | integer cents    | yes      | Calculated balance captured at creation.             |
+| `target_date`            | ISO date         | no       | Optional user target date.                           |
+| `status`                 | text             | yes      | `active`, `completed`, or `archived`.                |
+
 ### application_settings
 
 | Column           | Type / unit       | Required | Meaning                                                                            |

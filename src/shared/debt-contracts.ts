@@ -300,6 +300,61 @@ export const getDataHealthRequestSchema = z.object({}).strict();
 export const getMilestonesRequestSchema = z
   .object({ scenarioId: uuidSchema.nullable() })
   .strict();
+const debtGoalTypeSchema = z.enum(['portfolio_target', 'debt_payoff', 'debt_target']);
+const debtGoalStatusSchema = z.enum(['active', 'completed', 'archived']);
+export const listDebtGoalsRequestSchema = z
+  .object({ includeArchived: z.boolean() })
+  .strict();
+export const createDebtGoalRequestSchema = z
+  .object({
+    name: requiredTextSchema,
+    goalType: debtGoalTypeSchema,
+    debtId: uuidSchema.nullable(),
+    targetAmount: moneyInputSchema,
+    targetDate: financialDateInputSchema.nullable(),
+  })
+  .strict();
+export const updateDebtGoalRequestSchema = z
+  .object({
+    id: uuidSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+    name: requiredTextSchema,
+    targetAmount: moneyInputSchema,
+    targetDate: financialDateInputSchema.nullable(),
+    status: debtGoalStatusSchema,
+  })
+  .strict();
+const debtGoalDtoSchema = z
+  .object({
+    id: uuidSchema,
+    name: z.string(),
+    goalType: debtGoalTypeSchema,
+    debtId: uuidSchema.nullable(),
+    debtName: z.string().nullable(),
+    startingBalance: z.string(),
+    currentBalance: z.string(),
+    targetAmount: z.string(),
+    progressPercent: z.string(),
+    remainingAmount: z.string(),
+    targetDate: financialDateInputSchema.nullable(),
+    projectedAchievementDate: financialDateInputSchema.nullable(),
+    status: debtGoalStatusSchema,
+    targetDateStatus: z.enum(['ahead', 'on_track', 'behind', 'not_available']),
+    updatedAtUtc: utcTimestampSchema,
+    history: z.array(
+      z.object({ date: financialDateInputSchema, balance: z.string() }).strict(),
+    ),
+  })
+  .strict();
+export const debtGoalsDtoSchema = z
+  .object({
+    goals: z.array(debtGoalDtoSchema),
+    suggestions: z.array(
+      z.object({ label: z.string(), targetAmount: z.string() }).strict(),
+    ),
+    currentPortfolioBalance: z.string(),
+  })
+  .strict();
 export const getDebtOutlookRequestSchema = z
   .object({ scenarioId: uuidSchema.nullable() })
   .strict();
@@ -1822,6 +1877,7 @@ export const payoffBaselineResultSchema = applicationResultSchema(
 export const payoffScenarioListResultSchema = applicationResultSchema(
   z.array(payoffScenarioDtoSchema),
 );
+export const debtGoalsResultSchema = applicationResultSchema(debtGoalsDtoSchema);
 
 export type CreateDebtRequest = z.infer<typeof createDebtRequestSchema>;
 export type DebtCoreInput = z.infer<typeof debtCoreInputSchema>;
@@ -1854,6 +1910,9 @@ export type ListDebtsRequest = z.infer<typeof listDebtsRequestSchema>;
 export type GetDashboardRequest = z.infer<typeof getDashboardRequestSchema>;
 export type GetDataHealthRequest = z.infer<typeof getDataHealthRequestSchema>;
 export type GetMilestonesRequest = z.infer<typeof getMilestonesRequestSchema>;
+export type ListDebtGoalsRequest = z.infer<typeof listDebtGoalsRequestSchema>;
+export type CreateDebtGoalRequest = z.infer<typeof createDebtGoalRequestSchema>;
+export type UpdateDebtGoalRequest = z.infer<typeof updateDebtGoalRequestSchema>;
 export type GetDebtOutlookRequest = z.infer<typeof getDebtOutlookRequestSchema>;
 export type GetInterestAnalysisRequest = z.infer<
   typeof getInterestAnalysisRequestSchema
@@ -1942,6 +2001,7 @@ export type RefinanceEventDto = z.infer<typeof refinanceEventDtoSchema>;
 export type DashboardDto = z.infer<typeof dashboardDtoSchema>;
 export type DataHealthDto = z.infer<typeof dataHealthDtoSchema>;
 export type MilestonesDto = z.infer<typeof milestonesDtoSchema>;
+export type DebtGoalsDto = z.infer<typeof debtGoalsDtoSchema>;
 export type DebtOutlookDto = z.infer<typeof debtOutlookDtoSchema>;
 export type InterestAnalysisDto = z.infer<typeof interestAnalysisDtoSchema>;
 export type RefinanceAnalysisDto = z.infer<typeof refinanceAnalysisDtoSchema>;

@@ -68,7 +68,6 @@ export const IncomeTransactions = ({
   const [incomeType, setIncomeType] =
     useState<IncomeTransactionDto['incomeType']>('regular_paycheck');
   const [sourceId, setSourceId] = useState('');
-  const [grossAmount, setGrossAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [newSourceName, setNewSourceName] = useState('');
@@ -89,16 +88,13 @@ export const IncomeTransactions = ({
   const totals = visible.reduce(
     (result, record) => {
       const net = Number(record.netAmount ?? record.amount);
-      const gross = record.grossAmount === null ? 0 : Number(record.grossAmount);
-      result.gross += gross;
-      if (record.grossAmount !== null) result.grossCount += 1;
       result.net += net;
       if (record.incomeType === 'regular_paycheck') result.regular += net;
       if (record.incomeType === 'bonus') result.bonus += net;
       if (record.incomeType === 'other_income') result.other += net;
       return result;
     },
-    { gross: 0, grossCount: 0, net: 0, regular: 0, bonus: 0, other: 0 },
+    { net: 0, regular: 0, bonus: 0, other: 0 },
   );
   const months = Math.max(
     1,
@@ -107,7 +103,6 @@ export const IncomeTransactions = ({
   const reset = (): void => {
     setEditingId(null);
     setReceivedDate(today());
-    setGrossAmount('');
     setNetAmount('');
     setNotes('');
   };
@@ -117,7 +112,6 @@ export const IncomeTransactions = ({
       incomeType,
       sourceId,
       notes: notes || null,
-      grossAmount: grossAmount || null,
       netAmount,
     };
     const existing = editingId
@@ -212,15 +206,6 @@ export const IncomeTransactions = ({
                   </option>
                 ))}
             </select>
-          </label>
-          <label className="text-sm font-medium">
-            Gross amount (optional)
-            <input
-              className="mt-1 block w-full rounded border-slate-300"
-              inputMode="decimal"
-              value={grossAmount}
-              onChange={(event) => setGrossAmount(event.target.value)}
-            />
           </label>
           <div className="text-sm md:col-span-2">
             <span className="font-medium">Need another source?</span>
@@ -329,10 +314,9 @@ export const IncomeTransactions = ({
           </select>
         </label>
       </section>
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
         {[
           ['Net income', totals.net],
-          ['Gross income entered', totals.gross],
           ['Regular paychecks', totals.regular],
           ['Bonuses', totals.bonus],
           ['Other income', totals.other],
@@ -346,9 +330,7 @@ export const IncomeTransactions = ({
               {label}
             </h2>
             <p className="mt-2 text-xl font-semibold">
-              {label === 'Gross income entered' && totals.grossCount === 0
-                ? 'Unavailable'
-                : formatDollarString(Number(total).toFixed(2))}
+              {formatDollarString(Number(total).toFixed(2))}
             </p>
           </section>
         ))}
@@ -502,16 +484,7 @@ export const IncomeTransactions = ({
           <table className="min-w-[1050px] text-left text-sm">
             <thead className="border-b text-xs uppercase text-slate-500">
               <tr>
-                {[
-                  'Date',
-                  'Source',
-                  'Type',
-                  'Net',
-                  'Gross',
-                  'Net',
-                  'Notes',
-                  'Actions',
-                ].map((header) => (
+                {['Date', 'Source', 'Type', 'Net', 'Notes', 'Actions'].map((header) => (
                   <th className="whitespace-nowrap px-3 py-2" key={header}>
                     {header}
                   </th>
@@ -531,11 +504,6 @@ export const IncomeTransactions = ({
                     <td className="px-3 py-2">{typeLabel(record.incomeType)}</td>
                     <td className="px-3 py-2">{formatDollarString(record.amount)}</td>
                     <td className="px-3 py-2">
-                      {record.grossAmount
-                        ? formatDollarString(record.grossAmount)
-                        : '—'}
-                    </td>
-                    <td className="px-3 py-2">
                       {record.netAmount ? formatDollarString(record.netAmount) : '—'}
                     </td>
                     <td className="max-w-[240px] px-3 py-2">{record.notes ?? '—'}</td>
@@ -548,7 +516,6 @@ export const IncomeTransactions = ({
                           setNetAmount(record.netAmount ?? record.amount);
                           setIncomeType(record.incomeType);
                           setSourceId(record.sourceId ?? '');
-                          setGrossAmount(record.grossAmount ?? '');
                           setNotes(record.notes ?? '');
                         }}
                         type="button"

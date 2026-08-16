@@ -942,12 +942,50 @@ export const incomeTransactions = sqliteTable(
   ],
 );
 
+export const debtGoals = sqliteTable(
+  'debt_goals',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    goalType: text('goal_type').notNull(),
+    debtId: text('debt_id').references(() => debts.id, {
+      onDelete: 'restrict',
+      onUpdate: 'cascade',
+    }),
+    targetAmountCents: integer('target_amount_cents').notNull(),
+    startingBalanceCents: integer('starting_balance_cents').notNull(),
+    targetDate: text('target_date'),
+    status: text('status').notNull(),
+    createdAtUtc: text('created_at_utc').notNull(),
+    updatedAtUtc: text('updated_at_utc').notNull(),
+  },
+  (table) => [
+    index('debt_goals_status_idx').on(table.status),
+    index('debt_goals_debt_idx').on(table.debtId),
+    check(
+      'debt_goals_type_valid',
+      sql`${table.goalType} IN ('portfolio_target', 'debt_payoff', 'debt_target')`,
+    ),
+    check(
+      'debt_goals_status_valid',
+      sql`${table.status} IN ('active', 'completed', 'archived')`,
+    ),
+    check('debt_goals_target_nonnegative', sql`${table.targetAmountCents} >= 0`),
+    check('debt_goals_starting_nonnegative', sql`${table.startingBalanceCents} >= 0`),
+    check(
+      'debt_goals_target_date_format',
+      sql`${table.targetDate} IS NULL OR ${table.targetDate} GLOB ${FINANCIAL_DATE_GLOB}`,
+    ),
+  ],
+);
+
 export const schema = {
   auditEvents,
   applicationSettings,
   incomeRecords,
   incomeSources,
   incomeTransactions,
+  debtGoals,
   balanceReconciliations,
   balanceSnapshots,
   debtTerms,

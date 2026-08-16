@@ -13,6 +13,10 @@ import type {
   DashboardDto,
   DataHealthDto,
   MilestonesDto,
+  DebtGoalsDto,
+  ListDebtGoalsRequest,
+  CreateDebtGoalRequest,
+  UpdateDebtGoalRequest,
   DebtOutlookDto,
   InterestAnalysisDto,
   DataExportDto,
@@ -88,6 +92,15 @@ export interface DebtBridge {
   getMilestones?(
     request: GetMilestonesRequest,
   ): Promise<ApplicationResult<MilestonesDto>>;
+  getDebtGoals?(
+    request: ListDebtGoalsRequest,
+  ): Promise<ApplicationResult<DebtGoalsDto>>;
+  createDebtGoal?(
+    request: CreateDebtGoalRequest,
+  ): Promise<ApplicationResult<DebtGoalsDto>>;
+  updateDebtGoal?(
+    request: UpdateDebtGoalRequest,
+  ): Promise<ApplicationResult<DebtGoalsDto>>;
   getDebtOutlook?(
     request: GetDebtOutlookRequest,
   ): Promise<ApplicationResult<DebtOutlookDto>>;

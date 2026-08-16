@@ -576,6 +576,7 @@ describe('debt creation', () => {
 
   it('aggregates actual income transactions without mutating ledger activity', () => {
     const created = service.createDebt(validRequest('Generated Income Analysis Debt'));
+    service.createDebtTransaction(validTransactionRequest(created.id));
     const source = service.createIncomeSource({ name: 'Generated Employer' });
     expect(service.listIncomeSources({ includeArchived: false })).toHaveLength(1);
     const beforeTransactions = context.database.select().from(debtTransactions).all();
@@ -622,7 +623,7 @@ describe('debt creation', () => {
       '1000.00',
     ]);
     expect(cashFlow.incomeRows[0]?.grossIncome).toBe('9000.00');
-    expect(cashFlow.incomeRows[0]?.debtPaymentsPercentNet).toBe('0.0%');
+    expect(cashFlow.incomeRows[0]?.debtPaymentsPercentNet).toBe('7.7%');
     expect(context.database.select().from(debtTransactions).all()).toEqual(
       beforeTransactions,
     );
@@ -1530,6 +1531,39 @@ describe('payoff milestones', () => {
     expect(context.database.select().from(debtTransactions).all()).toEqual(
       transactionsBefore,
     );
+  });
+});
+
+describe('debt goals', () => {
+  it('tracks a portfolio target without mutating ledger activity and suggests thresholds', () => {
+    const created = service.createDebt(validRequest('Generated Goal Debt'));
+    const transactionsBefore = context.database.select().from(debtTransactions).all();
+    const goals = service.createDebtGoal!({
+      name: 'Under target',
+      goalType: 'portfolio_target',
+      debtId: null,
+      targetAmount: '100000.00',
+      targetDate: '2027-01-01',
+    });
+    expect(goals.goals).toHaveLength(1);
+    expect(goals.goals[0]).toMatchObject({
+      name: 'Under target',
+      startingBalance: '125000.13',
+      currentBalance: '125000.13',
+      targetAmount: '100000.00',
+      progressPercent: '0.0%',
+      remainingAmount: '25000.13',
+      status: 'active',
+    });
+    expect(goals.suggestions.length).toBeGreaterThan(0);
+    const stored = context.sqlite
+      .prepare('SELECT COUNT(*) AS count FROM debt_goals WHERE name = ?')
+      .get('Under target') as { count: number };
+    expect(stored.count).toBe(1);
+    expect(context.database.select().from(debtTransactions).all()).toEqual(
+      transactionsBefore,
+    );
+    expect(created.id).toBeTruthy();
   });
 });
 

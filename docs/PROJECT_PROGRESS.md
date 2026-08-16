@@ -2390,3 +2390,21 @@ year`.
   be run for this phase.
 - Known limitation: legacy income rows without a source link remain available
   through their original source snapshot until upgraded by migration.
+
+## Phase 62: Net-Only Cash Flow and Debt Goals
+
+- Completion date: 2026-08-16. Application version remains 1.9.1 pending an
+  approved release.
+- Removed gross income from active income entry and debt-burden presentation;
+  historical gross columns remain stored for compatibility. Debt-service
+  percentages now preserve unavailable months as chart gaps and use a single
+  percent-formatted axis.
+- Added migration 0018 and the separate `debt_goals` table. Goals capture their
+  starting calculated balance and never create or alter debt or income activity.
+  Goal progress and projected dates reuse the existing ledger balance and
+  required-payment payoff engine; suggested milestones are transient results.
+- Added secure goal list/create/update operations, a Goals/Milestones workflow,
+  progress history, and a compact Dashboard goal summary.
+- Validation: unit (220), integration (89), typecheck, database integrity, and
+  production build passed. The in-sandbox build remains access-restricted, but
+  the approved local build path passed. Electron E2E remains to be run.

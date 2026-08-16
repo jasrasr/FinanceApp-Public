@@ -19,6 +19,7 @@ import {
   dashboardResultSchema,
   dataHealthResultSchema,
   milestonesResultSchema,
+  debtGoalsResultSchema,
   debtOutlookResultSchema,
   interestAnalysisResultSchema,
   refinanceAnalysisResultSchema,
@@ -36,6 +37,9 @@ import {
   getDashboardRequestSchema,
   getDataHealthRequestSchema,
   getMilestonesRequestSchema,
+  listDebtGoalsRequestSchema,
+  createDebtGoalRequestSchema,
+  updateDebtGoalRequestSchema,
   getDebtOutlookRequestSchema,
   getInterestAnalysisRequestSchema,
   getRefinanceAnalysisRequestSchema,
@@ -103,6 +107,9 @@ import {
   type GetDashboardRequest,
   type GetDataHealthRequest,
   type GetMilestonesRequest,
+  type ListDebtGoalsRequest,
+  type CreateDebtGoalRequest,
+  type UpdateDebtGoalRequest,
   type GetDebtOutlookRequest,
   type GetInterestAnalysisRequest,
   type GetRefinanceAnalysisRequest,
@@ -172,6 +179,27 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.milestones,
           getMilestonesRequestSchema.parse(request),
+        ),
+      ),
+    getDebtGoals: async (request: ListDebtGoalsRequest) =>
+      debtGoalsResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.debtGoals,
+          listDebtGoalsRequestSchema.parse(request),
+        ),
+      ),
+    createDebtGoal: async (request: CreateDebtGoalRequest) =>
+      debtGoalsResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.createDebtGoal,
+          createDebtGoalRequestSchema.parse(request),
+        ),
+      ),
+    updateDebtGoal: async (request: UpdateDebtGoalRequest) =>
+      debtGoalsResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.updateDebtGoal,
+          updateDebtGoalRequestSchema.parse(request),
         ),
       ),
     getDebtOutlook: async (request: GetDebtOutlookRequest) =>

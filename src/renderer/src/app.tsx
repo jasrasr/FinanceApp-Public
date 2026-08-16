@@ -19,6 +19,9 @@ import type {
   RefinanceAnalysisDto,
   GetRefinanceAnalysisRequest,
   MilestonesDto,
+  DebtGoalsDto,
+  CreateDebtGoalRequest,
+  UpdateDebtGoalRequest,
   BalanceReconciliationDto,
   DataManagementStatusDto,
   DebtReportsDto,
@@ -61,6 +64,7 @@ import { IncomeTransactions } from './components/income-transactions';
 import { DataManagement } from './components/data-management';
 import { DataHealth } from './components/data-health';
 import { Milestones } from './components/milestones';
+import { DebtGoals } from './components/debt-goals';
 import { DebtOutlook } from './components/debt-outlook';
 import { InterestAnalysis } from './components/interest-analysis';
 import { RefinanceAnalysis } from './components/refinance-analysis';
@@ -208,6 +212,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     useState<DataManagementStatusDto | null>(null);
   const [dataHealth, setDataHealth] = useState<DataHealthDto | null>(null);
   const [milestones, setMilestones] = useState<MilestonesDto | null>(null);
+  const [debtGoals, setDebtGoals] = useState<DebtGoalsDto | null>(null);
   const [debtOutlook, setDebtOutlook] = useState<DebtOutlookDto | null>(null);
   const [interestAnalysis, setInterestAnalysis] = useState<InterestAnalysisDto | null>(
     null,
@@ -295,12 +300,17 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setLoading(true);
     setError(null);
     const result = await invokeBridge(() => bridge.getDashboard({}));
+    const goalsResult = await invokeBridge(() =>
+      bridge.getDebtGoals!({ includeArchived: false }),
+    );
 
     if (result.ok) {
       setDashboard(result.value);
     } else {
       setError(result.error);
     }
+    if (goalsResult.ok) setDebtGoals(goalsResult.value);
+    else setError(goalsResult.error);
 
     setLoading(false);
   };
@@ -507,11 +517,27 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     const milestoneResult = await invokeBridge(() =>
       bridge.getMilestones!({ scenarioId }),
     );
+    const goalsResult = await invokeBridge(() =>
+      bridge.getDebtGoals!({ includeArchived: false }),
+    );
     if (scenariosResult.ok) setPayoffScenarios(scenariosResult.value);
     else setError(scenariosResult.error);
     if (milestoneResult.ok) setMilestones(milestoneResult.value);
     else setError(milestoneResult.error);
+    if (goalsResult.ok) setDebtGoals(goalsResult.value);
+    else setError(goalsResult.error);
     setLoading(false);
+  };
+
+  const createDebtGoal = async (request: CreateDebtGoalRequest): Promise<void> => {
+    const result = await invokeBridge(() => bridge.createDebtGoal!(request));
+    if (result.ok) setDebtGoals(result.value);
+    else setError(result.error);
+  };
+  const updateDebtGoal = async (request: UpdateDebtGoalRequest): Promise<void> => {
+    const result = await invokeBridge(() => bridge.updateDebtGoal!(request));
+    if (result.ok) setDebtGoals(result.value);
+    else setError(result.error);
   };
 
   const loadDebtOutlook = async (
@@ -2167,6 +2193,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           {!loading && view === 'dashboard' && dashboard ? (
             <Dashboard
               dashboard={dashboard}
+              goals={debtGoals}
               onSelectDebt={(id) => void selectDebt(id)}
               onShowDebts={showList}
               onShowEscrowDetail={showEscrowDetail}
@@ -2321,13 +2348,23 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           ) : null}
 
           {!loading && view === 'milestones' && milestones ? (
-            <Milestones
-              milestones={milestones}
-              onScenarioChange={selectMilestoneScenario}
-              onSelectDebt={(id) => void selectDebt(id)}
-              scenarios={payoffScenarios}
-              selectedScenarioId={selectedMilestoneScenarioId}
-            />
+            <>
+              {debtGoals ? (
+                <DebtGoals
+                  debts={debts}
+                  goals={debtGoals}
+                  onCreate={(request) => void createDebtGoal(request)}
+                  onUpdate={(request) => void updateDebtGoal(request)}
+                />
+              ) : null}
+              <Milestones
+                milestones={milestones}
+                onScenarioChange={selectMilestoneScenario}
+                onSelectDebt={(id) => void selectDebt(id)}
+                scenarios={payoffScenarios}
+                selectedScenarioId={selectedMilestoneScenarioId}
+              />
+            </>
           ) : null}
 
           {!loading && view === 'debt-outlook' && debtOutlook ? (

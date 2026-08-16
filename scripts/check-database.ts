@@ -7,6 +7,7 @@ const expectedTables = [
   'audit_events',
   'balance_reconciliations',
   'balance_snapshots',
+  'debt_goals',
   'debt_terms',
   'debt_transactions',
   'debts',

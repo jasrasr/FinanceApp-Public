@@ -21,6 +21,10 @@ import type {
   RefinanceAnalysisDto,
   DataHealthDto,
   MilestonesDto,
+  DebtGoalsDto,
+  ListDebtGoalsRequest,
+  CreateDebtGoalRequest,
+  UpdateDebtGoalRequest,
   AcceptCurrentBalanceRequest,
   DeleteDebtPermanentlyRequest,
   ConfirmScheduledPaymentRequest,
@@ -83,6 +87,9 @@ import {
   getDashboardRequestSchema,
   getDataHealthRequestSchema,
   getMilestonesRequestSchema,
+  listDebtGoalsRequestSchema,
+  createDebtGoalRequestSchema,
+  updateDebtGoalRequestSchema,
   getDebtOutlookRequestSchema,
   getInterestAnalysisRequestSchema,
   getRefinanceAnalysisRequestSchema,
@@ -117,7 +124,12 @@ import {
 import { ALLOCATION_TYPES } from '../../shared/debt-options';
 import { REPORTING_HISTORY_START_DATE } from '../../shared/reporting-constants';
 import type { AppDatabase } from '../database/connection';
-import { incomeRecords, incomeSources, incomeTransactions } from '../database/schema';
+import {
+  debtGoals,
+  incomeRecords,
+  incomeSources,
+  incomeTransactions,
+} from '../database/schema';
 import {
   calculateLedgerBalanceThroughDate,
   calculateEscrowBalanceThroughDate,
@@ -209,6 +221,9 @@ export interface DebtMaintenanceService {
   getDashboard(request: GetDashboardRequest): DashboardDto;
   getDataHealth?(request: GetDataHealthRequest): DataHealthDto;
   getMilestones?(request: GetMilestonesRequest): MilestonesDto;
+  getDebtGoals?(request: ListDebtGoalsRequest): DebtGoalsDto;
+  createDebtGoal?(request: CreateDebtGoalRequest): DebtGoalsDto;
+  updateDebtGoal?(request: UpdateDebtGoalRequest): DebtGoalsDto;
   getDebtOutlook?(request: GetDebtOutlookRequest): DebtOutlookDto;
   getInterestAnalysis?(request: GetInterestAnalysisRequest): InterestAnalysisDto;
   getRefinanceAnalysis?(request: GetRefinanceAnalysisRequest): RefinanceAnalysisDto;
@@ -4133,6 +4148,136 @@ export const createDebtMaintenanceService = ({
       assumptions,
     );
 
+  const buildDebtGoals = (includeArchived: boolean): DebtGoalsDto => {
+    const effectiveDate = currentFinancialDate(now);
+    const records = listActiveDebtActivityRecords(database);
+    const currentByDebt = new Map(
+      records.map((record) => [
+        record.debt.id,
+        calculateLedgerBalanceThroughDate(database, record.debt.id, effectiveDate),
+      ]),
+    );
+    const currentPortfolio = [...currentByDebt.values()].reduce(
+      (sum, value) => sum + value,
+      0,
+    );
+    const baseline = calculatePayoffResult({
+      scenarioStartDate: effectiveDate,
+      strategy: 'baseline',
+      extraMonthlyPaymentCents: 0,
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 600,
+    });
+    const historyReport = createDebtReports(
+      database,
+      {
+        startDate: REPORTING_HISTORY_START_DATE,
+        endDate: effectiveDate,
+        debtId: null,
+        ownerEntity: null,
+        debtType: null,
+        status: null,
+      },
+      () => `${effectiveDate}T00:00:00.000Z`,
+    );
+    const historyByDebt = new Map<string, { date: string; balance: string }[]>();
+    for (const row of historyReport.balanceHistory.rows) {
+      const key = row.debtId;
+      const points = historyByDebt.get(key) ?? [];
+      points.push({ date: row.effectiveDate, balance: row.calculatedBalance });
+      historyByDebt.set(key, points);
+    }
+    const portfolioHistoryByDate = new Map<string, number>();
+    for (const row of historyReport.balanceHistory.rows) {
+      portfolioHistoryByDate.set(
+        row.effectiveDate,
+        (portfolioHistoryByDate.get(row.effectiveDate) ?? 0) +
+          signedCurrencyInputToCents(row.calculatedBalance),
+      );
+    }
+    const portfolioHistory = [...portfolioHistoryByDate.entries()].map(
+      ([date, balance]) => ({
+        date,
+        balance: centsToDollars(balance),
+      }),
+    );
+    const rows = database.select().from(debtGoals).all();
+    const projectedDate = (goal: typeof debtGoals.$inferSelect): string | null => {
+      if (goal.goalType === 'debt_payoff' && goal.debtId) {
+        return (
+          baseline.debts.find((item) => item.debtId === goal.debtId)
+            ?.projectedPayoffDate ?? null
+        );
+      }
+      if (goal.debtId) return null;
+      return (
+        baseline.monthlySchedule.find(
+          (item) => item.totalProjectedBalanceCents <= goal.targetAmountCents,
+        )?.month ?? null
+      );
+    };
+    const goals = rows
+      .filter((goal) => includeArchived || goal.status !== 'archived')
+      .map((goal) => {
+        const current = goal.debtId
+          ? (currentByDebt.get(goal.debtId) ?? 0)
+          : currentPortfolio;
+        const target = goal.targetAmountCents;
+        const starting = goal.startingBalanceCents;
+        const range = Math.max(1, starting - target);
+        const progress = Math.max(
+          0,
+          Math.min(100, ((starting - current) / range) * 100),
+        );
+        const remaining = Math.max(0, current - target);
+        const projected = projectedDate(goal);
+        const targetStatus: 'ahead' | 'on_track' | 'behind' | 'not_available' =
+          !goal.targetDate || !projected
+            ? 'not_available'
+            : projected <= goal.targetDate
+              ? 'ahead'
+              : 'behind';
+        const status: 'active' | 'completed' | 'archived' =
+          current <= target && goal.status === 'active'
+            ? 'completed'
+            : (goal.status as 'active' | 'completed' | 'archived');
+        return {
+          id: goal.id,
+          name: goal.name,
+          goalType: goal.goalType as 'portfolio_target' | 'debt_payoff' | 'debt_target',
+          debtId: goal.debtId,
+          debtName:
+            records.find((record) => record.debt.id === goal.debtId)?.debt.name ?? null,
+          startingBalance: centsToDollars(starting),
+          currentBalance: centsToDollars(current),
+          targetAmount: centsToDollars(target),
+          progressPercent: `${progress.toFixed(1)}%`,
+          remainingAmount: centsToDollars(remaining),
+          targetDate: goal.targetDate,
+          projectedAchievementDate: projected,
+          status,
+          targetDateStatus: targetStatus,
+          updatedAtUtc: goal.updatedAtUtc,
+          history: goal.debtId
+            ? (historyByDebt.get(goal.debtId) ?? [])
+            : portfolioHistory,
+        };
+      });
+    const thresholds = [25000, 50000, 500000, 400000, 300000, 0]
+      .map((amount) => amount * 100)
+      .filter((amount) => amount < currentPortfolio)
+      .map((amount) => ({
+        label: amount === 0 ? 'Debt free' : `Under ${centsToDollars(amount)}`,
+        targetAmount: centsToDollars(amount),
+      }));
+    return {
+      goals,
+      suggestions: thresholds,
+      currentPortfolioBalance: centsToDollars(currentPortfolio),
+    };
+  };
+
   const service: DebtMaintenanceService = {
     listDebts: (request) => {
       try {
@@ -4167,6 +4312,84 @@ export const createDebtMaintenanceService = ({
           listActiveDebtActivityRecords(database),
           currentFinancialDate(now),
         );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    getDebtGoals: (request) => {
+      try {
+        const parsed = listDebtGoalsRequestSchema.parse(request);
+        return buildDebtGoals(parsed.includeArchived);
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    createDebtGoal: (request) => {
+      try {
+        const parsed = createDebtGoalRequestSchema.parse(request);
+        const targetAmount = convertMoney('targetAmount', parsed.targetAmount);
+        const effectiveDate = currentFinancialDate(now);
+        const records = listActiveDebtActivityRecords(database);
+        const balance = parsed.debtId
+          ? calculateLedgerBalanceThroughDate(database, parsed.debtId, effectiveDate)
+          : records.reduce(
+              (sum, record) =>
+                sum +
+                calculateLedgerBalanceThroughDate(
+                  database,
+                  record.debt.id,
+                  effectiveDate,
+                ),
+              0,
+            );
+        const timestamp = now();
+        database
+          .insert(debtGoals)
+          .values({
+            id: createId(),
+            name: parsed.name,
+            goalType: parsed.goalType,
+            debtId: parsed.debtId,
+            targetAmountCents: parsed.goalType === 'debt_payoff' ? 0 : targetAmount,
+            startingBalanceCents: balance,
+            targetDate: parsed.targetDate,
+            status: 'active',
+            createdAtUtc: timestamp,
+            updatedAtUtc: timestamp,
+          })
+          .run();
+        return buildDebtGoals(true);
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    updateDebtGoal: (request) => {
+      try {
+        const parsed = updateDebtGoalRequestSchema.parse(request);
+        const current = database
+          .select()
+          .from(debtGoals)
+          .where(eq(debtGoals.id, parsed.id))
+          .get();
+        if (!current)
+          throw new ApplicationServiceError('not_found', 'Goal was not found.');
+        if (current.updatedAtUtc !== parsed.expectedUpdatedAtUtc)
+          throw new ApplicationServiceError('conflict', 'Goal was changed elsewhere.');
+        database
+          .update(debtGoals)
+          .set({
+            name: parsed.name,
+            targetAmountCents: convertMoney('targetAmount', parsed.targetAmount),
+            targetDate: parsed.targetDate,
+            status: parsed.status,
+            updatedAtUtc: now(),
+          })
+          .where(eq(debtGoals.id, parsed.id))
+          .run();
+        return buildDebtGoals(true);
       } catch (error) {
         return normalizeError(error);
       }
