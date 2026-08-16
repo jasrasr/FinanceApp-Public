@@ -2408,3 +2408,16 @@ year`.
 - Validation: unit (220), integration (89), typecheck, database integrity, and
   production build passed. The in-sandbox build remains access-restricted, but
   the approved local build path passed. Electron E2E remains to be run.
+
+## Phase 63: Debt-Service Chart and Goals Navigation Correction
+
+- Completion date: 2026-08-16. Application version remains 1.10.0.
+- Corrected the chart boundary so formatted percentage strings and fractional
+  ratio values both normalize to percentage points. Missing income remains a
+  chart gap, and duplicate rounded percentage ticks are suppressed.
+- Promoted Goals / Milestones into the Planning submenu, including active,
+  completed, archived, and suggested milestone sections. Dashboard goal
+  summaries now open the full Goals / Milestones page.
+- Validation: unit (223), integration (91), lint, database integrity,
+  production build, and Electron E2E passed. No ledger or production data was
+  changed.

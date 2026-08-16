@@ -5,7 +5,7 @@ import type {
   GetDebtReportsRequest,
 } from '../../../shared/debt-contracts';
 import { REPORTING_HISTORY_START_DATE } from '../../../shared/reporting-constants';
-import { buildChartScale } from './chart-helpers';
+import { buildChartScale, normalizeCashFlowChartValue } from './chart-helpers';
 import { formatDollarString } from './display-format';
 
 type Preset = 'ytd' | 'prior-year' | 'last-12-months' | 'all-time' | 'custom';
@@ -113,7 +113,8 @@ const Chart = ({
             : [{ key: 'totalPayments', label: 'Total payments', color: '#0f766e' }];
   const rowValue = (row: ChartRow, key: string): number | null => {
     const raw = (row as unknown as Record<string, string | null | undefined>)[key];
-    return raw === null || raw === undefined ? null : value(raw);
+    if (raw === null || raw === undefined) return null;
+    return kind === 'ratio' ? normalizeCashFlowChartValue(raw, true) : value(raw);
   };
   const chartValues =
     kind === 'mix'
@@ -278,26 +279,31 @@ const Chart = ({
           role="img"
           viewBox={`0 0 ${width} ${height}`}
         >
-          {scale.tickValues.map((tick, index) => (
-            <g key={tick}>
-              <line
-                stroke="#e2e8f0"
-                x1={left}
-                x2={width - right}
-                y1={yFor(tick)}
-                y2={yFor(tick)}
-              />
-              <text
-                fill="#64748b"
-                fontSize="13"
-                textAnchor="end"
-                x={left - 10}
-                y={yFor(tick) + 4}
-              >
-                {scale.formattedLabels[index]}
-              </text>
-            </g>
-          ))}
+          {scale.tickValues.map((tick, index) => {
+            const label = scale.formattedLabels[index];
+            const previousLabels = scale.formattedLabels.slice(0, index);
+            if (label === undefined || previousLabels.includes(label)) return null;
+            return (
+              <g key={tick}>
+                <line
+                  stroke="#e2e8f0"
+                  x1={left}
+                  x2={width - right}
+                  y1={yFor(tick)}
+                  y2={yFor(tick)}
+                />
+                <text
+                  fill="#64748b"
+                  fontSize="13"
+                  textAnchor="end"
+                  x={left - 10}
+                  y={yFor(tick) + 4}
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
           {kind === 'mix'
             ? visibleRows.map((row, index) => {
                 const barWidth = Math.max(

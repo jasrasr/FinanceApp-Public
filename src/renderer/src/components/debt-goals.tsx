@@ -115,87 +115,96 @@ export const DebtGoals = ({
           />
         </label>
       </section>
-      <section className="grid gap-4 md:grid-cols-2">
-        {goals.goals.map((goal) => (
-          <article
-            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-            key={goal.id}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="font-semibold">{goal.name}</h2>
-                <p className="text-sm text-slate-600">
-                  {goal.debtName ?? 'Entire portfolio'} · {goal.status}
-                </p>
-              </div>
-              <strong>{goal.progressPercent}</strong>
+      {(['active', 'completed', 'archived'] as const).map((status) => {
+        const statusGoals = goals.goals.filter((goal) => goal.status === status);
+        if (statusGoals.length === 0) return null;
+        return (
+          <section className="space-y-3" key={status}>
+            <h2 className="text-lg font-semibold capitalize">{status} goals</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              {statusGoals.map((goal) => (
+                <article
+                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+                  key={goal.id}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="font-semibold">{goal.name}</h2>
+                      <p className="text-sm text-slate-600">
+                        {goal.debtName ?? 'Entire portfolio'} · {goal.status}
+                      </p>
+                    </div>
+                    <strong>{goal.progressPercent}</strong>
+                  </div>
+                  <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full bg-teal-600"
+                      style={{ width: goal.progressPercent }}
+                    />
+                  </div>
+                  <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <dt className="text-slate-500">Current</dt>
+                      <dd>{formatDollarString(goal.currentBalance)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-500">Remaining</dt>
+                      <dd>{formatDollarString(goal.remainingAmount)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-500">Target</dt>
+                      <dd>{formatDollarString(goal.targetAmount)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-500">Projected</dt>
+                      <dd>{goal.projectedAchievementDate ?? 'Not available'}</dd>
+                    </div>
+                  </dl>
+                  {goal.history.length > 1 ? (
+                    <svg
+                      aria-label={`${goal.name} progress history`}
+                      className="mt-5 h-32 w-full"
+                      role="img"
+                      viewBox="0 0 800 160"
+                      preserveAspectRatio="none"
+                    >
+                      <polyline
+                        fill="none"
+                        stroke="#0f766e"
+                        strokeWidth="4"
+                        points={goal.history
+                          .map(
+                            (point, index) =>
+                              `${(index / Math.max(1, goal.history.length - 1)) * 800},${160 - Math.min(150, (Number(point.balance) / Math.max(1, Number(goal.startingBalance))) * 150)}`,
+                          )
+                          .join(' ')}
+                      />
+                    </svg>
+                  ) : null}
+                  {goal.status === 'active' ? (
+                    <button
+                      className="mt-4 text-sm font-semibold text-slate-700"
+                      type="button"
+                      onClick={() =>
+                        onUpdate({
+                          id: goal.id,
+                          expectedUpdatedAtUtc: goal.updatedAtUtc,
+                          name: goal.name,
+                          targetAmount: goal.targetAmount,
+                          targetDate: goal.targetDate,
+                          status: 'archived',
+                        })
+                      }
+                    >
+                      Archive
+                    </button>
+                  ) : null}
+                </article>
+              ))}
             </div>
-            <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
-              <div
-                className="h-full bg-teal-600"
-                style={{ width: goal.progressPercent }}
-              />
-            </div>
-            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <dt className="text-slate-500">Current</dt>
-                <dd>{formatDollarString(goal.currentBalance)}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Remaining</dt>
-                <dd>{formatDollarString(goal.remainingAmount)}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Target</dt>
-                <dd>{formatDollarString(goal.targetAmount)}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Projected</dt>
-                <dd>{goal.projectedAchievementDate ?? 'Not available'}</dd>
-              </div>
-            </dl>
-            {goal.history.length > 1 ? (
-              <svg
-                aria-label={`${goal.name} progress history`}
-                className="mt-5 h-32 w-full"
-                role="img"
-                viewBox="0 0 800 160"
-                preserveAspectRatio="none"
-              >
-                <polyline
-                  fill="none"
-                  stroke="#0f766e"
-                  strokeWidth="4"
-                  points={goal.history
-                    .map(
-                      (point, index) =>
-                        `${(index / Math.max(1, goal.history.length - 1)) * 800},${160 - Math.min(150, (Number(point.balance) / Math.max(1, Number(goal.startingBalance))) * 150)}`,
-                    )
-                    .join(' ')}
-                />
-              </svg>
-            ) : null}
-            {goal.status === 'active' ? (
-              <button
-                className="mt-4 text-sm font-semibold text-slate-700"
-                type="button"
-                onClick={() =>
-                  onUpdate({
-                    id: goal.id,
-                    expectedUpdatedAtUtc: goal.updatedAtUtc,
-                    name: goal.name,
-                    targetAmount: goal.targetAmount,
-                    targetDate: goal.targetDate,
-                    status: 'archived',
-                  })
-                }
-              >
-                Archive
-              </button>
-            ) : null}
-          </article>
-        ))}
-      </section>
+          </section>
+        );
+      })}
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="font-semibold">Suggested milestones</h2>
         <div className="mt-3 flex flex-wrap gap-2">

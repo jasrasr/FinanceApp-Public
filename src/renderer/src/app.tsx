@@ -518,7 +518,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       bridge.getMilestones!({ scenarioId }),
     );
     const goalsResult = await invokeBridge(() =>
-      bridge.getDebtGoals!({ includeArchived: false }),
+      bridge.getDebtGoals!({ includeArchived: true }),
     );
     if (scenariosResult.ok) setPayoffScenarios(scenariosResult.value);
     else setError(scenariosResult.error);
@@ -943,7 +943,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showMilestones = (): void => {
-    setReportsExpanded(true);
+    setPlanningExpanded(true);
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
         {
@@ -1292,13 +1292,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
         )
       )
         setActivityExpanded(true);
-      if (['refinance-analysis', 'allocation', 'payoff-planner'].includes(nextView))
+      if (
+        ['refinance-analysis', 'allocation', 'payoff-planner', 'milestones'].includes(
+          nextView,
+        )
+      )
         setPlanningExpanded(true);
       if (
         [
           'reports',
           'payoff',
-          'milestones',
           'debt-outlook',
           'interest-analysis',
           'data-health',
@@ -1953,7 +1956,12 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 aria-controls="planning-navigation"
                 aria-expanded={planningExpanded}
                 className={navigationButtonClassName(
-                  ['refinance-analysis', 'allocation', 'payoff-planner'].includes(view),
+                  [
+                    'refinance-analysis',
+                    'allocation',
+                    'payoff-planner',
+                    'milestones',
+                  ].includes(view),
                 )}
                 onClick={() => setPlanningExpanded((expanded) => !expanded)}
                 type="button"
@@ -1966,6 +1974,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   className="ml-3 mt-1 space-y-1 border-l border-slate-300 pl-2"
                   id="planning-navigation"
                 >
+                  <li>
+                    <button
+                      aria-current={view === 'milestones' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'milestones')}
+                      onClick={showMilestones}
+                      type="button"
+                    >
+                      Goals / Milestones
+                    </button>
+                  </li>
                   <li>
                     <button
                       aria-current={view === 'refinance-analysis' ? 'page' : undefined}
@@ -2009,7 +2027,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                   [
                     'reports',
                     'payoff',
-                    'milestones',
                     'debt-outlook',
                     'interest-analysis',
                     'data-health',
@@ -2035,16 +2052,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                       type="button"
                     >
                       Reports
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      aria-current={view === 'milestones' ? 'page' : undefined}
-                      className={navigationButtonClassName(view === 'milestones')}
-                      onClick={showMilestones}
-                      type="button"
-                    >
-                      Milestones
                     </button>
                   </li>
                   <li>
@@ -2197,6 +2204,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               onSelectDebt={(id) => void selectDebt(id)}
               onShowDebts={showList}
               onShowEscrowDetail={showEscrowDetail}
+              onShowGoals={showMilestones}
             />
           ) : null}
 

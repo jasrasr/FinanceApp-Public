@@ -36,6 +36,16 @@ const debtSeriesColors = [
 export const debtSeriesColor = (index: number): string =>
   debtSeriesColors[index % debtSeriesColors.length] ?? '#1d4ed8';
 
+export const normalizeCashFlowChartValue = (
+  raw: string | null | undefined,
+  ratio: boolean,
+): number | null => {
+  if (raw === null || raw === undefined) return null;
+  const numeric = Number(raw.replace('%', '').trim());
+  if (!Number.isFinite(numeric)) return null;
+  return ratio && !raw.includes('%') && numeric <= 1 ? numeric * 100 : numeric;
+};
+
 export interface PayoffChartDateSeries {
   readonly monthlySchedule: readonly { readonly month: string }[];
 }

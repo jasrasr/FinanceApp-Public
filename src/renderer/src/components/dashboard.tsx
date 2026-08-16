@@ -9,6 +9,7 @@ export interface DashboardProps {
   readonly onSelectDebt: (id: string) => void;
   readonly onShowDebts: () => void;
   readonly onShowEscrowDetail: () => void;
+  readonly onShowGoals: () => void;
   readonly goals?: DebtGoalsDto | null;
 }
 
@@ -87,6 +88,7 @@ export const Dashboard = ({
   onSelectDebt,
   onShowDebts,
   onShowEscrowDetail,
+  onShowGoals,
   goals,
 }: DashboardProps): React.JSX.Element => {
   const [showCreditCards, setShowCreditCards] = useState(false);
@@ -232,9 +234,11 @@ export const Dashboard = ({
             ? (() => {
                 const goal = goals.goals.find((item) => item.status === 'active')!;
                 return (
-                  <section
+                  <button
                     aria-labelledby="dashboard-goals-heading"
-                    className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+                    className="mt-6 w-full rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm hover:border-teal-300"
+                    onClick={onShowGoals}
+                    type="button"
                   >
                     <h3 className="font-semibold" id="dashboard-goals-heading">
                       Goals / milestones
@@ -247,7 +251,7 @@ export const Dashboard = ({
                         Projected {goal.projectedAchievementDate ?? 'not available'}
                       </span>
                     </div>
-                  </section>
+                  </button>
                 );
               })()
             : null}

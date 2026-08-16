@@ -1567,6 +1567,58 @@ describe('debt goals', () => {
   });
 });
 
+describe('debt-service percentage chart inputs', () => {
+  it('reports 10000 payments divided by 15000 net income as 66.7%', () => {
+    const created = service.createDebt(validRequest('Generated Percentage Debt'));
+    service.createDebtTransaction({
+      debtId: created.id,
+      transaction: {
+        transactionType: 'payment',
+        effectiveDate: '2026-02-15',
+        postingDate: '2026-02-16',
+        status: 'posted',
+        totalAmount: '10000.00',
+        description: 'Generated percentage test payment.',
+        sourceType: 'manual',
+        sourceReference: 'PERCENT-10000',
+        allocations: {
+          principal: '10000.00',
+          interest: null,
+          escrow: null,
+          fee: null,
+          penalty: null,
+          extraPrincipal: null,
+          other: null,
+        },
+      },
+    });
+    const source = service.createIncomeSource({
+      name: 'Generated Percentage Employer',
+    });
+    service.createIncomeTransaction({
+      receivedDate: '2026-02-01',
+      incomeType: 'regular_paycheck',
+      sourceId: source.id,
+      notes: null,
+      grossAmount: null,
+      netAmount: '15000.00',
+    });
+    const row = service.getDebtReports({
+      startDate: '2026-02-01',
+      endDate: '2026-02-28',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    }).cashFlowAnalysis.incomeRows[0];
+    expect(row).toMatchObject({
+      netIncome: '15000.00',
+      debtPayments: '10000.00',
+      debtPaymentsPercentNet: '66.7%',
+    });
+  });
+});
+
 describe('debt outlook', () => {
   it('returns twelve scheduled months and excludes debts without usable scheduling', () => {
     const scheduled = validRequest('Generated Outlook Scheduled Debt');
