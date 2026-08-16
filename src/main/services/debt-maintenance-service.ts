@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { and, asc, eq } from 'drizzle-orm';
 import { ZodError } from 'zod';
 import type {
   AddDebtTermRequest,
@@ -34,6 +35,11 @@ import type {
   GetInterestAnalysisRequest,
   GetRefinanceAnalysisRequest,
   GetDebtReportsRequest,
+  ListIncomeRecordsRequest,
+  CreateIncomeRecordRequest,
+  UpdateIncomeRecordRequest,
+  ArchiveIncomeRecordRequest,
+  IncomeRecordDto,
   GetDebtRequest,
   GetPayoffScenarioRequest,
   ListDebtsRequest,
@@ -72,6 +78,10 @@ import {
   getRefinanceAnalysisRequestSchema,
   acceptCurrentBalanceRequestSchema,
   getDebtReportsRequestSchema,
+  listIncomeRecordsRequestSchema,
+  createIncomeRecordRequestSchema,
+  updateIncomeRecordRequestSchema,
+  archiveIncomeRecordRequestSchema,
   getDebtRequestSchema,
   getPayoffScenarioRequestSchema,
   listPayoffScenariosRequestSchema,
@@ -89,6 +99,7 @@ import {
 import { ALLOCATION_TYPES } from '../../shared/debt-options';
 import { REPORTING_HISTORY_START_DATE } from '../../shared/reporting-constants';
 import type { AppDatabase } from '../database/connection';
+import { incomeRecords } from '../database/schema';
 import {
   calculateLedgerBalanceThroughDate,
   calculateEscrowBalanceThroughDate,
@@ -185,6 +196,10 @@ export interface DebtMaintenanceService {
   getRefinanceAnalysis?(request: GetRefinanceAnalysisRequest): RefinanceAnalysisDto;
   acceptCurrentBalance?(request: AcceptCurrentBalanceRequest): DebtDetailDto;
   getDebtReports(request: GetDebtReportsRequest): DebtReportsDto;
+  listIncomeRecords(request: ListIncomeRecordsRequest): readonly IncomeRecordDto[];
+  createIncomeRecord(request: CreateIncomeRecordRequest): IncomeRecordDto;
+  updateIncomeRecord(request: UpdateIncomeRecordRequest): IncomeRecordDto;
+  archiveIncomeRecord(request: ArchiveIncomeRecordRequest): IncomeRecordDto;
   listPayoffScenarios(
     request: ListPayoffScenariosRequest,
   ): readonly PayoffScenarioDto[];
@@ -2507,6 +2522,11 @@ const cashFlowRowsFromRollforward = (
     fees: row.fees ?? '0.00',
     extraPrincipal: row.extraPrincipal ?? null,
     paymentCount: row.paymentCount ?? 0,
+    netDebtReduction: centsToDollars(
+      signedCurrencyInputToCents(row.principalReduction) -
+        signedCurrencyInputToCents(row.purchases ?? '0.00') -
+        signedCurrencyInputToCents(row.borrowings),
+    ),
     beginningBalance: row.beginningBalance,
     endingBalance: row.endingBalance,
   }));
@@ -2522,6 +2542,73 @@ const createCashFlowAnalysis = (
 ): DebtReportsDto['cashFlowAnalysis'] => {
   const rollforwardRows = createRollforward(records, startDate, endDate, 'monthly');
   const rows = cashFlowRowsFromRollforward(rollforwardRows);
+  const incomeHistory = database
+    .select()
+    .from(incomeRecords)
+    .orderBy(asc(incomeRecords.effectiveDate), asc(incomeRecords.createdAtUtc))
+    .all()
+    .filter((record) => record.archivedAtUtc === null);
+  const ratio = (amount: number, income: number | null): string | null =>
+    income === null || income <= 0 ? null : `${((amount / income) * 100).toFixed(1)}%`;
+  const incomeRows = rows.map((row) => {
+    const periodEndDate = periodEnd(row.period, 'monthly');
+    const income = incomeHistory
+      .filter((record) => record.effectiveDate <= periodEndDate)
+      .at(-1);
+    const grossIncome = income ? income.grossMonthlyIncomeCents : null;
+    const netIncome = income
+      ? income.netMonthlyIncomeCents + income.otherRecurringMonthlyIncomeCents
+      : null;
+    const payments = Number(row.totalPayments);
+    const paidPrincipal = Number(row.principal);
+    const paidInterest = Number(row.interest);
+    const reduction = Number(row.netDebtReduction);
+    return {
+      period: row.period,
+      grossIncome: grossIncome === null ? null : centsToDollars(grossIncome),
+      netIncome: netIncome === null ? null : centsToDollars(netIncome),
+      debtPayments: row.totalPayments,
+      principalPaid: row.principal,
+      interestPaid: row.interest,
+      netDebtReduction: row.netDebtReduction,
+      debtPaymentsPercentNet: ratio(
+        payments,
+        netIncome === null ? null : netIncome / 100,
+      ),
+      principalPercentNet: ratio(
+        paidPrincipal,
+        netIncome === null ? null : netIncome / 100,
+      ),
+      interestPercentNet: ratio(
+        paidInterest,
+        netIncome === null ? null : netIncome / 100,
+      ),
+      netDebtReductionPercentNet: ratio(
+        reduction,
+        netIncome === null ? null : netIncome / 100,
+      ),
+      debtPaymentsPercentGross: ratio(
+        payments,
+        grossIncome === null ? null : grossIncome / 100,
+      ),
+      principalPercentGross: ratio(
+        paidPrincipal,
+        grossIncome === null ? null : grossIncome / 100,
+      ),
+      interestPercentGross: ratio(
+        paidInterest,
+        grossIncome === null ? null : grossIncome / 100,
+      ),
+      netDebtReductionPercentGross: ratio(
+        reduction,
+        grossIncome === null ? null : grossIncome / 100,
+      ),
+      remainingNetIncome:
+        netIncome === null
+          ? null
+          : centsToDollars(netIncome - Math.round(payments * 100)),
+    };
+  });
   const totalPayments = rows.reduce((sum, row) => sum + Number(row.totalPayments), 0);
   const debts = records.map((record) => {
     const debtRows = cashFlowRowsFromRollforward(
@@ -2575,9 +2662,12 @@ const createCashFlowAnalysis = (
         ...assumptions,
         'Debt payments include posted payment transactions only; purchases, borrowing, and transfers are excluded.',
         'Payment totals are displayed as positive cash outflow while ledger payment signs remain unchanged.',
+        'Other recurring monthly income is treated as available net income for burden ratios; gross-income ratios are not calculated when its tax basis is unknown.',
       ],
     ),
     rows,
+    incomeRows,
+    incomeDataAvailable: incomeRows.some((row) => row.netIncome !== null),
     debts,
     currentScheduledMonthlyPayment:
       currentScheduledMonthlyPayment === 0
@@ -3904,6 +3994,30 @@ const normalizeError = (error: unknown): never => {
   throw error;
 };
 
+const mapIncomeRecord = (
+  record: typeof incomeRecords.$inferSelect,
+): IncomeRecordDto => ({
+  id: record.id,
+  effectiveDate: record.effectiveDate,
+  grossMonthlyIncome: centsToDollars(record.grossMonthlyIncomeCents),
+  netMonthlyIncome: centsToDollars(record.netMonthlyIncomeCents),
+  otherRecurringMonthlyIncome: centsToDollars(record.otherRecurringMonthlyIncomeCents),
+  createdAtUtc: record.createdAtUtc,
+  updatedAtUtc: record.updatedAtUtc,
+  archivedAtUtc: record.archivedAtUtc,
+});
+
+const incomeMoneyCents = (value: string, field: string): number => {
+  try {
+    return currencyInputToCents(value);
+  } catch {
+    throw new ApplicationServiceError(
+      'validation',
+      `${field} must be a non-negative amount.`,
+    );
+  }
+};
+
 export const createDebtMaintenanceService = ({
   database,
   createId = randomUUID,
@@ -4174,6 +4288,158 @@ export const createDebtMaintenanceService = ({
     getDebtReports: (request) => {
       try {
         return createDebtReports(database, request, now);
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    listIncomeRecords: (request) => {
+      try {
+        const parsed = listIncomeRecordsRequestSchema.parse(request);
+        return database
+          .select()
+          .from(incomeRecords)
+          .orderBy(asc(incomeRecords.effectiveDate), asc(incomeRecords.createdAtUtc))
+          .all()
+          .filter((record) => parsed.includeArchived || record.archivedAtUtc === null)
+          .map(mapIncomeRecord);
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    createIncomeRecord: (request) => {
+      try {
+        const parsed = createIncomeRecordRequestSchema.parse(request);
+        const timestamp = now();
+        const record = {
+          id: createId(),
+          effectiveDate: parsed.effectiveDate,
+          grossMonthlyIncomeCents: incomeMoneyCents(
+            parsed.grossMonthlyIncome,
+            'Gross monthly income',
+          ),
+          netMonthlyIncomeCents: incomeMoneyCents(
+            parsed.netMonthlyIncome,
+            'Net monthly income',
+          ),
+          otherRecurringMonthlyIncomeCents: parsed.otherRecurringMonthlyIncome
+            ? incomeMoneyCents(
+                parsed.otherRecurringMonthlyIncome,
+                'Other recurring monthly income',
+              )
+            : 0,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+          archivedAtUtc: null,
+        };
+        database.insert(incomeRecords).values(record).run();
+        return mapIncomeRecord(
+          database
+            .select()
+            .from(incomeRecords)
+            .where(eq(incomeRecords.id, record.id))
+            .get()!,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    updateIncomeRecord: (request) => {
+      try {
+        const parsed = updateIncomeRecordRequestSchema.parse(request);
+        const existing = database
+          .select()
+          .from(incomeRecords)
+          .where(eq(incomeRecords.id, parsed.id))
+          .get();
+        if (!existing)
+          throw new ApplicationServiceError(
+            'not_found',
+            'Income record was not found.',
+          );
+        if (existing.updatedAtUtc !== parsed.expectedUpdatedAtUtc)
+          throw new ApplicationServiceError(
+            'conflict',
+            'Income record changed before it was updated.',
+          );
+        const timestamp = now();
+        database
+          .update(incomeRecords)
+          .set({
+            effectiveDate: parsed.effectiveDate,
+            grossMonthlyIncomeCents: incomeMoneyCents(
+              parsed.grossMonthlyIncome,
+              'Gross monthly income',
+            ),
+            netMonthlyIncomeCents: incomeMoneyCents(
+              parsed.netMonthlyIncome,
+              'Net monthly income',
+            ),
+            otherRecurringMonthlyIncomeCents: parsed.otherRecurringMonthlyIncome
+              ? incomeMoneyCents(
+                  parsed.otherRecurringMonthlyIncome,
+                  'Other recurring monthly income',
+                )
+              : 0,
+            updatedAtUtc: timestamp,
+          })
+          .where(
+            and(
+              eq(incomeRecords.id, parsed.id),
+              eq(incomeRecords.updatedAtUtc, parsed.expectedUpdatedAtUtc),
+            ),
+          )
+          .run();
+        return mapIncomeRecord(
+          database
+            .select()
+            .from(incomeRecords)
+            .where(eq(incomeRecords.id, parsed.id))
+            .get()!,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    archiveIncomeRecord: (request) => {
+      try {
+        const parsed = archiveIncomeRecordRequestSchema.parse(request);
+        const existing = database
+          .select()
+          .from(incomeRecords)
+          .where(eq(incomeRecords.id, parsed.id))
+          .get();
+        if (!existing)
+          throw new ApplicationServiceError(
+            'not_found',
+            'Income record was not found.',
+          );
+        if (existing.updatedAtUtc !== parsed.expectedUpdatedAtUtc)
+          throw new ApplicationServiceError(
+            'conflict',
+            'Income record changed before it was archived.',
+          );
+        const timestamp = now();
+        database
+          .update(incomeRecords)
+          .set({ archivedAtUtc: timestamp, updatedAtUtc: timestamp })
+          .where(
+            and(
+              eq(incomeRecords.id, parsed.id),
+              eq(incomeRecords.updatedAtUtc, parsed.expectedUpdatedAtUtc),
+            ),
+          )
+          .run();
+        return mapIncomeRecord(
+          database
+            .select()
+            .from(incomeRecords)
+            .where(eq(incomeRecords.id, parsed.id))
+            .get()!,
+        );
       } catch (error) {
         return normalizeError(error);
       }

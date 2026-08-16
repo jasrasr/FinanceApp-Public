@@ -312,7 +312,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     ).toBeVisible();
     await expect(window.getByText('Savings vs baseline')).toBeVisible();
 
-    await window.getByRole('button', { name: 'Reports' }).click();
+    await window.getByRole('button', { name: 'Reports', exact: true }).click();
     await expect(window.getByRole('heading', { name: 'Debt reporting' })).toBeVisible();
     await expect(window.getByLabel('Date preset')).toBeVisible();
     await window.getByLabel('Date preset').selectOption('prior_year');

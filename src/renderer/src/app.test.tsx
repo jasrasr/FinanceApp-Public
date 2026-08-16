@@ -83,6 +83,10 @@ const createBridge = (): AppBridge => ({
     },
   })),
   getDebtReports: vi.fn(async () => ({ ok: true as const, value: sampleReports })),
+  listIncomeRecords: vi.fn(async () => ({ ok: true as const, value: [] })),
+  createIncomeRecord: vi.fn(),
+  updateIncomeRecord: vi.fn(),
+  archiveIncomeRecord: vi.fn(),
   createPayoffScenario: vi.fn(async () => ({
     ok: true as const,
     value: samplePayoffScenario,
@@ -346,10 +350,13 @@ const sampleReports: DebtReportsDto = {
         fees: '0.00',
         extraPrincipal: null,
         paymentCount: 0,
+        netDebtReduction: '0.00',
         beginningBalance: '0.00',
         endingBalance: '0.00',
       },
     ],
+    incomeRows: [],
+    incomeDataAvailable: false,
     debts: [],
     currentScheduledMonthlyPayment: null,
     extraPrincipalAvailable: false,
@@ -2574,7 +2581,7 @@ describe('debt maintenance application', () => {
 
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     await waitFor(() =>
-      expect(within(navigation).getAllByRole('button')).toHaveLength(15),
+      expect(within(navigation).getAllByRole('button')).toHaveLength(18),
     );
     expect(
       within(navigation)
@@ -2583,17 +2590,20 @@ describe('debt maintenance application', () => {
     ).toEqual([
       'Dashboard',
       'Debts',
-      'Debt Payoff Scenario Planner',
+      'Activity ▾',
       'Debt Progress / Trends',
       'Credit Card Activity',
       'Cash Flow / Debt Burden',
+      'Planning ▾',
+      'Refinance analysis',
+      'Extra Payment / What-If Analysis',
+      'Debt Payoff Scenario Planner',
+      'Reports menu ▾',
+      'Reports',
       'Milestones',
       'Debt outlook',
       'Interest analysis',
-      'Refinance analysis',
-      'Extra Payment / What-If Analysis',
       'Payoff scenarios',
-      'Reports',
       'Data health',
       'Data management',
     ]);

@@ -61,6 +61,12 @@ import {
   setDataLocationsRequestSchema,
   openBackupFolderRequestSchema,
   importBackupFileRequestSchema,
+  listIncomeRecordsRequestSchema,
+  createIncomeRecordRequestSchema,
+  updateIncomeRecordRequestSchema,
+  archiveIncomeRecordRequestSchema,
+  incomeRecordListResultSchema,
+  incomeRecordResultSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
   voidDebtTransactionRequestSchema,
@@ -108,6 +114,10 @@ import {
   type UpdateDebtRequest,
   type VoidBalanceReconciliationRequest,
   type VoidDebtTransactionRequest,
+  type ListIncomeRecordsRequest,
+  type CreateIncomeRecordRequest,
+  type UpdateIncomeRecordRequest,
+  type ArchiveIncomeRecordRequest,
 } from '../shared/debt-contracts';
 import { DEBT_IPC_CHANNELS } from '../shared/debt-ipc';
 import { appMetadata } from './app-metadata';
@@ -247,6 +257,34 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.reports,
           getDebtReportsRequestSchema.parse(request),
+        ),
+      ),
+    listIncomeRecords: async (request: ListIncomeRecordsRequest) =>
+      incomeRecordListResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.listIncomeRecords,
+          listIncomeRecordsRequestSchema.parse(request),
+        ),
+      ),
+    createIncomeRecord: async (request: CreateIncomeRecordRequest) =>
+      incomeRecordResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.createIncomeRecord,
+          createIncomeRecordRequestSchema.parse(request),
+        ),
+      ),
+    updateIncomeRecord: async (request: UpdateIncomeRecordRequest) =>
+      incomeRecordResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.updateIncomeRecord,
+          updateIncomeRecordRequestSchema.parse(request),
+        ),
+      ),
+    archiveIncomeRecord: async (request: ArchiveIncomeRecordRequest) =>
+      incomeRecordResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.archiveIncomeRecord,
+          archiveIncomeRecordRequestSchema.parse(request),
         ),
       ),
     createPayoffScenario: async (request: CreatePayoffScenarioRequest) =>

@@ -59,6 +59,11 @@ import {
   setDataLocationsRequestSchema,
   openBackupFolderRequestSchema,
   importBackupFileRequestSchema,
+  listIncomeRecordsRequestSchema,
+  createIncomeRecordRequestSchema,
+  updateIncomeRecordRequestSchema,
+  archiveIncomeRecordRequestSchema,
+  incomeRecordDtoSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
   type ApplicationError,
@@ -371,6 +376,38 @@ export const registerDebtIpcHandlers = (
     debtReportsDtoSchema,
     isTrustedSender,
     (request) => service.getDebtReports(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.listIncomeRecords,
+    listIncomeRecordsRequestSchema,
+    incomeRecordDtoSchema.array(),
+    isTrustedSender,
+    (request) => service.listIncomeRecords(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.createIncomeRecord,
+    createIncomeRecordRequestSchema,
+    incomeRecordDtoSchema,
+    isTrustedSender,
+    (request) => service.createIncomeRecord(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.updateIncomeRecord,
+    updateIncomeRecordRequestSchema,
+    incomeRecordDtoSchema,
+    isTrustedSender,
+    (request) => service.updateIncomeRecord(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.archiveIncomeRecord,
+    archiveIncomeRecordRequestSchema,
+    incomeRecordDtoSchema,
+    isTrustedSender,
+    (request) => service.archiveIncomeRecord(request),
   );
   registerHandler(
     ipcMain,

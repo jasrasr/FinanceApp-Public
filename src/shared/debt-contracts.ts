@@ -392,6 +392,29 @@ export const getDebtReportsRequestSchema = z
     }
   });
 
+const incomeRecordInputSchema = z
+  .object({
+    effectiveDate: financialDateInputSchema,
+    grossMonthlyIncome: moneyInputSchema,
+    netMonthlyIncome: moneyInputSchema,
+    otherRecurringMonthlyIncome: optionalMoneyInputSchema,
+  })
+  .strict();
+
+export const listIncomeRecordsRequestSchema = z
+  .object({ includeArchived: z.boolean() })
+  .strict();
+
+export const createIncomeRecordRequestSchema = incomeRecordInputSchema;
+
+export const updateIncomeRecordRequestSchema = incomeRecordInputSchema
+  .extend({ id: uuidSchema, expectedUpdatedAtUtc: utcTimestampSchema })
+  .strict();
+
+export const archiveIncomeRecordRequestSchema = z
+  .object({ id: uuidSchema, expectedUpdatedAtUtc: utcTimestampSchema })
+  .strict();
+
 const payoffStrategySchema = z.enum(PAYOFF_STRATEGIES);
 
 export const createPayoffScenarioRequestSchema = z
@@ -1136,11 +1159,35 @@ export const debtReportsDtoSchema = z
               fees: z.string(),
               extraPrincipal: z.string().nullable(),
               paymentCount: z.number().int().nonnegative(),
+              netDebtReduction: z.string(),
               beginningBalance: z.string(),
               endingBalance: z.string(),
             })
             .strict(),
         ),
+        incomeRows: z.array(
+          z
+            .object({
+              period: z.string(),
+              grossIncome: z.string().nullable(),
+              netIncome: z.string().nullable(),
+              debtPayments: z.string(),
+              principalPaid: z.string(),
+              interestPaid: z.string(),
+              netDebtReduction: z.string(),
+              debtPaymentsPercentNet: z.string().nullable(),
+              principalPercentNet: z.string().nullable(),
+              interestPercentNet: z.string().nullable(),
+              netDebtReductionPercentNet: z.string().nullable(),
+              debtPaymentsPercentGross: z.string().nullable(),
+              principalPercentGross: z.string().nullable(),
+              interestPercentGross: z.string().nullable(),
+              netDebtReductionPercentGross: z.string().nullable(),
+              remainingNetIncome: z.string().nullable(),
+            })
+            .strict(),
+        ),
+        incomeDataAvailable: z.boolean(),
         debts: z.array(
           z
             .object({
@@ -1197,6 +1244,19 @@ export const debtReportsDtoSchema = z
     reconciliationAndDataQuality: z
       .object({ basis: reportBasisDtoSchema, rows: z.array(exceptionRowDtoSchema) })
       .strict(),
+  })
+  .strict();
+
+export const incomeRecordDtoSchema = z
+  .object({
+    id: uuidSchema,
+    effectiveDate: financialDateInputSchema,
+    grossMonthlyIncome: z.string(),
+    netMonthlyIncome: z.string(),
+    otherRecurringMonthlyIncome: z.string(),
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+    archivedAtUtc: utcTimestampSchema.nullable(),
   })
   .strict();
 
@@ -1487,6 +1547,10 @@ export const dataManagementStatusResultSchema = applicationResultSchema(
 );
 export const dataExportResultSchema = applicationResultSchema(dataExportDtoSchema);
 export const debtReportsResultSchema = applicationResultSchema(debtReportsDtoSchema);
+export const incomeRecordListResultSchema = applicationResultSchema(
+  z.array(incomeRecordDtoSchema),
+);
+export const incomeRecordResultSchema = applicationResultSchema(incomeRecordDtoSchema);
 export const milestonesResultSchema = applicationResultSchema(milestonesDtoSchema);
 const debtOutlookMonthDtoSchema = z
   .object({
@@ -1725,6 +1789,12 @@ export type ChooseDataFolderRequest = z.infer<typeof chooseDataFolderRequestSche
 export type ChooseBackupFileRequest = z.infer<typeof chooseBackupFileRequestSchema>;
 export type ImportBackupFileRequest = z.infer<typeof importBackupFileRequestSchema>;
 export type GetDebtReportsRequest = z.infer<typeof getDebtReportsRequestSchema>;
+export type ListIncomeRecordsRequest = z.infer<typeof listIncomeRecordsRequestSchema>;
+export type CreateIncomeRecordRequest = z.infer<typeof createIncomeRecordRequestSchema>;
+export type UpdateIncomeRecordRequest = z.infer<typeof updateIncomeRecordRequestSchema>;
+export type ArchiveIncomeRecordRequest = z.infer<
+  typeof archiveIncomeRecordRequestSchema
+>;
 export type CreatePayoffScenarioRequest = z.infer<
   typeof createPayoffScenarioRequestSchema
 >;
@@ -1779,6 +1849,7 @@ export type RefinanceAnalysisDto = z.infer<typeof refinanceAnalysisDtoSchema>;
 export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSchema>;
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;
+export type IncomeRecordDto = z.infer<typeof incomeRecordDtoSchema>;
 export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
 export type PayoffScenarioDto = z.infer<typeof payoffScenarioDtoSchema>;
 export type PayoffBaselineDto = z.infer<typeof payoffBaselineDtoSchema>;

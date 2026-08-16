@@ -10,8 +10,9 @@ permissions:
 
 jobs:
   package:
-    # The activation commit is marked [skip release] so enabling this workflow
-    # does not create an additional patch release.
+    # The activation/setup commit is marked [skip release] so enabling this
+    # workflow does not create an additional release. Normal commits use the
+    # conventional-commit-aware release:version script.
     if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip release]')
     runs-on: windows-latest
     steps:

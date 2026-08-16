@@ -574,6 +574,72 @@ describe('debt creation', () => {
     expect(latest.calculatedEscrowBalance).toBe('125.00');
   });
 
+  it('uses effective-dated income assumptions without mutating ledger activity', () => {
+    const created = service.createDebt(validRequest('Generated Income Analysis Debt'));
+    const beforeTransactions = context.database.select().from(debtTransactions).all();
+    const beforeBalance = service.getDebt({ id: created.id }).currentBalance;
+
+    service.createIncomeRecord({
+      effectiveDate: '2026-01-01',
+      grossMonthlyIncome: '9000.00',
+      netMonthlyIncome: '6500.00',
+      otherRecurringMonthlyIncome: '250.00',
+    });
+    service.createIncomeRecord({
+      effectiveDate: '2026-03-01',
+      grossMonthlyIncome: '9500.00',
+      netMonthlyIncome: '7000.00',
+      otherRecurringMonthlyIncome: '0.00',
+    });
+
+    const cashFlow = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-03-31',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    }).cashFlowAnalysis;
+
+    expect(cashFlow.incomeDataAvailable).toBe(true);
+    expect(cashFlow.incomeRows.map((row) => row.netIncome)).toEqual([
+      '6750.00',
+      '6750.00',
+      '7000.00',
+    ]);
+    expect(cashFlow.incomeRows[0]?.grossIncome).toBe('9000.00');
+    expect(cashFlow.incomeRows[0]?.debtPaymentsPercentNet).toBe('0.0%');
+    expect(context.database.select().from(debtTransactions).all()).toEqual(
+      beforeTransactions,
+    );
+    expect(service.getDebt({ id: created.id }).currentBalance).toBe(beforeBalance);
+
+    service.archiveIncomeRecord({
+      id: service.listIncomeRecords({ includeArchived: false })[0]!.id,
+      expectedUpdatedAtUtc: service.listIncomeRecords({ includeArchived: false })[0]!
+        .updatedAtUtc,
+    });
+    expect(service.listIncomeRecords({ includeArchived: false })).toHaveLength(1);
+  });
+
+  it('leaves income ratios unavailable when no effective income record exists', () => {
+    service.createDebt(validRequest('Generated Missing Income Debt'));
+    const cashFlow = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-01-31',
+      debtId: null,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    }).cashFlowAnalysis;
+    expect(cashFlow.incomeDataAvailable).toBe(false);
+    expect(cashFlow.incomeRows[0]).toMatchObject({
+      netIncome: null,
+      debtPaymentsPercentNet: null,
+      remainingNetIncome: null,
+    });
+  });
+
   it('edits a posted payment by superseding it with a linked reversal and replacement', () => {
     const created = service.createDebt(validRequest());
     const afterPayment = service.createDebtTransaction(

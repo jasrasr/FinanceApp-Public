@@ -668,6 +668,12 @@ Posted activity is not silently deleted or overwritten.
 
 ## Report Presentation Controls
 
+Income-based debt-burden metrics use effective-dated income assumptions only;
+they never alter balances or ledger activity. Net-income ratios use net income
+plus optional recurring income, while gross-income ratios use gross income.
+Months without an applicable record remain unavailable rather than being
+interpolated. Debt payments exclude purchases, borrowings, and transfers.
+
 Debt-history and interest charts use the selected report date range as a hard
 boundary. Visible series and annual stacked segments are calculated from the
 same current-effect report values, while chart zoom, pan, legend visibility,

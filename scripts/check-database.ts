@@ -13,6 +13,7 @@ const expectedTables = [
   'import_batches',
   'import_postings',
   'import_sheet_mappings',
+  'income_records',
   'payment_schedule_overrides',
   'payoff_scenarios',
   'refinance_events',

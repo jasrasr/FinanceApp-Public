@@ -855,9 +855,43 @@ export const applicationSettings = sqliteTable('application_settings', {
   updatedAtUtc: text('updated_at_utc').notNull(),
 });
 
+export const incomeRecords = sqliteTable(
+  'income_records',
+  {
+    id: text('id').primaryKey(),
+    effectiveDate: text('effective_date').notNull(),
+    grossMonthlyIncomeCents: integer('gross_monthly_income_cents').notNull(),
+    netMonthlyIncomeCents: integer('net_monthly_income_cents').notNull(),
+    otherRecurringMonthlyIncomeCents: integer('other_recurring_monthly_income_cents')
+      .notNull()
+      .default(0),
+    createdAtUtc: text('created_at_utc').notNull(),
+    updatedAtUtc: text('updated_at_utc').notNull(),
+    archivedAtUtc: text('archived_at_utc'),
+  },
+  (table) => [
+    index('income_records_effective_date_idx').on(table.effectiveDate),
+    index('income_records_archived_idx').on(table.archivedAtUtc),
+    check(
+      'income_records_effective_date_format',
+      sql`${table.effectiveDate} GLOB ${FINANCIAL_DATE_GLOB}`,
+    ),
+    check(
+      'income_records_gross_nonnegative',
+      sql`${table.grossMonthlyIncomeCents} >= 0`,
+    ),
+    check('income_records_net_nonnegative', sql`${table.netMonthlyIncomeCents} >= 0`),
+    check(
+      'income_records_other_nonnegative',
+      sql`${table.otherRecurringMonthlyIncomeCents} >= 0`,
+    ),
+  ],
+);
+
 export const schema = {
   auditEvents,
   applicationSettings,
+  incomeRecords,
   balanceReconciliations,
   balanceSnapshots,
   debtTerms,

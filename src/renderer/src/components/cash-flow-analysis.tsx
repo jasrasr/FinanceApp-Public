@@ -3,20 +3,32 @@ import type {
   DebtReportsDto,
   DebtSummaryDto,
   GetDebtReportsRequest,
+  ArchiveIncomeRecordRequest,
+  CreateIncomeRecordRequest,
+  IncomeRecordDto,
+  UpdateIncomeRecordRequest,
 } from '../../../shared/debt-contracts';
 import { REPORTING_HISTORY_START_DATE } from '../../../shared/reporting-constants';
 import { buildChartScale } from './chart-helpers';
 import { formatDollarString } from './display-format';
+import { IncomeAssumptions } from './income-assumptions';
 
 type Preset = 'ytd' | 'prior-year' | 'last-12-months' | 'all-time' | 'custom';
-type ChartKind = 'flow' | 'trend' | 'mix';
+type ChartKind = 'flow' | 'trend' | 'mix' | 'income' | 'ratio';
 type CashFlowRow = DebtReportsDto['cashFlowAnalysis']['rows'][number];
+type IncomeRow = DebtReportsDto['cashFlowAnalysis']['incomeRows'][number];
+type ChartRow = CashFlowRow | IncomeRow;
 
 export interface CashFlowAnalysisProps {
   readonly debts: readonly DebtSummaryDto[];
   readonly loading: boolean;
   readonly reports: DebtReportsDto | null;
   readonly onApplyFilters: (request: GetDebtReportsRequest) => void;
+  readonly incomeRecords: readonly IncomeRecordDto[];
+  readonly incomeLoading: boolean;
+  readonly onCreateIncome: (request: CreateIncomeRecordRequest) => void;
+  readonly onUpdateIncome: (request: UpdateIncomeRecordRequest) => void;
+  readonly onArchiveIncome: (request: ArchiveIncomeRecordRequest) => void;
 }
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -55,7 +67,7 @@ const Chart = ({
   title,
   kind,
 }: {
-  readonly rows: readonly CashFlowRow[];
+  readonly rows: readonly ChartRow[];
   readonly title: string;
   readonly kind: ChartKind;
 }): React.JSX.Element => {
@@ -90,9 +102,27 @@ const Chart = ({
             { key: 'interest', label: 'Interest', color: '#d97706' },
             { key: 'fees', label: 'Fees', color: '#dc2626' },
           ]
-        : [{ key: 'totalPayments', label: 'Total payments', color: '#0f766e' }];
-  const rowValue = (row: CashFlowRow, key: string): number =>
-    value(row[key as 'totalPayments' | 'principal' | 'interest' | 'fees']);
+        : kind === 'income'
+          ? [
+              { key: 'netIncome', label: 'Net income', color: '#7c3aed' },
+              { key: 'debtPayments', label: 'Debt payments', color: '#0f766e' },
+              {
+                key: 'remainingNetIncome',
+                label: 'Remaining income',
+                color: '#0891b2',
+              },
+            ]
+          : kind === 'ratio'
+            ? [
+                {
+                  key: 'debtPaymentsPercentNet',
+                  label: 'Debt service %',
+                  color: '#be123c',
+                },
+              ]
+            : [{ key: 'totalPayments', label: 'Total payments', color: '#0f766e' }];
+  const rowValue = (row: ChartRow, key: string): number =>
+    value((row as unknown as Record<string, string | undefined>)[key]);
   const chartValues =
     kind === 'mix'
       ? visibleRows.map(
@@ -106,7 +136,8 @@ const Chart = ({
     values: chartValues,
     chartHeight: height - top - bottom,
     includeZero: true,
-    formatLabel: (input) => formatDollarString(input.toFixed(0)),
+    formatLabel: (input) =>
+      kind === 'ratio' ? `${input.toFixed(0)}%` : formatDollarString(input.toFixed(0)),
   });
   const xFor = (index: number): number =>
     left + (index / Math.max(visibleRows.length - 1, 1)) * (width - left - right);
@@ -266,7 +297,9 @@ const Chart = ({
                 x={left - 10}
                 y={yFor(tick) + 4}
               >
-                {scale.formattedLabels[index]}
+                {kind === 'ratio'
+                  ? `${scale.formattedLabels[index]}%`
+                  : scale.formattedLabels[index]}
               </text>
             </g>
           ))}
@@ -335,7 +368,7 @@ const Chart = ({
               x={xFor(visibleRows.indexOf(row)) - 6}
               y={top}
             >
-              <title>{`${monthLabel(row.period)}\n${series.map((item) => `${item.label}: ${money(rowValue(row, item.key))}`).join('\n')}`}</title>
+              <title>{`${monthLabel(row.period)}\n${series.map((item) => `${item.label}: ${kind === 'ratio' ? `${rowValue(row, item.key).toFixed(1)}%` : money(rowValue(row, item.key))}`).join('\n')}`}</title>
             </rect>
           ))}
         </svg>
@@ -349,6 +382,11 @@ export const CashFlowAnalysis = ({
   loading,
   reports,
   onApplyFilters,
+  incomeRecords,
+  incomeLoading,
+  onCreateIncome,
+  onUpdateIncome,
+  onArchiveIncome,
 }: CashFlowAnalysisProps): React.JSX.Element => {
   const [preset, setPreset] = useState<Preset>('ytd');
   const [selectedDebtId, setSelectedDebtId] = useState('');
@@ -523,6 +561,52 @@ export const CashFlowAnalysis = ({
               </p>
             ) : null}
           </section>
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold">Income-based debt burden</h2>
+            {activity.incomeDataAvailable ? (
+              <>
+                <p className="mt-1 text-sm text-slate-600">
+                  Ratios use effective-dated net income plus other recurring income.
+                  Months without an applicable income record are shown as unavailable.
+                </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                  {(() => {
+                    const latest = [...activity.incomeRows]
+                      .reverse()
+                      .find((row) => row.netIncome !== null);
+                    return [
+                      [
+                        'Net income',
+                        latest?.netIncome ? money(latest.netIncome) : 'Not available',
+                      ],
+                      [
+                        'Debt payments / net income',
+                        latest?.debtPaymentsPercentNet ?? 'Not available',
+                      ],
+                      [
+                        'Remaining after debt payments',
+                        latest?.remainingNetIncome
+                          ? money(latest.remainingNetIncome)
+                          : 'Not available',
+                      ],
+                    ].map(([label, display]) => (
+                      <section className="rounded-lg bg-slate-50 p-3" key={label}>
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {label}
+                        </h3>
+                        <p className="mt-1 text-lg font-semibold">{display}</p>
+                      </section>
+                    ));
+                  })()}
+                </div>
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-slate-600">
+                Add an effective-dated income record below to calculate debt-burden
+                ratios.
+              </p>
+            )}
+          </section>
           {comparison ? (
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="font-semibold">Prior equivalent period</h2>
@@ -537,6 +621,20 @@ export const CashFlowAnalysis = ({
           <Chart rows={rows} title="Monthly Debt Cash Flow" kind="flow" />
           <Chart rows={rows} title="Debt Payment Trend" kind="trend" />
           <Chart rows={rows} title="Principal vs Interest Mix" kind="mix" />
+          {activity.incomeDataAvailable ? (
+            <>
+              <Chart
+                rows={activity.incomeRows}
+                title="Income and debt burden trend"
+                kind="income"
+              />
+              <Chart
+                rows={activity.incomeRows}
+                title="Debt-service percentage"
+                kind="ratio"
+              />
+            </>
+          ) : null}
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold">Monthly breakdown</h2>
             <div className="mt-4 overflow-x-auto">
@@ -637,6 +735,13 @@ export const CashFlowAnalysis = ({
           Period runs from {monthLabel(first.period)} through {monthLabel(last.period)}.
         </span>
       ) : null}
+      <IncomeAssumptions
+        loading={incomeLoading}
+        onArchive={onArchiveIncome}
+        onCreate={onCreateIncome}
+        onUpdate={onUpdateIncome}
+        records={incomeRecords}
+      />
     </section>
   );
 };

@@ -39,6 +39,10 @@ import type {
   RenamePayoffScenarioRequest,
   ExtraCashAllocationRequest,
   ExtraCashAllocationResponse,
+  ArchiveIncomeRecordRequest,
+  CreateIncomeRecordRequest,
+  IncomeRecordDto,
+  UpdateIncomeRecordRequest,
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
 import { AdvancedReports } from './components/advanced-reports';
@@ -181,8 +185,13 @@ const ErrorNotice = ({
 
 export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Element => {
   const [view, setView] = useState<View>('dashboard');
+  const [activityExpanded, setActivityExpanded] = useState(true);
+  const [planningExpanded, setPlanningExpanded] = useState(true);
+  const [reportsExpanded, setReportsExpanded] = useState(true);
   const [dashboard, setDashboard] = useState<DashboardDto | null>(null);
   const [reports, setReports] = useState<DebtReportsDto | null>(null);
+  const [incomeRecords, setIncomeRecords] = useState<readonly IncomeRecordDto[]>([]);
+  const [incomeLoading, setIncomeLoading] = useState(false);
   const [reportState, setReportState] = useState<ReportSessionState>(
     defaultReportSessionState,
   );
@@ -369,6 +378,52 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     }
 
     setLoading(false);
+  };
+
+  const loadIncomeRecords = async (): Promise<void> => {
+    setIncomeLoading(true);
+    const result = await invokeBridge(() =>
+      bridge.listIncomeRecords({ includeArchived: true }),
+    );
+    if (result.ok) setIncomeRecords(result.value);
+    else setError(result.error);
+    setIncomeLoading(false);
+  };
+
+  const createIncomeRecord = async (
+    request: CreateIncomeRecordRequest,
+  ): Promise<void> => {
+    setIncomeLoading(true);
+    const result = await invokeBridge(() => bridge.createIncomeRecord(request));
+    if (result.ok) {
+      await loadIncomeRecords();
+      await loadReports();
+    } else setError(result.error);
+    setIncomeLoading(false);
+  };
+
+  const updateIncomeRecord = async (
+    request: UpdateIncomeRecordRequest,
+  ): Promise<void> => {
+    setIncomeLoading(true);
+    const result = await invokeBridge(() => bridge.updateIncomeRecord(request));
+    if (result.ok) {
+      await loadIncomeRecords();
+      await loadReports();
+    } else setError(result.error);
+    setIncomeLoading(false);
+  };
+
+  const archiveIncomeRecord = async (
+    request: ArchiveIncomeRecordRequest,
+  ): Promise<void> => {
+    setIncomeLoading(true);
+    const result = await invokeBridge(() => bridge.archiveIncomeRecord(request));
+    if (result.ok) {
+      await loadIncomeRecords();
+      await loadReports();
+    } else setError(result.error);
+    setIncomeLoading(false);
   };
 
   const loadDataManagementStatus = async (): Promise<void> => {
@@ -581,6 +636,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showDebtProgress = (): void => {
+    setActivityExpanded(true);
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
         {
@@ -608,6 +664,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showCreditCardActivity = (): void => {
+    setActivityExpanded(true);
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
         {
@@ -641,6 +698,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showCashFlowAnalysis = (): void => {
+    setActivityExpanded(true);
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
         {
@@ -664,9 +722,11 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       );
     }
     void loadReports();
+    void loadIncomeRecords();
   };
 
   const showPayoffScenarios = (): void => {
+    setReportsExpanded(true);
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
         {
@@ -696,6 +756,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showAllocation = (): void => {
+    setPlanningExpanded(true);
     setView('allocation');
     setSelectedDebt(null);
     setError(null);
@@ -709,6 +770,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showPayoffPlanner = (): void => {
+    setPlanningExpanded(true);
     setView('payoff-planner');
     setSelectedDebt(null);
     setError(null);
@@ -736,6 +798,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showReports = (): void => {
+    setReportsExpanded(true);
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
         {
@@ -767,6 +830,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showDataManagement = (): void => {
+    setReportsExpanded(true);
     setView('data-management');
     setSelectedDebt(null);
     setDetailPanel('overview');
@@ -778,6 +842,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showDataHealth = (): void => {
+    setReportsExpanded(true);
     setView('data-health');
     setSelectedDebt(null);
     setDetailPanel('overview');
@@ -787,6 +852,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showMilestones = (): void => {
+    setReportsExpanded(true);
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
         {
@@ -807,6 +873,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showDebtOutlook = (): void => {
+    setReportsExpanded(true);
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
         {
@@ -827,6 +894,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showInterestAnalysis = (): void => {
+    setReportsExpanded(true);
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
         {
@@ -847,6 +915,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   };
 
   const showRefinanceAnalysis = (): void => {
+    setPlanningExpanded(true);
     setView('refinance-analysis');
     setSelectedDebt(null);
     setError(null);
@@ -1126,6 +1195,26 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
         return;
       }
       const nextView = state?.view ?? 'dashboard';
+      if (
+        ['debt-progress', 'credit-card-activity', 'cash-flow-analysis'].includes(
+          nextView,
+        )
+      )
+        setActivityExpanded(true);
+      if (['refinance-analysis', 'allocation', 'payoff-planner'].includes(nextView))
+        setPlanningExpanded(true);
+      if (
+        [
+          'reports',
+          'payoff',
+          'milestones',
+          'debt-outlook',
+          'interest-analysis',
+          'data-health',
+          'data-management',
+        ].includes(nextView)
+      )
+        setReportsExpanded(true);
       setSelectedDebt(null);
       setDetailPanel('overview');
       setView(nextView);
@@ -1142,6 +1231,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           status: 'active',
         });
       if (nextView === 'cash-flow-analysis') void loadReports();
+      if (nextView === 'cash-flow-analysis') void loadIncomeRecords();
       if (nextView === 'reports' && !reports) void loadReports();
       if (nextView === 'milestones') void loadMilestones();
       if (nextView === 'debt-outlook') void loadDebtOutlook();
@@ -1698,133 +1788,218 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
-                aria-current={view === 'payoff-planner' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'payoff-planner')}
-                onClick={showPayoffPlanner}
+                aria-controls="activity-navigation"
+                aria-expanded={activityExpanded}
+                className={navigationButtonClassName(
+                  [
+                    'debt-progress',
+                    'credit-card-activity',
+                    'cash-flow-analysis',
+                  ].includes(view),
+                )}
+                onClick={() => setActivityExpanded((expanded) => !expanded)}
                 type="button"
               >
-                Debt Payoff Scenario Planner
+                <span>Activity</span>{' '}
+                <span aria-hidden="true">{activityExpanded ? '▾' : '▸'}</span>
               </button>
+              {activityExpanded ? (
+                <ul
+                  className="ml-3 mt-1 space-y-1 border-l border-slate-300 pl-2"
+                  id="activity-navigation"
+                >
+                  <li>
+                    <button
+                      aria-current={view === 'debt-progress' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'debt-progress')}
+                      onClick={showDebtProgress}
+                      type="button"
+                    >
+                      Debt Progress / Trends
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={
+                        view === 'credit-card-activity' ? 'page' : undefined
+                      }
+                      className={navigationButtonClassName(
+                        view === 'credit-card-activity',
+                      )}
+                      onClick={showCreditCardActivity}
+                      type="button"
+                    >
+                      Credit Card Activity
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={view === 'cash-flow-analysis' ? 'page' : undefined}
+                      className={navigationButtonClassName(
+                        view === 'cash-flow-analysis',
+                      )}
+                      onClick={showCashFlowAnalysis}
+                      type="button"
+                    >
+                      Cash Flow / Debt Burden
+                    </button>
+                  </li>
+                </ul>
+              ) : null}
             </li>
             <li className="mt-1">
               <button
-                aria-current={view === 'debt-progress' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'debt-progress')}
-                onClick={showDebtProgress}
+                aria-controls="planning-navigation"
+                aria-expanded={planningExpanded}
+                className={navigationButtonClassName(
+                  ['refinance-analysis', 'allocation', 'payoff-planner'].includes(view),
+                )}
+                onClick={() => setPlanningExpanded((expanded) => !expanded)}
                 type="button"
               >
-                Debt Progress / Trends
+                <span>Planning</span>{' '}
+                <span aria-hidden="true">{planningExpanded ? '▾' : '▸'}</span>
               </button>
+              {planningExpanded ? (
+                <ul
+                  className="ml-3 mt-1 space-y-1 border-l border-slate-300 pl-2"
+                  id="planning-navigation"
+                >
+                  <li>
+                    <button
+                      aria-current={view === 'refinance-analysis' ? 'page' : undefined}
+                      className={navigationButtonClassName(
+                        view === 'refinance-analysis',
+                      )}
+                      onClick={showRefinanceAnalysis}
+                      type="button"
+                    >
+                      Refinance analysis
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={view === 'allocation' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'allocation')}
+                      onClick={showAllocation}
+                      type="button"
+                    >
+                      Extra Payment / What-If Analysis
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={view === 'payoff-planner' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'payoff-planner')}
+                      onClick={showPayoffPlanner}
+                      type="button"
+                    >
+                      Debt Payoff Scenario Planner
+                    </button>
+                  </li>
+                </ul>
+              ) : null}
             </li>
             <li className="mt-1">
               <button
-                aria-current={view === 'credit-card-activity' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'credit-card-activity')}
-                onClick={showCreditCardActivity}
+                aria-controls="reports-navigation"
+                aria-expanded={reportsExpanded}
+                className={navigationButtonClassName(
+                  [
+                    'reports',
+                    'payoff',
+                    'milestones',
+                    'debt-outlook',
+                    'interest-analysis',
+                    'data-health',
+                    'data-management',
+                  ].includes(view),
+                )}
+                onClick={() => setReportsExpanded((expanded) => !expanded)}
                 type="button"
               >
-                Credit Card Activity
+                <span>Reports menu</span>{' '}
+                <span aria-hidden="true">{reportsExpanded ? '▾' : '▸'}</span>
               </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'cash-flow-analysis' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'cash-flow-analysis')}
-                onClick={showCashFlowAnalysis}
-                type="button"
-              >
-                Cash Flow / Debt Burden
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'milestones' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'milestones')}
-                onClick={showMilestones}
-                type="button"
-              >
-                Milestones
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'debt-outlook' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'debt-outlook')}
-                onClick={showDebtOutlook}
-                type="button"
-              >
-                Debt outlook
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'interest-analysis' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'interest-analysis')}
-                onClick={showInterestAnalysis}
-                type="button"
-              >
-                Interest analysis
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'refinance-analysis' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'refinance-analysis')}
-                onClick={showRefinanceAnalysis}
-                type="button"
-              >
-                Refinance analysis
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'allocation' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'allocation')}
-                onClick={showAllocation}
-                type="button"
-              >
-                Extra Payment / What-If Analysis
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'payoff' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'payoff')}
-                onClick={showPayoffScenarios}
-                type="button"
-              >
-                Payoff scenarios
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'reports' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'reports')}
-                onClick={showReports}
-                type="button"
-              >
-                Reports
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'data-health' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'data-health')}
-                onClick={showDataHealth}
-                type="button"
-              >
-                Data health
-              </button>
-            </li>
-            <li className="mt-1">
-              <button
-                aria-current={view === 'data-management' ? 'page' : undefined}
-                className={navigationButtonClassName(view === 'data-management')}
-                onClick={showDataManagement}
-                type="button"
-              >
-                Data management
-              </button>
+              {reportsExpanded ? (
+                <ul
+                  className="ml-3 mt-1 space-y-1 border-l border-slate-300 pl-2"
+                  id="reports-navigation"
+                >
+                  <li>
+                    <button
+                      aria-current={view === 'reports' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'reports')}
+                      onClick={showReports}
+                      type="button"
+                    >
+                      Reports
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={view === 'milestones' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'milestones')}
+                      onClick={showMilestones}
+                      type="button"
+                    >
+                      Milestones
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={view === 'debt-outlook' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'debt-outlook')}
+                      onClick={showDebtOutlook}
+                      type="button"
+                    >
+                      Debt outlook
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={view === 'interest-analysis' ? 'page' : undefined}
+                      className={navigationButtonClassName(
+                        view === 'interest-analysis',
+                      )}
+                      onClick={showInterestAnalysis}
+                      type="button"
+                    >
+                      Interest analysis
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={view === 'payoff' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'payoff')}
+                      onClick={showPayoffScenarios}
+                      type="button"
+                    >
+                      Payoff scenarios
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={view === 'data-health' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'data-health')}
+                      onClick={showDataHealth}
+                      type="button"
+                    >
+                      Data health
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      aria-current={view === 'data-management' ? 'page' : undefined}
+                      className={navigationButtonClassName(view === 'data-management')}
+                      onClick={showDataManagement}
+                      type="button"
+                    >
+                      Data management
+                    </button>
+                  </li>
+                </ul>
+              ) : null}
             </li>
           </ul>
           <div className="mt-8 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
@@ -1942,8 +2117,13 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           {view === 'cash-flow-analysis' ? (
             <CashFlowAnalysis
               debts={debts}
+              incomeLoading={incomeLoading}
+              incomeRecords={incomeRecords}
               loading={loading}
+              onArchiveIncome={(request) => void archiveIncomeRecord(request)}
               onApplyFilters={(request) => void loadReports(request)}
+              onCreateIncome={(request) => void createIncomeRecord(request)}
+              onUpdateIncome={(request) => void updateIncomeRecord(request)}
               reports={reports}
             />
           ) : null}

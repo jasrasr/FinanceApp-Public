@@ -2337,3 +2337,22 @@ year`.
   payment dollars from ordinary principal without explicit allocation data.
 - Recommended next phase: user acceptance review of debt-burden trends and
   scheduled-payment interpretation.
+
+## Phase 59: Navigation and Income-Based Debt Burden
+
+- Completion date: 2026-08-16. Application version remains 1.8.8 pending the
+  next approved release.
+- Grouped Activity, Planning, and Reports navigation while preserving child
+  routes and touch-friendly expandable submenus. Added effective-dated income
+  assumptions as separate auditable records and extended Cash Flow / Debt
+  Burden with net and gross income ratios, remaining income, and income trend
+  charts. No ledger history or production data was changed.
+- Added migration 0014 for `income_records`; the model is isolated from debt
+  transactions and uses the latest applicable active record for each month.
+- Release versioning now follows conventional-commit intent: feature commits
+  use a minor bump, fixes and maintenance use a patch bump, and explicit
+  overrides remain available for approved exceptional releases.
+- Known limitation: income assumptions are manually maintained and do not
+  include non-debt spending or budgeting data.
+- Recommended next phase: user acceptance review of navigation and income
+  assumptions before an approved feature release.

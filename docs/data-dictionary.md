@@ -448,6 +448,14 @@ fields remain readable.
 No `app_settings` table is created. Drizzle maintains migration state, and no
 foundational application setting currently justifies a persistent row.
 
+### income_records
+
+Income records are separate analysis assumptions, not ledger transactions. Each
+record stores effective-dated monthly gross income, monthly net income, and
+optional other recurring income in integer cents. Archived records remain in the
+database for auditability and are excluded from analysis. Reports select the
+latest non-archived record effective on or before each reporting month.
+
 ### application_settings
 
 | Column           | Type / unit       | Required | Meaning                                                                            |

@@ -60,6 +60,11 @@ import type {
   ChooseDataFolderRequest,
   ChooseBackupFileRequest,
   ImportBackupFileRequest,
+  ArchiveIncomeRecordRequest,
+  CreateIncomeRecordRequest,
+  IncomeRecordDto,
+  ListIncomeRecordsRequest,
+  UpdateIncomeRecordRequest,
 } from './debt-contracts';
 
 export interface DebtBridge {
@@ -116,6 +121,18 @@ export interface DebtBridge {
   getDebtReports(
     request: GetDebtReportsRequest,
   ): Promise<ApplicationResult<DebtReportsDto>>;
+  listIncomeRecords(
+    request: ListIncomeRecordsRequest,
+  ): Promise<ApplicationResult<readonly IncomeRecordDto[]>>;
+  createIncomeRecord(
+    request: CreateIncomeRecordRequest,
+  ): Promise<ApplicationResult<IncomeRecordDto>>;
+  updateIncomeRecord(
+    request: UpdateIncomeRecordRequest,
+  ): Promise<ApplicationResult<IncomeRecordDto>>;
+  archiveIncomeRecord(
+    request: ArchiveIncomeRecordRequest,
+  ): Promise<ApplicationResult<IncomeRecordDto>>;
   createPayoffScenario(
     request: CreatePayoffScenarioRequest,
   ): Promise<ApplicationResult<PayoffScenarioDto>>;

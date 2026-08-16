@@ -9,7 +9,7 @@
     "postinstall": "install-electron --no",
     "app:metadata": "tsx scripts/run-with-app-metadata.ts",
     "assets:icons": "tsx scripts/generate-icons.ts",
-    "release:version": "npm version patch --no-git-tag-version --ignore-scripts",
+    "release:version": "tsx scripts/release-version.ts",
     "native:node": "npm rebuild better-sqlite3",
     "native:electron": "tsx scripts/install-electron-native.ts",
     "dev": "npm run native:electron && npm run app:metadata -- electron-vite --config ./electron.vite.config.cjs",
