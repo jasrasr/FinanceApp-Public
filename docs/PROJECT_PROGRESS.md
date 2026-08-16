@@ -2271,3 +2271,26 @@ year`.
   a partial projection.
 - Recommended next phase: user acceptance review of What-If allocation labels
   and chart readability.
+
+## Phase 56: Debt Payoff Scenario Planner
+
+- Completion date: 2026-08-16. Application version: 1.8.5.
+- Added a read-only planner comparing the current/default, highest-interest-
+  first, and lowest-balance-first payoff strategies with optional recurring
+  extra payments and a dated lump sum.
+- Reused the existing extra-cash allocation service and payoff engine for
+  strategy results, including full-width balance and cumulative-interest charts
+  with the shared zoom, pan, reset, and hover behavior. No database, ledger,
+  payment-schedule, migration, or production-data changes were made.
+- Added ADR 045 and renderer regression coverage for planner navigation and
+  read-only behavior; existing payoff-engine tests cover the scenario inputs,
+  ordering, savings, and mutation protections.
+- Validation: focused tests passed (64 tests); full test suite passed (207
+  tests); lint, typecheck, isolated database integrity check, production build,
+  and Electron E2E passed (one test passed and two expected skips). The full
+  `npm run check` gate stopped at eight pre-existing Prettier warnings in
+  unrelated files; the changed files pass formatting checks.
+- Known limitation: the planner presents the existing three portfolio strategy
+  views; unsupported payoff inputs retain the engine's existing warnings.
+- Recommended next phase: user acceptance review of strategy comparisons and
+  payoff sequence readability.

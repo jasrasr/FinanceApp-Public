@@ -692,14 +692,16 @@ export const DebtProgress = ({
               ['Net debt reduction', money(netReduction)],
               ['Interest paid', money(interest)],
               ['New borrowing', money(borrowings)],
-              ['Purchases / Charges', money(purchases)],
+              ['Purchases/Charges', money(purchases)],
             ].map(([label, value]) => (
               <section
                 aria-label={`${label}: ${formatDollarString(value ?? '0.00')}`}
                 className={`rounded-lg border bg-white p-4 shadow-sm ${label === 'Net debt reduction' ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-slate-200'}`}
                 key={label}
               >
-                <h3 className="text-sm font-semibold text-slate-600">{label}</h3>
+                <h3 className="whitespace-nowrap text-sm font-semibold text-slate-600">
+                  {label}
+                </h3>
                 <p className="mt-2 text-xl font-semibold">
                   {formatDollarString(value ?? '0.00')}
                 </p>

@@ -61,6 +61,7 @@ import { EscrowDetail } from './components/escrow-detail';
 import { formatLastChanged, formatTimestamp } from './components/display-format';
 import { PayoffScenarios } from './components/payoff-scenarios';
 import { ExtraCashAllocation } from './components/extra-cash-allocation';
+import { PayoffPlanner } from './components/payoff-planner';
 import { RecordRefinanceForm } from './components/record-refinance-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
 import { RecordTransferForm } from './components/record-transfer-form';
@@ -79,6 +80,7 @@ type View =
   | 'add-term'
   | 'payoff'
   | 'allocation'
+  | 'payoff-planner'
   | 'reports'
   | 'escrow-detail'
   | 'data-management'
@@ -635,6 +637,20 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setSelectedDebt(null);
     setError(null);
     setFieldErrors(undefined);
+    if (debts.length === 0)
+      void invokeBridge(() => bridge.listDebts({ includeArchived: false })).then(
+        (result) => {
+          if (result.ok) setDebts(result.value);
+        },
+      );
+  };
+
+  const showPayoffPlanner = (): void => {
+    setView('payoff-planner');
+    setSelectedDebt(null);
+    setError(null);
+    setFieldErrors(undefined);
+    setAllocationResult(null);
     if (debts.length === 0)
       void invokeBridge(() => bridge.listDebts({ includeArchived: false })).then(
         (result) => {
@@ -1609,6 +1625,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'payoff-planner' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'payoff-planner')}
+                onClick={showPayoffPlanner}
+                type="button"
+              >
+                Debt Payoff Scenario Planner
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-current={view === 'debt-progress' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'debt-progress')}
                 onClick={showDebtProgress}
@@ -1855,6 +1881,15 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               loading={loading}
               onCalculate={(request) => void calculateAllocation(request)}
               onSave={(request) => void createPayoffScenario(request)}
+              result={allocationResult}
+            />
+          ) : null}
+
+          {view === 'payoff-planner' ? (
+            <PayoffPlanner
+              error={error?.message ?? null}
+              loading={loading}
+              onCalculate={(request) => void calculateAllocation(request)}
               result={allocationResult}
             />
           ) : null}

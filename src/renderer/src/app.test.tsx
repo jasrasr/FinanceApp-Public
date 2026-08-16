@@ -2447,6 +2447,7 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
     expect(screen.getByText('Year to date')).toBeVisible();
     expect(screen.getAllByText('Net debt reduction').length).toBeGreaterThan(0);
+    expect(screen.getByText('Purchases/Charges')).toBeVisible();
     expect(screen.getByText('Monthly breakdown')).toBeVisible();
     expect(screen.getAllByText('Jan 2026').length).toBeGreaterThan(0);
     expect(screen.queryByText('Reconciliation')).toBeNull();
@@ -2462,12 +2463,30 @@ describe('debt maintenance application', () => {
     ).toBeVisible();
   });
 
+  it('opens the payoff planner as a read-only comparison tool', async () => {
+    const bridge = createBridge();
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Debt Payoff Scenario Planner' }),
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Debt Payoff Scenario Planner' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Compare payoff strategies' }),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Save scenario' })).toBeNull();
+    expect(bridge.createPayoffScenario).not.toHaveBeenCalled();
+  });
+
   it('keeps the primary navigation in the approved order', async () => {
     render(<App bridge={createBridge()} />);
 
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     await waitFor(() =>
-      expect(within(navigation).getAllByRole('button')).toHaveLength(12),
+      expect(within(navigation).getAllByRole('button')).toHaveLength(13),
     );
     expect(
       within(navigation)
@@ -2476,6 +2495,7 @@ describe('debt maintenance application', () => {
     ).toEqual([
       'Dashboard',
       'Debts',
+      'Debt Payoff Scenario Planner',
       'Debt Progress / Trends',
       'Milestones',
       'Debt outlook',
