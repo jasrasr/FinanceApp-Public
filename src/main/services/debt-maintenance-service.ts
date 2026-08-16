@@ -2297,6 +2297,9 @@ const createRollforward = (
     let transferOut = 0;
     let payments = 0;
     let principalReduction = 0;
+    let extraPrincipal = 0;
+    let hasExtraPrincipalAllocation = false;
+    let paymentCount = 0;
     let interestActivity = 0;
     let principalAdjustments = 0;
     let fees = 0;
@@ -2330,8 +2333,15 @@ const createRollforward = (
           if (transferPrincipal >= 0) transferIn += transferPrincipal;
           else transferOut -= transferPrincipal;
         }
-        if (effectiveTransactionType === 'payment')
+        if (effectiveTransactionType === 'payment') {
           payments -= transaction.totalAmountCents;
+          paymentCount += 1;
+          const transactionExtraPrincipal = allocationTotal(allocations, [
+            'extra_principal',
+          ]);
+          if (transactionExtraPrincipal !== 0) hasExtraPrincipalAllocation = true;
+          extraPrincipal -= transactionExtraPrincipal;
+        }
         const principal = allocationTotal(allocations, [
           'principal',
           'extra_principal',
@@ -2381,6 +2391,10 @@ const createRollforward = (
       fees: centsToDollars(Math.abs(fees)),
       payments: centsToDollars(payments),
       principalReduction: centsToDollars(principalReduction),
+      extraPrincipal: hasExtraPrincipalAllocation
+        ? centsToDollars(extraPrincipal)
+        : undefined,
+      paymentCount,
       interestActivity: centsToDollars(Math.abs(interestActivity)),
       adjustmentsAndOther: centsToDollars(principalAdjustments),
       rollforwardCheck: centsToDollars(rollforwardCheck),
@@ -2479,6 +2493,100 @@ const createCreditCardActivity = (
     ),
     rows,
     cards,
+  };
+};
+
+const cashFlowRowsFromRollforward = (
+  rows: readonly DebtReportsDto['monthlyRollforward']['rows'][number][],
+): DebtReportsDto['cashFlowAnalysis']['rows'] =>
+  rows.map((row) => ({
+    period: row.period,
+    totalPayments: centsToDollars(Math.abs(signedCurrencyInputToCents(row.payments))),
+    principal: row.principalReduction,
+    interest: row.interestActivity,
+    fees: row.fees ?? '0.00',
+    extraPrincipal: row.extraPrincipal ?? null,
+    paymentCount: row.paymentCount ?? 0,
+    beginningBalance: row.beginningBalance,
+    endingBalance: row.endingBalance,
+  }));
+
+const createCashFlowAnalysis = (
+  database: AppDatabase,
+  records: readonly DebtWithActivityRecord[],
+  startDate: string,
+  endDate: string,
+  effectiveDate: string,
+  assumptions: readonly string[],
+  comparison: DebtReportsDto['cashFlowAnalysis']['comparison'],
+): DebtReportsDto['cashFlowAnalysis'] => {
+  const rollforwardRows = createRollforward(records, startDate, endDate, 'monthly');
+  const rows = cashFlowRowsFromRollforward(rollforwardRows);
+  const totalPayments = rows.reduce((sum, row) => sum + Number(row.totalPayments), 0);
+  const debts = records.map((record) => {
+    const debtRows = cashFlowRowsFromRollforward(
+      createRollforward([record], startDate, endDate, 'monthly'),
+    );
+    const payments = debtRows.reduce((sum, row) => sum + Number(row.totalPayments), 0);
+    return {
+      debtId: record.debt.id,
+      debtName: record.debt.name,
+      currentBalance: centsToDollars(
+        calculateLedgerBalanceThroughDate(database, record.debt.id, effectiveDate),
+      ),
+      totalPayments: centsToDollars(Math.round(payments * 100)),
+      principalPaid: centsToDollars(
+        Math.round(debtRows.reduce((sum, row) => sum + Number(row.principal), 0) * 100),
+      ),
+      interestPaid: centsToDollars(
+        Math.round(debtRows.reduce((sum, row) => sum + Number(row.interest), 0) * 100),
+      ),
+      feesPaid: centsToDollars(
+        Math.round(debtRows.reduce((sum, row) => sum + Number(row.fees), 0) * 100),
+      ),
+      averageMonthlyPayment: centsToDollars(
+        Math.round((payments / Math.max(debtRows.length, 1)) * 100),
+      ),
+      percentageOfPortfolioPayments:
+        totalPayments === 0
+          ? '0.0%'
+          : `${((payments / totalPayments) * 100).toFixed(1)}%`,
+    };
+  });
+  const currentScheduledMonthlyPayment = records.reduce(
+    (sum, record) =>
+      sum +
+      monthlyEquivalentCents(
+        currentTermForDate(record.terms, effectiveDate).requiredPaymentCents,
+        currentTermForDate(record.terms, effectiveDate).paymentFrequency,
+      ),
+    0,
+  );
+  const extraPrincipalAvailable = rows.some(
+    (row) => row.extraPrincipal !== null && Number(row.extraPrincipal) !== 0,
+  );
+  return {
+    basis: reportBasis(
+      'Cash flow and debt burden analysis',
+      startDate,
+      endDate,
+      effectiveDate,
+      [
+        ...assumptions,
+        'Debt payments include posted payment transactions only; purchases, borrowing, and transfers are excluded.',
+        'Payment totals are displayed as positive cash outflow while ledger payment signs remain unchanged.',
+      ],
+    ),
+    rows,
+    debts,
+    currentScheduledMonthlyPayment:
+      currentScheduledMonthlyPayment === 0
+        ? null
+        : centsToDollars(currentScheduledMonthlyPayment),
+    extraPrincipalAvailable,
+    requiredPaymentLimitation:
+      'Historical payment records do not reliably identify which payment dollars were required versus ordinary principal. Explicit extra-principal allocations are shown separately when present.',
+    comparison,
   };
 };
 
@@ -2591,6 +2699,34 @@ const createDebtReports = (
       row.fees,
     ].some((value) => Number(value ?? '0.00') !== 0),
   );
+  const priorCashFlowRows = cashFlowRowsFromRollforward(priorRows);
+  const priorTotalPayments = priorCashFlowRows.reduce(
+    (sum, row) => sum + Number(row.totalPayments),
+    0,
+  );
+  const priorComparison = hasPriorData
+    ? {
+        startDate: priorStartDate,
+        endDate: priorEndDate,
+        totalPayments: centsToDollars(Math.round(priorTotalPayments * 100)),
+        principalPaid: centsToDollars(
+          Math.round(
+            priorCashFlowRows.reduce((sum, row) => sum + Number(row.principal), 0) *
+              100,
+          ),
+        ),
+        interestPaid: centsToDollars(
+          Math.round(
+            priorCashFlowRows.reduce((sum, row) => sum + Number(row.interest), 0) * 100,
+          ),
+        ),
+        averageMonthlyPayment: centsToDollars(
+          Math.round(
+            (priorTotalPayments / Math.max(priorCashFlowRows.length, 1)) * 100,
+          ),
+        ),
+      }
+    : null;
   const trendRows = monthlyRows.map((row) => ({
     period: row.period,
     principalReduction: row.principalReduction,
@@ -2720,6 +2856,15 @@ const createDebtReports = (
       endDate,
       effectiveDate,
       baseAssumptions,
+    ),
+    cashFlowAnalysis: createCashFlowAnalysis(
+      database,
+      records,
+      startDate,
+      endDate,
+      effectiveDate,
+      baseAssumptions,
+      priorComparison,
     ),
     annualRollforward: {
       basis: reportBasis(

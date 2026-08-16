@@ -981,6 +981,8 @@ const rollforwardRowDtoSchema = z
     fees: z.string().optional(),
     payments: z.string(),
     principalReduction: z.string(),
+    extraPrincipal: z.string().optional(),
+    paymentCount: z.number().int().nonnegative().optional(),
     interestActivity: z.string(),
     adjustmentsAndOther: z.string(),
     rollforwardCheck: z.string(),
@@ -1119,6 +1121,55 @@ export const debtReportsDtoSchema = z
         basis: reportBasisDtoSchema,
         rows: z.array(rollforwardRowDtoSchema),
         cards: z.array(creditCardActivityCardDtoSchema),
+      })
+      .strict(),
+    cashFlowAnalysis: z
+      .object({
+        basis: reportBasisDtoSchema,
+        rows: z.array(
+          z
+            .object({
+              period: z.string(),
+              totalPayments: z.string(),
+              principal: z.string(),
+              interest: z.string(),
+              fees: z.string(),
+              extraPrincipal: z.string().nullable(),
+              paymentCount: z.number().int().nonnegative(),
+              beginningBalance: z.string(),
+              endingBalance: z.string(),
+            })
+            .strict(),
+        ),
+        debts: z.array(
+          z
+            .object({
+              debtId: uuidSchema,
+              debtName: z.string(),
+              currentBalance: z.string(),
+              totalPayments: z.string(),
+              principalPaid: z.string(),
+              interestPaid: z.string(),
+              feesPaid: z.string(),
+              averageMonthlyPayment: z.string(),
+              percentageOfPortfolioPayments: z.string(),
+            })
+            .strict(),
+        ),
+        currentScheduledMonthlyPayment: z.string().nullable(),
+        extraPrincipalAvailable: z.boolean(),
+        requiredPaymentLimitation: z.string().nullable(),
+        comparison: z
+          .object({
+            startDate: financialDateInputSchema,
+            endDate: financialDateInputSchema,
+            totalPayments: z.string(),
+            principalPaid: z.string(),
+            interestPaid: z.string(),
+            averageMonthlyPayment: z.string(),
+          })
+          .strict()
+          .nullable(),
       })
       .strict(),
     annualRollforward: z

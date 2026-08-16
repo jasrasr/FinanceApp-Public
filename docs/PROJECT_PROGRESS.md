@@ -2314,3 +2314,26 @@ year`.
   does not clearly indicate pay-in-full or carried-balance behavior.
 - Recommended next phase: user acceptance review of card filtering and
   monthly activity interpretation.
+
+## Phase 58: Cash Flow / Debt Burden Analysis
+
+- Completion date: 2026-08-16. Application version: 1.8.7.
+- Added a read-only Cash Flow / Debt Burden analysis for the full portfolio or
+  an individual debt, with YTD, prior-year, last-12-month, all-time, and custom
+  ranges. It reports payment outflow, principal, interest, fees, payment
+  counts, scheduled monthly terms, prior-period comparison, monthly charts,
+  and debt comparison tables.
+- Reused the existing report rollforward and current transaction-chain logic;
+  purchases, borrowing/draws, and transfers do not count as debt payments.
+  Explicit extra-principal allocations are shown when present, while required
+  versus extra payment totals are not inferred from incomplete historical data.
+  No ledger, balance, schedule, schema, migration, or production-data changes
+  were made. Added ADR 047.
+- Validation: focused reporting integration and renderer tests passed; full
+  test suite passed (209 tests); lint, typecheck, isolated database integrity
+  check, production build, and Electron E2E passed (one test passed and two
+  expected skips).
+- Known limitation: historical payment records may not distinguish required
+  payment dollars from ordinary principal without explicit allocation data.
+- Recommended next phase: user acceptance review of debt-burden trends and
+  scheduled-payment interpretation.

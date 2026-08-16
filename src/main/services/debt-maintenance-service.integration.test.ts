@@ -436,6 +436,10 @@ describe('debt creation', () => {
       borrowings: '1000.00',
       currentBalance: '126800.13',
     });
+    expect(reports.cashFlowAnalysis.rows[1]).toMatchObject({
+      totalPayments: '0.00',
+      paymentCount: 0,
+    });
     expect(service.getDashboard({}).totals).toMatchObject({
       principalReductionYtd: '0.00',
       purchaseChargesYtd: '800.00',
@@ -545,6 +549,27 @@ describe('debt creation', () => {
     expect(signsByType.get('escrow_disbursement')).toBe(12_500);
     expect(signsByType.get('escrow_refund')).toBe(5_000);
 
+    const cashFlow = service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-02-28',
+      debtId: created.id,
+      ownerEntity: null,
+      debtType: null,
+      status: null,
+    }).cashFlowAnalysis;
+    expect(cashFlow.rows[1]).toMatchObject({
+      totalPayments: '800.00',
+      principal: '400.00',
+      interest: '100.00',
+      fees: '25.00',
+      paymentCount: 2,
+    });
+    expect(cashFlow.debts[0]).toMatchObject({
+      totalPayments: '800.00',
+      principalPaid: '400.00',
+      interestPaid: '100.00',
+    });
+
     const latest = service.getDebt({ id: created.id });
     expect(latest.calculatedEscrowBalance).toBe('125.00');
   });
@@ -630,6 +655,10 @@ describe('debt creation', () => {
         endingBalance: '124550.13',
       }),
     );
+    expect(reports.cashFlowAnalysis.rows[0]).toMatchObject({
+      totalPayments: '500.00',
+      paymentCount: 1,
+    });
     expect(eventTypes).toContain('transaction_superseded');
     expect(eventTypes).toContain('transaction_replacement_recorded');
   });

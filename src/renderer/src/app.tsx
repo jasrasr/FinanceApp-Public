@@ -48,6 +48,7 @@ import { CreateDebtForm } from './components/create-debt-form';
 import { Dashboard } from './components/dashboard';
 import { DebtProgress } from './components/debt-progress';
 import { CreditCardActivity } from './components/credit-card-activity';
+import { CashFlowAnalysis } from './components/cash-flow-analysis';
 import { DataManagement } from './components/data-management';
 import { DataHealth } from './components/data-health';
 import { Milestones } from './components/milestones';
@@ -76,6 +77,7 @@ type View =
   | 'list'
   | 'debt-progress'
   | 'credit-card-activity'
+  | 'cash-flow-analysis'
   | 'create'
   | 'detail'
   | 'edit'
@@ -638,6 +640,32 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     });
   };
 
+  const showCashFlowAnalysis = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'cash-flow-analysis',
+        },
+        '',
+        '#cash-flow-analysis',
+      );
+    }
+    setView('cash-flow-analysis');
+    setSelectedDebt(null);
+    setError(null);
+    setFieldErrors(undefined);
+    if (debts.length === 0) {
+      void invokeBridge(() => bridge.listDebts({ includeArchived: false })).then(
+        (result) => {
+          if (result.ok) setDebts(result.value);
+        },
+      );
+    }
+    void loadReports();
+  };
+
   const showPayoffScenarios = (): void => {
     if (!suppressNavigationPushRef.current) {
       window.history.pushState(
@@ -1113,6 +1141,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           debtType: 'credit_card',
           status: 'active',
         });
+      if (nextView === 'cash-flow-analysis') void loadReports();
       if (nextView === 'reports' && !reports) void loadReports();
       if (nextView === 'milestones') void loadMilestones();
       if (nextView === 'debt-outlook') void loadDebtOutlook();
@@ -1699,6 +1728,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'cash-flow-analysis' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'cash-flow-analysis')}
+                onClick={showCashFlowAnalysis}
+                type="button"
+              >
+                Cash Flow / Debt Burden
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-current={view === 'milestones' ? 'page' : undefined}
                 className={navigationButtonClassName(view === 'milestones')}
                 onClick={showMilestones}
@@ -1833,21 +1872,23 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                               debtType: 'credit_card',
                               status: 'active',
                             })
-                        : view === 'dashboard'
-                          ? () => void loadDashboard()
-                          : view === 'payoff'
-                            ? () => void loadPayoffScenarios()
-                            : view === 'reports'
-                              ? () => void loadReports()
-                              : view === 'data-management'
-                                ? () => void loadDataManagementStatus()
-                                : view === 'data-health'
-                                  ? () => void loadDataHealth()
-                                  : view === 'milestones'
-                                    ? () => void loadMilestones()
-                                    : view === 'escrow-detail'
-                                      ? () => void loadEscrowDetail()
-                                      : undefined
+                        : view === 'cash-flow-analysis'
+                          ? () => void loadReports()
+                          : view === 'dashboard'
+                            ? () => void loadDashboard()
+                            : view === 'payoff'
+                              ? () => void loadPayoffScenarios()
+                              : view === 'reports'
+                                ? () => void loadReports()
+                                : view === 'data-management'
+                                  ? () => void loadDataManagementStatus()
+                                  : view === 'data-health'
+                                    ? () => void loadDataHealth()
+                                    : view === 'milestones'
+                                      ? () => void loadMilestones()
+                                      : view === 'escrow-detail'
+                                        ? () => void loadEscrowDetail()
+                                        : undefined
                 }
               />
             </div>
@@ -1891,6 +1932,15 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
           {view === 'credit-card-activity' ? (
             <CreditCardActivity
+              debts={debts}
+              loading={loading}
+              onApplyFilters={(request) => void loadReports(request)}
+              reports={reports}
+            />
+          ) : null}
+
+          {view === 'cash-flow-analysis' ? (
+            <CashFlowAnalysis
               debts={debts}
               loading={loading}
               onApplyFilters={(request) => void loadReports(request)}
