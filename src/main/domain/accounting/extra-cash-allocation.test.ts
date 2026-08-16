@@ -36,6 +36,78 @@ const base = (
 });
 
 describe('extra-cash allocation', () => {
+  it('supports recurring extra payments, lump sums, and a delayed recurring start without mutating inputs', () => {
+    const debts = [debt('a', 100000, 50000), debt('b', 200000, 150000)];
+    const before = JSON.stringify(debts);
+    const result = calculateExtraCashAllocation({
+      ...base('highest_rate'),
+      debts,
+      analysisDate: '2026-01-01',
+      extraMonthlyPaymentStartDate: '2026-03-01',
+      lumpSumDate: '2026-02-01',
+      lumpSumCents: 50000,
+      extraMonthlyPaymentCents: 10000,
+    });
+    expect(result.status).toBe('reliable');
+    expect(result.lumpSumAppliedCents).toBe(50000);
+    expect(result.projection?.monthlySchedule.length).toBeGreaterThan(0);
+    expect(JSON.stringify(debts)).toBe(before);
+  });
+
+  it('zero extra payment with no lump sum matches the required-payment baseline', () => {
+    const baseline = calculateExtraCashAllocation({
+      ...base('baseline'),
+      lumpSumCents: 0,
+      extraMonthlyPaymentCents: 0,
+    });
+    const whatIf = calculateExtraCashAllocation({
+      ...base('highest_rate'),
+      lumpSumCents: 0,
+      extraMonthlyPaymentCents: 0,
+    });
+    expect(whatIf.projection?.projectedPayoffDate).toBe(
+      baseline.projection?.projectedPayoffDate,
+    );
+    expect(whatIf.projection?.totalProjectedInterestCents).toBe(
+      baseline.projection?.totalProjectedInterestCents,
+    );
+  });
+
+  it('supports individual-debt scope and portfolio scope through the same engine', () => {
+    const portfolio = calculateExtraCashAllocation({
+      ...base('highest_rate'),
+      lumpSumCents: 0,
+      extraMonthlyPaymentCents: 10000,
+    });
+    const individual = calculateExtraCashAllocation({
+      ...base('selected_debt'),
+      selectedDebtId: 'a',
+      debts: [debt('a', 100000, 50000)],
+      lumpSumCents: 0,
+      extraMonthlyPaymentCents: 10000,
+    });
+    expect(portfolio.projection?.debts).toHaveLength(2);
+    expect(individual.projection?.debts).toHaveLength(1);
+    expect(individual.initialDebtId).toBe('a');
+    expect(individual.projection?.projectedPayoffDate).not.toBeNull();
+  });
+
+  it('improves payoff timing and interest with recurring plus lump-sum cash', () => {
+    const baseline = calculateExtraCashAllocation({
+      ...base('baseline'),
+      lumpSumCents: 0,
+      extraMonthlyPaymentCents: 0,
+    });
+    const whatIf = calculateExtraCashAllocation({
+      ...base('highest_rate'),
+      lumpSumCents: 25000,
+      extraMonthlyPaymentCents: 10000,
+    });
+    expect(whatIf.projection?.monthsSaved).toBeGreaterThan(0);
+    expect(whatIf.projection?.totalProjectedInterestCents).toBeLessThan(
+      baseline.projection?.totalProjectedInterestCents ?? Number.MAX_SAFE_INTEGER,
+    );
+  });
   it('keeps the baseline unapplied and fully applies a $1,000 selected HELOC', () => {
     const debts = [
       {

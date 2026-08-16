@@ -2249,3 +2249,25 @@ year`.
 - Reports expose purchases, transfer in, transfer out, and net transfers separately; transfers do not affect portfolio debt, payments, or borrowing totals.
 - Validation results: pending final full validation after regression coverage.
 - Known limitation: historical generic transactions are not automatically reclassified; only newly entered credit-card purchases use `purchase`.
+
+## Phase 55: Debt Progress presentation and Extra Payment What-If Analysis
+
+- Completion date: 2026-08-16. Application version: 1.8.4.
+- Stacked the Debt Progress charts into full-width rows with adaptive scales,
+  Month/Year labels, and preserved zoom, pan, reset, and hover behavior.
+- Expanded the existing read-only extra-cash/payoff-engine path into Extra
+  Payment / What-If Analysis with portfolio or individual-debt scope,
+  recurring-payment start dates, lump-sum dates, existing payoff ordering,
+  current-versus-what-if summaries, charts, and debt payoff comparison.
+- Extended payoff assumptions only to schedule existing scenario-only cash
+  inputs; no schema, ledger, transaction, payment-schedule, or production-data
+  changes were made. Added ADR 044.
+- Validation: focused payoff/renderer tests passed (63 tests); full test suite
+  passed (17 files, 206 tests); lint, typecheck, database integrity check,
+  production build, and Electron E2E passed (one test passed and two expected
+  skips).
+- Known limitation: unsupported variable-rate, irregular, or otherwise
+  incomplete payoff inputs retain the existing engine warnings and may produce
+  a partial projection.
+- Recommended next phase: user acceptance review of What-If allocation labels
+  and chart readability.

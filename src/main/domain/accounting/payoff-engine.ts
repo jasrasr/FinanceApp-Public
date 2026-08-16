@@ -32,6 +32,7 @@ export interface PayoffAssumptions {
   readonly initialLumpSumAllocationsCents?: Readonly<Record<string, number>>;
   readonly initialLumpSumDate?: string;
   readonly initialLumpSumCents?: number;
+  readonly extraMonthlyPaymentStartDate?: string;
 }
 
 export interface PayoffDebtResult {
@@ -341,14 +342,7 @@ const runProjection = (
   includeExtra: boolean,
 ): Omit<PayoffProjectionResult, 'baselineInterestCents' | 'interestSavingsCents'> => {
   const balances = new Map(
-    debts.map((debt) => [
-      debt.debtId,
-      Math.max(
-        0,
-        debt.startingBalanceCents -
-          (assumptions.initialLumpSumAllocationsCents?.[debt.debtId] ?? 0),
-      ),
-    ]),
+    debts.map((debt) => [debt.debtId, Math.max(0, debt.startingBalanceCents)]),
   );
   const interestByDebt = new Map(debts.map((debt) => [debt.debtId, 0]));
   const payoffDateByDebt = new Map<string, string | null>(
@@ -364,6 +358,7 @@ const runProjection = (
   const globalWarnings = new Set<string>();
   const monthlyRequirements = new Map<string, number>();
   const monthlySchedule: PayoffMonthlyAllocation[] = [];
+  let initialLumpSumApplied = false;
 
   for (const debt of debts) {
     const support = initialSupportCheck(debt, assumptions);
@@ -393,6 +388,21 @@ const runProjection = (
     const activeIds = debts
       .map((debt) => debt.debtId)
       .filter((id) => (balances.get(id) ?? 0) > 0 && !unsupportedDebtIds.has(id));
+
+    if (
+      assumptions.initialLumpSumAllocationsCents &&
+      !initialLumpSumApplied &&
+      (!assumptions.initialLumpSumDate || date >= assumptions.initialLumpSumDate)
+    ) {
+      for (const debt of debts) {
+        const allocation = assumptions.initialLumpSumAllocationsCents[debt.debtId] ?? 0;
+        balances.set(
+          debt.debtId,
+          Math.max(0, (balances.get(debt.debtId) ?? 0) - allocation),
+        );
+      }
+      initialLumpSumApplied = true;
+    }
 
     if (activeIds.length === 0) break;
 
@@ -459,7 +469,17 @@ const runProjection = (
       );
     }
 
-    let available = includeExtra ? monthlyCashRequirementCents : baseCash;
+    const hasExtraPlan =
+      assumptions.extraMonthlyPaymentCents > 0 ||
+      Object.values(assumptions.initialLumpSumAllocationsCents ?? {}).some(
+        (amount) => amount > 0,
+      );
+    const extraEnabled =
+      includeExtra &&
+      hasExtraPlan &&
+      (!assumptions.extraMonthlyPaymentStartDate ||
+        date >= assumptions.extraMonthlyPaymentStartDate);
+    let available = extraEnabled ? monthlyCashRequirementCents : baseCash;
     let extraTargetDebtId: string | null = null;
     const extraPaidByDebt = new Map<string, number>();
     const userExtraPaidByDebt = new Map<string, number>();
@@ -484,7 +504,7 @@ const runProjection = (
     }
 
     let freedAvailableCents = Math.max(0, baseCash - scheduledTotalCents);
-    if (includeExtra && available > 0) {
+    if (extraEnabled && available > 0) {
       for (const debtId of priorityOrder(
         debts,
         balances,

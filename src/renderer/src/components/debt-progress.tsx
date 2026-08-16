@@ -706,7 +706,7 @@ export const DebtProgress = ({
               </section>
             ))}
           </div>
-          <div className="mt-6 grid gap-6 xl:grid-cols-2">
+          <div className="mt-6 grid gap-8">
             <section>
               <h3 className="text-lg font-semibold">Monthly debt progress</h3>
               <ProgressChart rows={rows} />

@@ -1664,7 +1664,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 onClick={showAllocation}
                 type="button"
               >
-                Extra-cash allocation
+                Extra Payment / What-If Analysis
               </button>
             </li>
             <li className="mt-1">

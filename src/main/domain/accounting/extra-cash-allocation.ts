@@ -16,6 +16,8 @@ export type ExtraCashAllocationStrategy =
 export interface ExtraCashAllocationInput {
   readonly debts: readonly PayoffDebtInput[];
   readonly analysisDate: string;
+  readonly extraMonthlyPaymentStartDate?: string;
+  readonly lumpSumDate?: string;
   readonly lumpSumCents: number;
   readonly extraMonthlyPaymentCents: number;
   readonly strategy: ExtraCashAllocationStrategy;
@@ -130,13 +132,7 @@ export const calculateExtraCashAllocation = (
       configurationMessage: `Custom split must allocate the full entered lump sum; ${Math.max(0, input.lumpSumCents - Object.values(input.splitCents ?? {}).reduce((total, value) => total + Math.max(0, value), 0))} cents remain unallocated.`,
     };
   }
-  const debts = input.debts.map((debt) => ({
-    ...debt,
-    startingBalanceCents: Math.max(
-      0,
-      debt.startingBalanceCents - (lump.allocations[debt.debtId] ?? 0),
-    ),
-  }));
+  const debts = input.debts;
   const assumptions: PayoffAssumptions = {
     scenarioStartDate: input.analysisDate,
     strategy:
@@ -152,6 +148,11 @@ export const calculateExtraCashAllocation = (
     customPriority: orderedIds(input),
     variableRateOverrides: {},
     maxProjectionMonths: input.maxProjectionMonths,
+    extraMonthlyPaymentStartDate:
+      input.extraMonthlyPaymentStartDate ?? input.analysisDate,
+    initialLumpSumDate: input.lumpSumDate ?? input.analysisDate,
+    initialLumpSumCents: input.lumpSumCents - lump.unused,
+    initialLumpSumAllocationsCents: lump.allocations,
   };
   const projection = projectPayoffScenario(debts, assumptions);
   const allocationOrder = orderedIds(input);
@@ -173,7 +174,17 @@ export const calculateExtraCashAllocation = (
       input.strategy === 'baseline' ? null : (orderedIds(input)[0] ?? null),
     lumpSumAppliedCents: input.lumpSumCents - lump.unused,
     unusedLumpSumCents: lump.unused,
-    projection: { ...projection, payoffOrder: orderedPayoff },
+    projection: {
+      ...projection,
+      debts: projection.debts.map((debt) => ({
+        ...debt,
+        startingBalanceCents: Math.max(
+          0,
+          debt.startingBalanceCents - (lump.allocations[debt.debtId] ?? 0),
+        ),
+      })),
+      payoffOrder: orderedPayoff,
+    },
     lumpSumByDebtCents: lump.allocations,
     status: 'reliable',
     configurationMessage: null,

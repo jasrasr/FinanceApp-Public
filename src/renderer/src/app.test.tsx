@@ -2481,7 +2481,7 @@ describe('debt maintenance application', () => {
       'Debt outlook',
       'Interest analysis',
       'Refinance analysis',
-      'Extra-cash allocation',
+      'Extra Payment / What-If Analysis',
       'Payoff scenarios',
       'Reports',
       'Data health',

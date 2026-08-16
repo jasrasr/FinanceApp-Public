@@ -421,7 +421,9 @@ const extraCashStrategySchema = z.enum([
 export const extraCashAllocationRequestSchema = z
   .object({
     analysisDate: financialDateInputSchema,
+    extraMonthlyPaymentStartDate: financialDateInputSchema.optional(),
     lumpSum: moneyInputSchema,
+    lumpSumDate: financialDateInputSchema.optional(),
     extraMonthlyPayment: moneyInputSchema,
     excludedDebtIds: z.array(uuidSchema),
     selectedDebtId: uuidSchema.nullable(),

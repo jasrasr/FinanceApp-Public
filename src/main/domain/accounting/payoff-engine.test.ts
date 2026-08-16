@@ -25,6 +25,32 @@ const debt = (overrides: Partial<PayoffDebtInput> = {}): PayoffDebtInput => ({
 });
 
 describe('payoff projection engine', () => {
+  it('starts recurring extra payments on the requested date', () => {
+    const immediate = projectPayoffScenario([debt()], {
+      scenarioStartDate: '2026-01-01',
+      extraMonthlyPaymentStartDate: '2026-01-01',
+      strategy: 'avalanche',
+      extraMonthlyPaymentCents: 100_00,
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 120,
+    });
+    const delayed = projectPayoffScenario([debt()], {
+      scenarioStartDate: '2026-01-01',
+      extraMonthlyPaymentStartDate: '2026-03-01',
+      strategy: 'avalanche',
+      extraMonthlyPaymentCents: 100_00,
+      customPriority: [],
+      variableRateOverrides: {},
+      maxProjectionMonths: 120,
+    });
+    expect(delayed.monthlySchedule[0]?.extraPaymentCents).toBe(0);
+    expect(delayed.monthlySchedule[2]?.extraPaymentCents).toBeGreaterThan(0);
+    expect(immediate.totalProjectedInterestCents).toBeLessThan(
+      delayed.totalProjectedInterestCents,
+    );
+  });
+
   it('keeps projected activity scenario-only while calculating payoff savings', () => {
     const result = projectPayoffScenario([debt()], {
       scenarioStartDate: '2026-01-01',

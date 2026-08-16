@@ -2114,7 +2114,23 @@ const mapExtraCashResult = (
           ?.extraPaymentCents ?? 0,
       ),
       projectedPayoffDate: debt.projectedPayoffDate,
-      monthsSaved: debt.projectedPayoffDate ? null : null,
+      monthsSaved:
+        baseline.debts.find((item) => item.debtId === debt.debtId)
+          ?.projectedPayoffDate && debt.projectedPayoffDate
+          ? (Number(
+              baseline.debts
+                .find((item) => item.debtId === debt.debtId)!
+                .projectedPayoffDate!.slice(0, 4),
+            ) -
+              Number(debt.projectedPayoffDate.slice(0, 4))) *
+              12 +
+            (Number(
+              baseline.debts
+                .find((item) => item.debtId === debt.debtId)!
+                .projectedPayoffDate!.slice(5, 7),
+            ) -
+              Number(debt.projectedPayoffDate.slice(5, 7)))
+          : null,
       projectedInterest:
         debt.projectedInterestCents === null
           ? null
@@ -4078,7 +4094,16 @@ export const createDebtMaintenanceService = ({
         const common = {
           debts: inputs,
           analysisDate,
+          extraMonthlyPaymentStartDate: parsed.extraMonthlyPaymentStartDate
+            ? ensureCalendarDate(
+                'extraMonthlyPaymentStartDate',
+                parsed.extraMonthlyPaymentStartDate,
+              )
+            : analysisDate,
           lumpSumCents: convertMoney('lumpSum', parsed.lumpSum),
+          lumpSumDate: parsed.lumpSumDate
+            ? ensureCalendarDate('lumpSumDate', parsed.lumpSumDate)
+            : analysisDate,
           extraMonthlyPaymentCents: convertMoney(
             'extraMonthlyPayment',
             parsed.extraMonthlyPayment,
