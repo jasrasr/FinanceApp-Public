@@ -45,6 +45,11 @@ import type {
   UpdateIncomeTransactionRequest,
   ArchiveIncomeTransactionRequest,
   IncomeTransactionDto,
+  ListIncomeSourcesRequest,
+  CreateIncomeSourceRequest,
+  UpdateIncomeSourceRequest,
+  SetIncomeSourceArchivedRequest,
+  IncomeSourceDto,
   GetDebtRequest,
   GetPayoffScenarioRequest,
   ListDebtsRequest,
@@ -91,6 +96,10 @@ import {
   createIncomeTransactionRequestSchema,
   updateIncomeTransactionRequestSchema,
   archiveIncomeTransactionRequestSchema,
+  listIncomeSourcesRequestSchema,
+  createIncomeSourceRequestSchema,
+  updateIncomeSourceRequestSchema,
+  setIncomeSourceArchivedRequestSchema,
   getDebtRequestSchema,
   getPayoffScenarioRequestSchema,
   listPayoffScenariosRequestSchema,
@@ -108,7 +117,7 @@ import {
 import { ALLOCATION_TYPES } from '../../shared/debt-options';
 import { REPORTING_HISTORY_START_DATE } from '../../shared/reporting-constants';
 import type { AppDatabase } from '../database/connection';
-import { incomeRecords, incomeTransactions } from '../database/schema';
+import { incomeRecords, incomeSources, incomeTransactions } from '../database/schema';
 import {
   calculateLedgerBalanceThroughDate,
   calculateEscrowBalanceThroughDate,
@@ -221,6 +230,10 @@ export interface DebtMaintenanceService {
   archiveIncomeTransaction(
     request: ArchiveIncomeTransactionRequest,
   ): IncomeTransactionDto;
+  listIncomeSources(request: ListIncomeSourcesRequest): readonly IncomeSourceDto[];
+  createIncomeSource(request: CreateIncomeSourceRequest): IncomeSourceDto;
+  updateIncomeSource(request: UpdateIncomeSourceRequest): IncomeSourceDto;
+  setIncomeSourceArchived(request: SetIncomeSourceArchivedRequest): IncomeSourceDto;
   listPayoffScenarios(
     request: ListPayoffScenariosRequest,
   ): readonly PayoffScenarioDto[];
@@ -2579,10 +2592,11 @@ const createCashFlowAnalysis = (
         transaction.receivedDate >= periodStartDate &&
         transaction.receivedDate <= periodEndDate,
     );
-    const grossIncome = incomeForPeriod.length
+    const grossIncome = incomeForPeriod.some(
+      (transaction) => transaction.grossAmountCents !== null,
+    )
       ? incomeForPeriod.reduce(
-          (sum, transaction) =>
-            sum + (transaction.grossAmountCents ?? transaction.amountCents),
+          (sum, transaction) => sum + (transaction.grossAmountCents ?? 0),
           0,
         )
       : null;
@@ -4041,14 +4055,26 @@ const mapIncomeRecord = (
   archivedAtUtc: record.archivedAtUtc,
 });
 
+const mapIncomeSource = (
+  source: typeof incomeSources.$inferSelect,
+): IncomeSourceDto => ({
+  id: source.id,
+  name: source.name,
+  createdAtUtc: source.createdAtUtc,
+  updatedAtUtc: source.updatedAtUtc,
+  archivedAtUtc: source.archivedAtUtc,
+});
+
 const mapIncomeTransaction = (
   transaction: typeof incomeTransactions.$inferSelect,
+  sourceName?: string,
 ): IncomeTransactionDto => ({
   id: transaction.id,
   receivedDate: transaction.receivedDate,
   amount: centsToDollars(transaction.amountCents),
   incomeType: transaction.incomeType as IncomeTransactionDto['incomeType'],
-  source: transaction.source,
+  source: sourceName ?? transaction.source,
+  sourceId: transaction.sourceId,
   notes: transaction.notes,
   grossAmount:
     transaction.grossAmountCents === null
@@ -4501,9 +4527,140 @@ export const createDebtMaintenanceService = ({
       }
     },
 
+    listIncomeSources: (request) => {
+      try {
+        const parsed = listIncomeSourcesRequestSchema.parse(request);
+        return database
+          .select()
+          .from(incomeSources)
+          .orderBy(asc(incomeSources.name))
+          .all()
+          .filter((source) => parsed.includeArchived || source.archivedAtUtc === null)
+          .map(mapIncomeSource);
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    createIncomeSource: (request) => {
+      try {
+        const parsed = createIncomeSourceRequestSchema.parse(request);
+        const timestamp = now();
+        const source = {
+          id: createId(),
+          name: parsed.name,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+          archivedAtUtc: null,
+        };
+        database.insert(incomeSources).values(source).run();
+        return mapIncomeSource(
+          database
+            .select()
+            .from(incomeSources)
+            .where(eq(incomeSources.id, source.id))
+            .get()!,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    updateIncomeSource: (request) => {
+      try {
+        const parsed = updateIncomeSourceRequestSchema.parse(request);
+        const existing = database
+          .select()
+          .from(incomeSources)
+          .where(eq(incomeSources.id, parsed.id))
+          .get();
+        if (!existing)
+          throw new ApplicationServiceError(
+            'not_found',
+            'Income source was not found.',
+          );
+        if (existing.updatedAtUtc !== parsed.expectedUpdatedAtUtc)
+          throw new ApplicationServiceError(
+            'conflict',
+            'Income source changed before it was updated.',
+          );
+        const timestamp = now();
+        database
+          .update(incomeSources)
+          .set({ name: parsed.name, updatedAtUtc: timestamp })
+          .where(
+            and(
+              eq(incomeSources.id, parsed.id),
+              eq(incomeSources.updatedAtUtc, parsed.expectedUpdatedAtUtc),
+            ),
+          )
+          .run();
+        return mapIncomeSource(
+          database
+            .select()
+            .from(incomeSources)
+            .where(eq(incomeSources.id, parsed.id))
+            .get()!,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    setIncomeSourceArchived: (request) => {
+      try {
+        const parsed = setIncomeSourceArchivedRequestSchema.parse(request);
+        const existing = database
+          .select()
+          .from(incomeSources)
+          .where(eq(incomeSources.id, parsed.id))
+          .get();
+        if (!existing)
+          throw new ApplicationServiceError(
+            'not_found',
+            'Income source was not found.',
+          );
+        if (existing.updatedAtUtc !== parsed.expectedUpdatedAtUtc)
+          throw new ApplicationServiceError(
+            'conflict',
+            'Income source changed before it was updated.',
+          );
+        const timestamp = now();
+        database
+          .update(incomeSources)
+          .set({
+            archivedAtUtc: parsed.archived ? timestamp : null,
+            updatedAtUtc: timestamp,
+          })
+          .where(
+            and(
+              eq(incomeSources.id, parsed.id),
+              eq(incomeSources.updatedAtUtc, parsed.expectedUpdatedAtUtc),
+            ),
+          )
+          .run();
+        return mapIncomeSource(
+          database
+            .select()
+            .from(incomeSources)
+            .where(eq(incomeSources.id, parsed.id))
+            .get()!,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
     listIncomeTransactions: (request) => {
       try {
         const parsed = listIncomeTransactionsRequestSchema.parse(request);
+        const sources = new Map(
+          database
+            .select({ id: incomeSources.id, name: incomeSources.name })
+            .from(incomeSources)
+            .all()
+            .map((source) => [source.id, source.name] as const),
+        );
         return database
           .select()
           .from(incomeTransactions)
@@ -4516,7 +4673,12 @@ export const createDebtMaintenanceService = ({
             (transaction) =>
               parsed.includeArchived || transaction.archivedAtUtc === null,
           )
-          .map(mapIncomeTransaction);
+          .map((transaction) =>
+            mapIncomeTransaction(
+              transaction,
+              transaction.sourceId ? sources.get(transaction.sourceId) : undefined,
+            ),
+          );
       } catch (error) {
         return normalizeError(error);
       }
@@ -4526,19 +4688,30 @@ export const createDebtMaintenanceService = ({
       try {
         const parsed = createIncomeTransactionRequestSchema.parse(request);
         const timestamp = now();
+        const source = database
+          .select()
+          .from(incomeSources)
+          .where(eq(incomeSources.id, parsed.sourceId))
+          .get();
+        if (!source || source.archivedAtUtc !== null)
+          throw new ApplicationServiceError(
+            'validation',
+            'Select an active income source.',
+            { sourceId: ['Select an active income source.'] },
+          );
+        const netAmountCents = incomeMoneyCents(parsed.netAmount, 'Net income');
         const transaction = {
           id: createId(),
           receivedDate: parsed.receivedDate,
-          amountCents: incomeMoneyCents(parsed.amount, 'Income amount'),
+          amountCents: netAmountCents,
           incomeType: parsed.incomeType,
-          source: parsed.source,
+          source: source.name,
+          sourceId: source.id,
           notes: parsed.notes,
           grossAmountCents: parsed.grossAmount
             ? incomeMoneyCents(parsed.grossAmount, 'Gross income')
             : null,
-          netAmountCents: parsed.netAmount
-            ? incomeMoneyCents(parsed.netAmount, 'Net income')
-            : null,
+          netAmountCents,
           createdAtUtc: timestamp,
           updatedAtUtc: timestamp,
           archivedAtUtc: null,
@@ -4550,6 +4723,7 @@ export const createDebtMaintenanceService = ({
             .from(incomeTransactions)
             .where(eq(incomeTransactions.id, transaction.id))
             .get()!,
+          source.name,
         );
       } catch (error) {
         return normalizeError(error);
@@ -4575,21 +4749,31 @@ export const createDebtMaintenanceService = ({
             'Income transaction changed before it was updated.',
           );
         }
+        const source = database
+          .select()
+          .from(incomeSources)
+          .where(eq(incomeSources.id, parsed.sourceId))
+          .get();
+        if (!source)
+          throw new ApplicationServiceError(
+            'validation',
+            'Select a valid income source.',
+            { sourceId: ['Select a valid income source.'] },
+          );
         const timestamp = now();
         database
           .update(incomeTransactions)
           .set({
             receivedDate: parsed.receivedDate,
-            amountCents: incomeMoneyCents(parsed.amount, 'Income amount'),
+            amountCents: incomeMoneyCents(parsed.netAmount, 'Net income'),
             incomeType: parsed.incomeType,
-            source: parsed.source,
+            source: source.name,
+            sourceId: source.id,
             notes: parsed.notes,
             grossAmountCents: parsed.grossAmount
               ? incomeMoneyCents(parsed.grossAmount, 'Gross income')
               : null,
-            netAmountCents: parsed.netAmount
-              ? incomeMoneyCents(parsed.netAmount, 'Net income')
-              : null,
+            netAmountCents: incomeMoneyCents(parsed.netAmount, 'Net income'),
             updatedAtUtc: timestamp,
           })
           .where(
@@ -4605,6 +4789,7 @@ export const createDebtMaintenanceService = ({
             .from(incomeTransactions)
             .where(eq(incomeTransactions.id, parsed.id))
             .get()!,
+          source.name,
         );
       } catch (error) {
         return normalizeError(error);

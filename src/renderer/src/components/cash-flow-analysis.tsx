@@ -389,6 +389,7 @@ export const CashFlowAnalysis = ({
     (sum, row) => sum + (row.grossIncome === null ? 0 : value(row.grossIncome)),
     0,
   );
+  const grossIncomeAvailable = incomeRows.some((row) => row.grossIncome !== null);
   const netIncome = incomeRows.reduce(
     (sum, row) => sum + (row.netIncome === null ? 0 : value(row.netIncome)),
     0,
@@ -517,12 +518,12 @@ export const CashFlowAnalysis = ({
           <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
             {[
               [
-                'Gross income received',
-                activity.incomeDataAvailable ? money(grossIncome) : 'Not available',
-              ],
-              [
                 'Net income received',
                 activity.incomeDataAvailable ? money(netIncome) : 'Not available',
+              ],
+              [
+                'Gross income received',
+                grossIncomeAvailable ? money(grossIncome) : 'Not entered',
               ],
               ['Total debt payments', money(totalPayments)],
               ['Principal paid', money(principal)],
@@ -552,7 +553,7 @@ export const CashFlowAnalysis = ({
                 paymentChange === null ? 'Not available' : money(paymentChange),
               ],
               [
-                'Remaining net income after debt payments',
+                'Net income after debt',
                 activity.incomeDataAvailable
                   ? money(remainingNetIncome)
                   : 'Not available',

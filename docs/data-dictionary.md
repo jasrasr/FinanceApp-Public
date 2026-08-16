@@ -456,11 +456,27 @@ It is no longer used for current income reporting.
 ### income_transactions
 
 Actual income events are stored separately from debt transactions. Each row
-stores the received date, positive received amount in cents, income type,
-source, optional notes, and optional gross and net amounts. Archived rows remain
-for auditability and are excluded from current reporting. If gross or net is not
-provided, reports use the received amount for that measure; no monthly income is
-invented for months without transactions.
+stores the received date, positive net/take-home amount in cents, income type,
+the source snapshot, an optional `source_id`, optional notes, and optional gross
+amount. New events require net income. Archived rows remain for auditability and
+are excluded from current reporting. Legacy rows without `source_id` or net
+retain their original source/received amount compatibility values; no monthly
+income is invented for months without transactions.
+
+### income_sources
+
+Reusable source/employer names for income events. Sources have an auditable
+archive timestamp rather than being deleted, so historical transactions remain
+readable. Editing a source updates its displayed name for linked events while
+retaining the original source snapshot in `income_transactions`.
+
+| Column            | Type / unit       | Required | Meaning                               |
+| ----------------- | ----------------- | -------- | ------------------------------------- |
+| `id`              | text              | yes      | Stable source identifier.             |
+| `name`            | text              | yes      | Unique reusable source/employer name. |
+| `created_at_utc`  | ISO UTC timestamp | yes      | Creation time.                        |
+| `updated_at_utc`  | ISO UTC timestamp | yes      | Last change time.                     |
+| `archived_at_utc` | ISO UTC timestamp | no       | Archive/restore state.                |
 
 ### application_settings
 

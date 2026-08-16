@@ -64,6 +64,11 @@ import type {
   CreateIncomeRecordRequest,
   IncomeRecordDto,
   ListIncomeTransactionsRequest,
+  ListIncomeSourcesRequest,
+  CreateIncomeSourceRequest,
+  UpdateIncomeSourceRequest,
+  SetIncomeSourceArchivedRequest,
+  IncomeSourceDto,
   CreateIncomeTransactionRequest,
   UpdateIncomeTransactionRequest,
   ArchiveIncomeTransactionRequest,
@@ -138,6 +143,18 @@ export interface DebtBridge {
   archiveIncomeRecord(
     request: ArchiveIncomeRecordRequest,
   ): Promise<ApplicationResult<IncomeRecordDto>>;
+  listIncomeSources(
+    request: ListIncomeSourcesRequest,
+  ): Promise<ApplicationResult<readonly IncomeSourceDto[]>>;
+  createIncomeSource(
+    request: CreateIncomeSourceRequest,
+  ): Promise<ApplicationResult<IncomeSourceDto>>;
+  updateIncomeSource(
+    request: UpdateIncomeSourceRequest,
+  ): Promise<ApplicationResult<IncomeSourceDto>>;
+  setIncomeSourceArchived(
+    request: SetIncomeSourceArchivedRequest,
+  ): Promise<ApplicationResult<IncomeSourceDto>>;
   listIncomeTransactions(
     request: ListIncomeTransactionsRequest,
   ): Promise<ApplicationResult<readonly IncomeTransactionDto[]>>;
@@ -220,6 +237,6 @@ export interface DebtBridge {
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 27;
+  readonly bridgeVersion: 28;
   readonly appMetadata: AppMetadataDto;
 }

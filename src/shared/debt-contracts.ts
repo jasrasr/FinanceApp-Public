@@ -417,15 +417,50 @@ export const archiveIncomeRecordRequestSchema = z
 
 export const incomeTypeSchema = z.enum(['regular_paycheck', 'bonus', 'other_income']);
 
+export const incomeSourceIdSchema = z.string().trim().min(1).max(200);
+
+export const incomeSourceDtoSchema = z
+  .object({
+    id: incomeSourceIdSchema,
+    name: requiredTextSchema,
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+    archivedAtUtc: utcTimestampSchema.nullable(),
+  })
+  .strict();
+
+export const listIncomeSourcesRequestSchema = z
+  .object({ includeArchived: z.boolean() })
+  .strict();
+
+export const createIncomeSourceRequestSchema = z
+  .object({ name: requiredTextSchema })
+  .strict();
+
+export const updateIncomeSourceRequestSchema = z
+  .object({
+    id: incomeSourceIdSchema,
+    name: requiredTextSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+  })
+  .strict();
+
+export const setIncomeSourceArchivedRequestSchema = z
+  .object({
+    id: incomeSourceIdSchema,
+    expectedUpdatedAtUtc: utcTimestampSchema,
+    archived: z.boolean(),
+  })
+  .strict();
+
 const incomeTransactionInputSchema = z
   .object({
     receivedDate: financialDateInputSchema,
-    amount: moneyInputSchema,
     incomeType: incomeTypeSchema,
-    source: requiredTextSchema,
+    sourceId: incomeSourceIdSchema,
     notes: optionalTextSchema,
     grossAmount: optionalMoneyInputSchema,
-    netAmount: optionalMoneyInputSchema,
+    netAmount: moneyInputSchema,
   })
   .strict();
 
@@ -1291,6 +1326,7 @@ export const incomeTransactionDtoSchema = z
     receivedDate: financialDateInputSchema,
     amount: z.string(),
     incomeType: incomeTypeSchema,
+    sourceId: incomeSourceIdSchema.nullable(),
     source: z.string(),
     notes: z.string().nullable(),
     grossAmount: z.string().nullable(),
@@ -1592,6 +1628,10 @@ export const incomeRecordListResultSchema = applicationResultSchema(
   z.array(incomeRecordDtoSchema),
 );
 export const incomeRecordResultSchema = applicationResultSchema(incomeRecordDtoSchema);
+export const incomeSourceListResultSchema = applicationResultSchema(
+  incomeSourceDtoSchema.array(),
+);
+export const incomeSourceResultSchema = applicationResultSchema(incomeSourceDtoSchema);
 export const incomeTransactionListResultSchema = applicationResultSchema(
   incomeTransactionDtoSchema.array(),
 );
@@ -1909,6 +1949,13 @@ export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSche
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;
 export type IncomeRecordDto = z.infer<typeof incomeRecordDtoSchema>;
+export type ListIncomeSourcesRequest = z.infer<typeof listIncomeSourcesRequestSchema>;
+export type CreateIncomeSourceRequest = z.infer<typeof createIncomeSourceRequestSchema>;
+export type UpdateIncomeSourceRequest = z.infer<typeof updateIncomeSourceRequestSchema>;
+export type SetIncomeSourceArchivedRequest = z.infer<
+  typeof setIncomeSourceArchivedRequestSchema
+>;
+export type IncomeSourceDto = z.infer<typeof incomeSourceDtoSchema>;
 export type IncomeTransactionDto = z.infer<typeof incomeTransactionDtoSchema>;
 export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
 export type PayoffScenarioDto = z.infer<typeof payoffScenarioDtoSchema>;

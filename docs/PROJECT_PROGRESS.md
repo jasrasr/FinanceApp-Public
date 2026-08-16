@@ -2371,3 +2371,22 @@ year`.
 - Navigation groups now start collapsed and expand when a child route is opened.
 - Known limitation: if gross or net is omitted for an event, the received amount
   is used for that measure; no payroll-tax inference is attempted.
+
+## Phase 61: Reusable Income Sources and Net-First Entry
+
+- Completion date: 2026-08-16. Application version remains 1.9.0.
+- Added reusable, archiveable income sources with secure IPC CRUD, a source
+  dropdown, quick source creation, source filtering, and source-level income
+  summaries. New income events require actual net/take-home cash received;
+  gross remains optional and is never inferred.
+- Added migrations 0016 and 0017. Existing source text is preserved as a
+  transaction snapshot while distinct source records are created and linked;
+  debt-ledger tables and values are untouched.
+- Cash Flow / Debt Burden now prioritizes net income and labels missing gross as
+  not entered. Bridge version increased to 28 and income source/transaction
+  responses are validated end to end.
+- Validation: unit, integration, migration, IPC, preload, typecheck, lint, and
+  database integrity checks passed. Production build and Electron E2E remain to
+  be run for this phase.
+- Known limitation: legacy income rows without a source link remain available
+  through their original source snapshot until upgraded by migration.

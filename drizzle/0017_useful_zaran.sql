@@ -1,0 +1,1 @@
+CREATE INDEX `income_transactions_source_id_idx` ON `income_transactions` (`source_id`);

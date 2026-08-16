@@ -30,6 +30,7 @@ describe('typed preload bridge', () => {
       'createDebtTransaction',
       'createDebtTransfer',
       'createIncomeRecord',
+      'createIncomeSource',
       'createIncomeTransaction',
       'createManualBackup',
       'createPayoffScenario',
@@ -50,6 +51,7 @@ describe('typed preload bridge', () => {
       'importBackupFile',
       'listDebts',
       'listIncomeRecords',
+      'listIncomeSources',
       'listIncomeTransactions',
       'listPayoffScenarios',
       'openBackupFolder',
@@ -61,13 +63,15 @@ describe('typed preload bridge', () => {
       'restoreDebt',
       'reverseDebtTransaction',
       'setDataLocations',
+      'setIncomeSourceArchived',
       'updateDebt',
       'updateIncomeRecord',
+      'updateIncomeSource',
       'updateIncomeTransaction',
       'voidBalanceReconciliation',
       'voidDebtTransaction',
     ]);
-    expect(bridge.bridgeVersion).toBe(27);
+    expect(bridge.bridgeVersion).toBe(28);
     expect(bridge.appMetadata).toEqual({
       version: packageMetadata.version,
       lastChangedAtUtc: '2026-08-15T00:00:00.000Z',
@@ -102,6 +106,60 @@ describe('typed preload bridge', () => {
     const bridge = createAppBridge(vi.fn(async () => ({ rows: [] })));
 
     await expect(bridge.listDebts({ includeArchived: false })).rejects.toThrow();
+  });
+
+  it('validates income source and net-first transaction responses through the bridge', async () => {
+    const sourceId = 'generated-income-source';
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === DEBT_IPC_CHANNELS.listIncomeSources)
+        return {
+          ok: true,
+          value: [
+            {
+              id: sourceId,
+              name: 'Generated Employer',
+              createdAtUtc: '2026-08-01T00:00:00.000Z',
+              updatedAtUtc: '2026-08-01T00:00:00.000Z',
+              archivedAtUtc: null,
+            },
+          ],
+        };
+      return {
+        ok: true,
+        value: [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            receivedDate: '2026-08-15',
+            amount: '3250.00',
+            incomeType: 'regular_paycheck',
+            sourceId,
+            source: 'Generated Employer',
+            notes: null,
+            grossAmount: null,
+            netAmount: '3250.00',
+            createdAtUtc: '2026-08-15T00:00:00.000Z',
+            updatedAtUtc: '2026-08-15T00:00:00.000Z',
+            archivedAtUtc: null,
+          },
+        ],
+      };
+    });
+    const bridge = createAppBridge(invoke);
+
+    await expect(
+      bridge.listIncomeSources({ includeArchived: true }),
+    ).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(
+      bridge.listIncomeTransactions({ includeArchived: true }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.listIncomeSources, {
+      includeArchived: true,
+    });
+    expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.listIncomeTransactions, {
+      includeArchived: true,
+    });
   });
 
   it('exposes only the approved backup-file import operation', () => {

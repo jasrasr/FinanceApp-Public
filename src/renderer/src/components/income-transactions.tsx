@@ -2,6 +2,10 @@ import { useMemo, useState } from 'react';
 import type {
   ArchiveIncomeTransactionRequest,
   CreateIncomeTransactionRequest,
+  CreateIncomeSourceRequest,
+  IncomeSourceDto,
+  SetIncomeSourceArchivedRequest,
+  UpdateIncomeSourceRequest,
   IncomeTransactionDto,
   UpdateIncomeTransactionRequest,
 } from '../../../shared/debt-contracts';
@@ -11,10 +15,16 @@ type Preset = 'ytd' | 'prior-year' | 'last-12-months' | 'all-time' | 'custom';
 
 export interface IncomeTransactionsProps {
   readonly records: readonly IncomeTransactionDto[];
+  readonly sources: readonly IncomeSourceDto[];
   readonly loading: boolean;
   readonly onCreate: (request: CreateIncomeTransactionRequest) => void;
   readonly onUpdate: (request: UpdateIncomeTransactionRequest) => void;
   readonly onArchive: (request: ArchiveIncomeTransactionRequest) => void;
+  readonly onCreateSource: (
+    request: CreateIncomeSourceRequest,
+  ) => Promise<IncomeSourceDto | null>;
+  readonly onUpdateSource: (request: UpdateIncomeSourceRequest) => void;
+  readonly onSetSourceArchived: (request: SetIncomeSourceArchivedRequest) => void;
 }
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -39,10 +49,14 @@ const typeLabel = (type: IncomeTransactionDto['incomeType']): string =>
 
 export const IncomeTransactions = ({
   records,
+  sources,
   loading,
   onCreate,
   onUpdate,
   onArchive,
+  onCreateSource,
+  onUpdateSource,
+  onSetSourceArchived,
 }: IncomeTransactionsProps): React.JSX.Element => {
   const [preset, setPreset] = useState<Preset>('ytd');
   const initial = rangeFor('ytd');
@@ -50,35 +64,41 @@ export const IncomeTransactions = ({
   const [end, setEnd] = useState(initial.end);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [receivedDate, setReceivedDate] = useState(today());
-  const [amount, setAmount] = useState('');
+  const [netAmount, setNetAmount] = useState('');
   const [incomeType, setIncomeType] =
     useState<IncomeTransactionDto['incomeType']>('regular_paycheck');
-  const [source, setSource] = useState('');
+  const [sourceId, setSourceId] = useState('');
   const [grossAmount, setGrossAmount] = useState('');
-  const [netAmount, setNetAmount] = useState('');
   const [notes, setNotes] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [newSourceName, setNewSourceName] = useState('');
+  const [sourceEditingId, setSourceEditingId] = useState<string | null>(null);
+  const [sourceEditingName, setSourceEditingName] = useState('');
+  const [quickSourceName, setQuickSourceName] = useState('');
   const visible = useMemo(
     () =>
       records.filter(
         (record) =>
           record.archivedAtUtc === null &&
           record.receivedDate >= start &&
-          record.receivedDate <= end,
+          record.receivedDate <= end &&
+          (!sourceFilter || record.sourceId === sourceFilter),
       ),
-    [end, records, start],
+    [end, records, sourceFilter, start],
   );
   const totals = visible.reduce(
     (result, record) => {
       const net = Number(record.netAmount ?? record.amount);
-      const gross = Number(record.grossAmount ?? record.amount);
+      const gross = record.grossAmount === null ? 0 : Number(record.grossAmount);
       result.gross += gross;
+      if (record.grossAmount !== null) result.grossCount += 1;
       result.net += net;
       if (record.incomeType === 'regular_paycheck') result.regular += net;
       if (record.incomeType === 'bonus') result.bonus += net;
       if (record.incomeType === 'other_income') result.other += net;
       return result;
     },
-    { gross: 0, net: 0, regular: 0, bonus: 0, other: 0 },
+    { gross: 0, grossCount: 0, net: 0, regular: 0, bonus: 0, other: 0 },
   );
   const months = Math.max(
     1,
@@ -87,9 +107,6 @@ export const IncomeTransactions = ({
   const reset = (): void => {
     setEditingId(null);
     setReceivedDate(today());
-    setAmount('');
-    setIncomeType('regular_paycheck');
-    setSource('');
     setGrossAmount('');
     setNetAmount('');
     setNotes('');
@@ -97,12 +114,11 @@ export const IncomeTransactions = ({
   const submit = (): void => {
     const input = {
       receivedDate,
-      amount,
       incomeType,
-      source,
+      sourceId,
       notes: notes || null,
       grossAmount: grossAmount || null,
-      netAmount: netAmount || null,
+      netAmount,
     };
     const existing = editingId
       ? records.find((record) => record.id === editingId)
@@ -115,6 +131,15 @@ export const IncomeTransactions = ({
       });
     else onCreate(input);
     reset();
+  };
+  const addQuickSource = async (): Promise<void> => {
+    const name = quickSourceName.trim();
+    if (!name) return;
+    const created = await onCreateSource({ name });
+    if (created) {
+      setSourceId(created.id);
+      setQuickSourceName('');
+    }
   };
   return (
     <section aria-labelledby="income-transactions-heading" className="space-y-6">
@@ -143,12 +168,13 @@ export const IncomeTransactions = ({
             />
           </label>
           <label className="text-sm font-medium">
-            Amount received
+            Net / take-home amount
             <input
               className="mt-1 block w-full rounded border-slate-300"
               inputMode="decimal"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
+              required
+              value={netAmount}
+              onChange={(event) => setNetAmount(event.target.value)}
               placeholder="0.00"
             />
           </label>
@@ -168,11 +194,24 @@ export const IncomeTransactions = ({
           </label>
           <label className="text-sm font-medium">
             Source / employer
-            <input
+            <select
               className="mt-1 block w-full rounded border-slate-300"
-              value={source}
-              onChange={(event) => setSource(event.target.value)}
-            />
+              value={sourceId}
+              onChange={(event) => setSourceId(event.target.value)}
+              required
+            >
+              <option value="">Select a source</option>
+              {sources
+                .filter(
+                  (sourceRecord) =>
+                    sourceRecord.archivedAtUtc === null || sourceRecord.id === sourceId,
+                )
+                .map((sourceRecord) => (
+                  <option key={sourceRecord.id} value={sourceRecord.id}>
+                    {sourceRecord.name}
+                  </option>
+                ))}
+            </select>
           </label>
           <label className="text-sm font-medium">
             Gross amount (optional)
@@ -183,15 +222,26 @@ export const IncomeTransactions = ({
               onChange={(event) => setGrossAmount(event.target.value)}
             />
           </label>
-          <label className="text-sm font-medium">
-            Net / take-home (optional)
-            <input
-              className="mt-1 block w-full rounded border-slate-300"
-              inputMode="decimal"
-              value={netAmount}
-              onChange={(event) => setNetAmount(event.target.value)}
-            />
-          </label>
+          <div className="text-sm md:col-span-2">
+            <span className="font-medium">Need another source?</span>
+            <div className="mt-1 flex gap-2">
+              <input
+                aria-label="Quick new income source"
+                className="block min-w-0 flex-1 rounded border-slate-300"
+                value={quickSourceName}
+                onChange={(event) => setQuickSourceName(event.target.value)}
+                placeholder="Add new source"
+              />
+              <button
+                className="rounded border px-3 py-2 font-semibold"
+                disabled={loading || !quickSourceName.trim()}
+                onClick={() => void addQuickSource()}
+                type="button"
+              >
+                Add source
+              </button>
+            </div>
+          </div>
           <label className="text-sm font-medium md:col-span-2">
             Notes
             <input
@@ -262,11 +312,27 @@ export const IncomeTransactions = ({
             onChange={(event) => setEnd(event.target.value)}
           />
         </label>
+        <label className="text-sm font-medium">
+          Source filter
+          <select
+            className="mt-1 block w-full rounded border-slate-300"
+            value={sourceFilter}
+            onChange={(event) => setSourceFilter(event.target.value)}
+          >
+            <option value="">All sources</option>
+            {sources.map((sourceRecord) => (
+              <option key={sourceRecord.id} value={sourceRecord.id}>
+                {sourceRecord.name}
+                {sourceRecord.archivedAtUtc ? ' (archived)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
       </section>
       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         {[
-          ['Gross income', totals.gross],
           ['Net income', totals.net],
+          ['Gross income entered', totals.gross],
           ['Regular paychecks', totals.regular],
           ['Bonuses', totals.bonus],
           ['Other income', totals.other],
@@ -280,11 +346,156 @@ export const IncomeTransactions = ({
               {label}
             </h2>
             <p className="mt-2 text-xl font-semibold">
-              {formatDollarString(Number(total).toFixed(2))}
+              {label === 'Gross income entered' && totals.grossCount === 0
+                ? 'Unavailable'
+                : formatDollarString(Number(total).toFixed(2))}
             </p>
           </section>
         ))}
       </div>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold">Income by source</h2>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-[620px] text-left text-sm">
+            <thead className="border-b text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-3 py-2">Source</th>
+                <th className="px-3 py-2">Net income</th>
+                <th className="px-3 py-2">Regular paychecks</th>
+                <th className="px-3 py-2">Bonuses</th>
+                <th className="px-3 py-2">Other income</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sources
+                .map((sourceRecord) => {
+                  const sourceRecords = visible.filter(
+                    (record) => record.sourceId === sourceRecord.id,
+                  );
+                  const byType = (type: IncomeTransactionDto['incomeType']): number =>
+                    sourceRecords
+                      .filter((record) => record.incomeType === type)
+                      .reduce(
+                        (sum, record) =>
+                          sum + Number(record.netAmount ?? record.amount),
+                        0,
+                      );
+                  return {
+                    sourceRecord,
+                    net: sourceRecords.reduce(
+                      (sum, record) => sum + Number(record.netAmount ?? record.amount),
+                      0,
+                    ),
+                    regular: byType('regular_paycheck'),
+                    bonus: byType('bonus'),
+                    other: byType('other_income'),
+                  };
+                })
+                .filter((row) => row.net > 0)
+                .map((row) => (
+                  <tr className="border-b border-slate-100" key={row.sourceRecord.id}>
+                    <td className="px-3 py-2">{row.sourceRecord.name}</td>
+                    <td className="px-3 py-2">
+                      {formatDollarString(row.net.toFixed(2))}
+                    </td>
+                    <td className="px-3 py-2">
+                      {formatDollarString(row.regular.toFixed(2))}
+                    </td>
+                    <td className="px-3 py-2">
+                      {formatDollarString(row.bonus.toFixed(2))}
+                    </td>
+                    <td className="px-3 py-2">
+                      {formatDollarString(row.other.toFixed(2))}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold">Income sources</h2>
+        <div className="mt-3 flex gap-2">
+          <input
+            aria-label="New income source name"
+            className="min-w-0 flex-1 rounded border-slate-300"
+            value={newSourceName}
+            onChange={(event) => setNewSourceName(event.target.value)}
+            placeholder="Source name"
+          />
+          <button
+            className="rounded bg-teal-700 px-3 py-2 text-sm font-semibold text-white"
+            disabled={loading || !newSourceName.trim()}
+            onClick={() => {
+              void onCreateSource({ name: newSourceName.trim() }).then((created) => {
+                if (created) setNewSourceName('');
+              });
+            }}
+            type="button"
+          >
+            Add source
+          </button>
+        </div>
+        <ul className="mt-4 divide-y divide-slate-100">
+          {sources.map((sourceRecord) => (
+            <li className="flex items-center gap-3 py-2" key={sourceRecord.id}>
+              {sourceEditingId === sourceRecord.id ? (
+                <input
+                  aria-label={`Edit ${sourceRecord.name}`}
+                  className="min-w-0 flex-1 rounded border-slate-300"
+                  value={sourceEditingName}
+                  onChange={(event) => setSourceEditingName(event.target.value)}
+                />
+              ) : (
+                <span className="min-w-0 flex-1">
+                  {sourceRecord.name}
+                  {sourceRecord.archivedAtUtc ? ' (archived)' : ''}
+                </span>
+              )}
+              {sourceEditingId === sourceRecord.id ? (
+                <button
+                  className="font-semibold text-teal-700"
+                  onClick={() => {
+                    onUpdateSource({
+                      id: sourceRecord.id,
+                      name: sourceEditingName,
+                      expectedUpdatedAtUtc: sourceRecord.updatedAtUtc,
+                    });
+                    setSourceEditingId(null);
+                  }}
+                  type="button"
+                >
+                  Save
+                </button>
+              ) : (
+                <button
+                  className="font-semibold text-teal-700"
+                  onClick={() => {
+                    setSourceEditingId(sourceRecord.id);
+                    setSourceEditingName(sourceRecord.name);
+                  }}
+                  type="button"
+                >
+                  Edit
+                </button>
+              )}
+              <button
+                className="font-semibold text-slate-700"
+                onClick={() =>
+                  onSetSourceArchived({
+                    id: sourceRecord.id,
+                    expectedUpdatedAtUtc: sourceRecord.updatedAtUtc,
+                    archived: sourceRecord.archivedAtUtc === null,
+                  })
+                }
+                type="button"
+              >
+                {sourceRecord.archivedAtUtc ? 'Restore' : 'Archive'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold">Income transactions</h2>
         <div className="mt-4 overflow-x-auto">
@@ -295,7 +506,7 @@ export const IncomeTransactions = ({
                   'Date',
                   'Source',
                   'Type',
-                  'Amount',
+                  'Net',
                   'Gross',
                   'Net',
                   'Notes',
@@ -334,11 +545,10 @@ export const IncomeTransactions = ({
                         onClick={() => {
                           setEditingId(record.id);
                           setReceivedDate(record.receivedDate);
-                          setAmount(record.amount);
+                          setNetAmount(record.netAmount ?? record.amount);
                           setIncomeType(record.incomeType);
-                          setSource(record.source);
+                          setSourceId(record.sourceId ?? '');
                           setGrossAmount(record.grossAmount ?? '');
-                          setNetAmount(record.netAmount ?? '');
                           setNotes(record.notes ?? '');
                         }}
                         type="button"

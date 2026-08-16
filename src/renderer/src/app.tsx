@@ -41,7 +41,11 @@ import type {
   ExtraCashAllocationResponse,
   ArchiveIncomeTransactionRequest,
   CreateIncomeTransactionRequest,
+  CreateIncomeSourceRequest,
+  IncomeSourceDto,
   IncomeTransactionDto,
+  SetIncomeSourceArchivedRequest,
+  UpdateIncomeSourceRequest,
   UpdateIncomeTransactionRequest,
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
@@ -196,6 +200,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
   const [incomeTransactions, setIncomeTransactions] = useState<
     readonly IncomeTransactionDto[]
   >([]);
+  const [incomeSources, setIncomeSources] = useState<readonly IncomeSourceDto[]>([]);
   const [reportState, setReportState] = useState<ReportSessionState>(
     defaultReportSessionState,
   );
@@ -386,10 +391,48 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
 
   const loadIncomeTransactions = async (): Promise<void> => {
     setIncomeLoading(true);
-    const result = await invokeBridge(() =>
-      bridge.listIncomeTransactions({ includeArchived: true }),
-    );
-    if (result.ok) setIncomeTransactions(result.value);
+    const [sourcesResult, transactionsResult] = await Promise.all([
+      invokeBridge(() => bridge.listIncomeSources({ includeArchived: true })),
+      invokeBridge(() => bridge.listIncomeTransactions({ includeArchived: true })),
+    ]);
+    if (sourcesResult.ok) setIncomeSources(sourcesResult.value);
+    else setError(sourcesResult.error);
+    if (transactionsResult.ok) setIncomeTransactions(transactionsResult.value);
+    else setError(transactionsResult.error);
+    setIncomeLoading(false);
+  };
+
+  const createIncomeSource = async (
+    request: CreateIncomeSourceRequest,
+  ): Promise<IncomeSourceDto | null> => {
+    setIncomeLoading(true);
+    const result = await invokeBridge(() => bridge.createIncomeSource(request));
+    if (result.ok) {
+      await loadIncomeTransactions();
+      setIncomeLoading(false);
+      return result.value;
+    }
+    setError(result.error);
+    setIncomeLoading(false);
+    return null;
+  };
+
+  const updateIncomeSource = async (
+    request: UpdateIncomeSourceRequest,
+  ): Promise<void> => {
+    setIncomeLoading(true);
+    const result = await invokeBridge(() => bridge.updateIncomeSource(request));
+    if (result.ok) await loadIncomeTransactions();
+    else setError(result.error);
+    setIncomeLoading(false);
+  };
+
+  const setIncomeSourceArchived = async (
+    request: SetIncomeSourceArchivedRequest,
+  ): Promise<void> => {
+    setIncomeLoading(true);
+    const result = await invokeBridge(() => bridge.setIncomeSourceArchived(request));
+    if (result.ok) await loadIncomeTransactions();
     else setError(result.error);
     setIncomeLoading(false);
   };
@@ -2144,8 +2187,12 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
               loading={incomeLoading}
               onArchive={(request) => void archiveIncomeTransaction(request)}
               onCreate={(request) => void createIncomeTransaction(request)}
+              onCreateSource={createIncomeSource}
+              onSetSourceArchived={(request) => void setIncomeSourceArchived(request)}
+              onUpdateSource={(request) => void updateIncomeSource(request)}
               onUpdate={(request) => void updateIncomeTransaction(request)}
               records={incomeTransactions}
+              sources={incomeSources}
             />
           ) : null}
 

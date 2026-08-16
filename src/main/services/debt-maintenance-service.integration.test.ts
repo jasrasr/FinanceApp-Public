@@ -576,32 +576,31 @@ describe('debt creation', () => {
 
   it('aggregates actual income transactions without mutating ledger activity', () => {
     const created = service.createDebt(validRequest('Generated Income Analysis Debt'));
+    const source = service.createIncomeSource({ name: 'Generated Employer' });
+    expect(service.listIncomeSources({ includeArchived: false })).toHaveLength(1);
     const beforeTransactions = context.database.select().from(debtTransactions).all();
     const beforeBalance = service.getDebt({ id: created.id }).currentBalance;
 
     service.createIncomeTransaction({
       receivedDate: '2026-01-15',
-      amount: '3250.00',
       incomeType: 'regular_paycheck',
-      source: 'Generated Employer',
+      sourceId: source.id,
       notes: null,
       grossAmount: '4500.00',
       netAmount: '3250.00',
     });
     service.createIncomeTransaction({
       receivedDate: '2026-01-29',
-      amount: '3250.00',
       incomeType: 'regular_paycheck',
-      source: 'Generated Employer',
+      sourceId: source.id,
       notes: null,
       grossAmount: '4500.00',
       netAmount: '3250.00',
     });
     service.createIncomeTransaction({
       receivedDate: '2026-03-15',
-      amount: '1000.00',
       incomeType: 'bonus',
-      source: 'Generated Employer',
+      sourceId: source.id,
       notes: 'Generated bonus',
       grossAmount: '1400.00',
       netAmount: '1000.00',
@@ -634,14 +633,35 @@ describe('debt creation', () => {
       id: secondIncome.id,
       expectedUpdatedAtUtc: secondIncome.updatedAtUtc,
       receivedDate: secondIncome.receivedDate,
-      amount: '3300.00',
       incomeType: secondIncome.incomeType,
-      source: secondIncome.source,
+      sourceId: source.id,
       notes: secondIncome.notes,
       grossAmount: '4550.00',
       netAmount: '3300.00',
     });
     expect(updatedIncome.amount).toBe('3300.00');
+
+    const renamedSource = service.updateIncomeSource({
+      id: source.id,
+      name: 'Generated Employer Renamed',
+      expectedUpdatedAtUtc: source.updatedAtUtc,
+    });
+    expect(renamedSource.name).toBe('Generated Employer Renamed');
+    expect(service.listIncomeTransactions({ includeArchived: false })[0]?.source).toBe(
+      'Generated Employer Renamed',
+    );
+    const archivedSource = service.setIncomeSourceArchived({
+      id: source.id,
+      expectedUpdatedAtUtc: renamedSource.updatedAtUtc,
+      archived: true,
+    });
+    expect(archivedSource.archivedAtUtc).not.toBeNull();
+    const restoredSource = service.setIncomeSourceArchived({
+      id: source.id,
+      expectedUpdatedAtUtc: archivedSource.updatedAtUtc,
+      archived: false,
+    });
+    expect(restoredSource.archivedAtUtc).toBeNull();
 
     const firstIncome = service.listIncomeTransactions({ includeArchived: false })[0]!;
     service.archiveIncomeTransaction({

@@ -44,6 +44,10 @@ const createService = (): DebtMaintenanceService => ({
   createIncomeRecord: vi.fn(),
   updateIncomeRecord: vi.fn(),
   archiveIncomeRecord: vi.fn(),
+  listIncomeSources: vi.fn(() => []),
+  createIncomeSource: vi.fn(),
+  updateIncomeSource: vi.fn(),
+  setIncomeSourceArchived: vi.fn(),
   listIncomeTransactions: vi.fn(() => []),
   createIncomeTransaction: vi.fn(),
   updateIncomeTransaction: vi.fn(),
@@ -156,6 +160,27 @@ describe('debt IPC handlers', () => {
 
     expect(result).toEqual({ ok: true, value: [] });
     expect(service.listDebts).toHaveBeenCalledWith({ includeArchived: false });
+  });
+
+  it('routes income source and net-first income transaction operations through validated handlers', () => {
+    const service = createService();
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(
+      registrar,
+      service,
+      createDataManagementService(),
+      () => true,
+    );
+
+    expect(handlers.has(DEBT_IPC_CHANNELS.listIncomeSources)).toBe(true);
+    expect(handlers.has(DEBT_IPC_CHANNELS.createIncomeSource)).toBe(true);
+    expect(handlers.has(DEBT_IPC_CHANNELS.setIncomeSourceArchived)).toBe(true);
+    const result = handlers.get(DEBT_IPC_CHANNELS.listIncomeSources)?.(event, {
+      includeArchived: false,
+    });
+
+    expect(result).toEqual({ ok: true, value: [] });
+    expect(service.listIncomeSources).toHaveBeenCalledWith({ includeArchived: false });
   });
 
   it('registers only the approved backup-file import IPC handler', () => {

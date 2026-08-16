@@ -888,6 +888,22 @@ export const incomeRecords = sqliteTable(
   ],
 );
 
+export const incomeSources = sqliteTable(
+  'income_sources',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    createdAtUtc: text('created_at_utc').notNull(),
+    updatedAtUtc: text('updated_at_utc').notNull(),
+    archivedAtUtc: text('archived_at_utc'),
+  },
+  (table) => [
+    uniqueIndex('income_sources_name_idx').on(table.name),
+    index('income_sources_archived_idx').on(table.archivedAtUtc),
+    check('income_sources_name_not_blank', sql`length(trim(${table.name})) > 0`),
+  ],
+);
+
 export const incomeTransactions = sqliteTable(
   'income_transactions',
   {
@@ -896,6 +912,9 @@ export const incomeTransactions = sqliteTable(
     amountCents: integer('amount_cents').notNull(),
     incomeType: text('income_type').notNull(),
     source: text('source').notNull(),
+    sourceId: text('source_id').references(() => incomeSources.id, {
+      onDelete: 'restrict',
+    }),
     notes: text('notes'),
     grossAmountCents: integer('gross_amount_cents'),
     netAmountCents: integer('net_amount_cents'),
@@ -906,6 +925,7 @@ export const incomeTransactions = sqliteTable(
   (table) => [
     index('income_transactions_received_date_idx').on(table.receivedDate),
     index('income_transactions_archived_idx').on(table.archivedAtUtc),
+    index('income_transactions_source_id_idx').on(table.sourceId),
     check(
       'income_transactions_received_date_format',
       sql`${table.receivedDate} GLOB ${FINANCIAL_DATE_GLOB}`,
@@ -926,6 +946,7 @@ export const schema = {
   auditEvents,
   applicationSettings,
   incomeRecords,
+  incomeSources,
   incomeTransactions,
   balanceReconciliations,
   balanceSnapshots,

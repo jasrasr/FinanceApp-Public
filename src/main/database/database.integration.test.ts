@@ -56,6 +56,13 @@ const PRIOR_0011_MIGRATION_TAGS = [
   '0010_amusing_elektra',
   '0011_configurable_data_locations',
 ] as const;
+const PRIOR_0015_MIGRATION_TAGS = [
+  ...PRIOR_0011_MIGRATION_TAGS,
+  '0012_dazzling_toad_men',
+  '0013_spicy_thor',
+  '0014_elite_fallen_one',
+  '0015_flawless_echo',
+] as const;
 const FIXED_TIMESTAMP = '2026-07-27T13:00:00.000Z';
 
 let context: DatabaseContext;
@@ -185,6 +192,7 @@ describe('database migrations and isolation', () => {
       'import_postings',
       'import_sheet_mappings',
       'income_records',
+      'income_sources',
       'income_transactions',
       'payment_schedule_overrides',
       'payoff_scenarios',
@@ -490,6 +498,73 @@ describe('database migrations and isolation', () => {
     ).toEqual(before);
     expect(after.every((row) => row.transfer_id === null)).toBe(true);
     expect(afterBalance).toEqual(beforeBalance);
+    expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
+    expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+    rmSync(priorMigrationFolder, { force: true, recursive: true });
+  });
+
+  it('links existing income source text during the source migration without changing income values', () => {
+    context.close();
+    temporary.cleanup();
+
+    const priorMigrationFolder = createPriorMigrationFolder(PRIOR_0015_MIGRATION_TAGS);
+    temporary = createTemporaryDatabaseLocation();
+    context = openMigratedDatabase(temporary.databasePath, priorMigrationFolder);
+    const incomeId = randomUUID();
+    context.sqlite
+      .prepare(
+        `INSERT INTO income_transactions (
+          id, received_date, amount_cents, income_type, source, notes,
+          gross_amount_cents, net_amount_cents, created_at_utc, updated_at_utc,
+          archived_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        incomeId,
+        '2026-07-15',
+        325_000,
+        'regular_paycheck',
+        'Generated Employer',
+        'Generated migration income.',
+        null,
+        325_000,
+        FIXED_TIMESTAMP,
+        FIXED_TIMESTAMP,
+        null,
+      );
+    const before = context.sqlite
+      .prepare(
+        `SELECT received_date, amount_cents, income_type, source, notes,
+                gross_amount_cents, net_amount_cents, archived_at_utc
+         FROM income_transactions WHERE id = ?`,
+      )
+      .get(incomeId);
+    context.close();
+
+    context = openMigratedDatabase(temporary.databasePath, MIGRATIONS_FOLDER);
+    const after = context.sqlite
+      .prepare(
+        `SELECT received_date, amount_cents, income_type, source, notes,
+                gross_amount_cents, net_amount_cents, archived_at_utc, source_id
+         FROM income_transactions WHERE id = ?`,
+      )
+      .get(incomeId) as Record<string, unknown>;
+    const source = context.sqlite
+      .prepare('SELECT name FROM income_sources WHERE id = ?')
+      .get(after.source_id as string) as { name: string };
+
+    expect({
+      received_date: after.received_date,
+      amount_cents: after.amount_cents,
+      income_type: after.income_type,
+      source: after.source,
+      notes: after.notes,
+      gross_amount_cents: after.gross_amount_cents,
+      net_amount_cents: after.net_amount_cents,
+      archived_at_utc: after.archived_at_utc,
+    }).toEqual(before);
+    expect(source.name).toBe('Generated Employer');
+    expect(after.source_id).toEqual(expect.any(String));
     expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
     expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
     rmSync(priorMigrationFolder, { force: true, recursive: true });
@@ -806,7 +881,7 @@ describe('database migrations and isolation', () => {
       { status: 'superseded', count: 1 },
     ]);
     expect(temporaryRebuildTable).toBeUndefined();
-    expect(migrationCount.count).toBe(16);
+    expect(migrationCount.count).toBe(18);
     expect(context.sqlite.pragma('foreign_key_check')).toEqual([]);
     expect(context.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
 

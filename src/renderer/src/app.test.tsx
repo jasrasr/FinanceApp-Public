@@ -39,7 +39,7 @@ const openNavigationGroup = async (
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 27,
+  bridgeVersion: 28,
   appMetadata: {
     version: packageMetadata.version,
     lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
@@ -100,6 +100,10 @@ const createBridge = (): AppBridge => ({
   createIncomeRecord: vi.fn(),
   updateIncomeRecord: vi.fn(),
   archiveIncomeRecord: vi.fn(),
+  listIncomeSources: vi.fn(async () => ({ ok: true as const, value: [] })),
+  createIncomeSource: vi.fn(),
+  updateIncomeSource: vi.fn(),
+  setIncomeSourceArchived: vi.fn(),
   listIncomeTransactions: vi.fn(async () => ({ ok: true as const, value: [] })),
   createIncomeTransaction: vi.fn(),
   updateIncomeTransaction: vi.fn(),
@@ -2611,6 +2615,7 @@ describe('debt maintenance application', () => {
           receivedDate: '2026-01-15',
           amount: '3250.00',
           incomeType: 'regular_paycheck' as const,
+          sourceId: null,
           source: 'Generated Employer',
           notes: 'Generated test income',
           grossAmount: '4500.00',
@@ -2631,6 +2636,60 @@ describe('debt maintenance application', () => {
     expect(screen.getAllByText('$3,250.00').length).toBeGreaterThanOrEqual(1);
     expect(bridge.createDebtTransaction).not.toHaveBeenCalled();
     expect(bridge.createDebtTransfer).not.toHaveBeenCalled();
+  });
+
+  it('uses reusable income sources and submits net income through the secure bridge', async () => {
+    const bridge = createBridge();
+    const source = {
+      id: 'generated-income-source',
+      name: 'Generated Employer',
+      createdAtUtc: '2026-01-01T00:00:00.000Z',
+      updatedAtUtc: '2026-01-01T00:00:00.000Z',
+      archivedAtUtc: null,
+    } as const;
+    bridge.listIncomeSources = vi.fn(async () => ({
+      ok: true as const,
+      value: [source],
+    }));
+    bridge.createIncomeTransaction = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        id: '22222222-2222-4222-8222-222222222222',
+        receivedDate: '2026-08-15',
+        amount: '3250.00',
+        incomeType: 'regular_paycheck' as const,
+        sourceId: source.id,
+        source: source.name,
+        notes: null,
+        grossAmount: null,
+        netAmount: '3250.00',
+        createdAtUtc: '2026-08-15T00:00:00.000Z',
+        updatedAtUtc: '2026-08-15T00:00:00.000Z',
+        archivedAtUtc: null,
+      },
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Income' }));
+    expect(
+      (await screen.findAllByRole('option', { name: 'Generated Employer' })).length,
+    ).toBeGreaterThanOrEqual(1);
+    fireEvent.change(screen.getByLabelText('Net / take-home amount'), {
+      target: { value: '3250.00' },
+    });
+    fireEvent.change(screen.getByLabelText('Source / employer'), {
+      target: { value: source.id },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Income' }));
+
+    expect(bridge.createIncomeTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceId: source.id,
+        netAmount: '3250.00',
+        grossAmount: null,
+      }),
+    );
+    expect(bridge.createDebtTransaction).not.toHaveBeenCalled();
   });
 
   it('keeps the primary navigation in the approved order', async () => {

@@ -670,10 +670,13 @@ Posted activity is not silently deleted or overwritten.
 
 Income-based debt-burden metrics use actual received income transactions only;
 they never alter balances or ledger activity. Each paycheck, bonus, or other
-income event is aggregated into its received month. Optional gross and net
-values are used when present; otherwise the received amount is used for that
-measure. Months without transactions remain unavailable rather than being
-interpolated. Debt payments exclude purchases, borrowings, and transfers.
+income event is aggregated into its received month. Net/take-home income is
+required for new events and is the basis for debt-burden ratios. Gross income
+is optional and is reported only when explicitly entered; it is never inferred
+from net income. Legacy rows without a net value retain their received amount
+as the compatibility fallback. Months without transactions remain unavailable
+rather than being interpolated. Debt payments exclude purchases, borrowings,
+and transfers.
 
 Debt-history and interest charts use the selected report date range as a hard
 boundary. Visible series and annual stacked segments are calculated from the

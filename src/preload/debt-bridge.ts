@@ -68,11 +68,17 @@ import {
   incomeRecordListResultSchema,
   incomeRecordResultSchema,
   listIncomeTransactionsRequestSchema,
+  listIncomeSourcesRequestSchema,
+  createIncomeSourceRequestSchema,
+  updateIncomeSourceRequestSchema,
+  setIncomeSourceArchivedRequestSchema,
   createIncomeTransactionRequestSchema,
   updateIncomeTransactionRequestSchema,
   archiveIncomeTransactionRequestSchema,
   incomeTransactionListResultSchema,
   incomeTransactionResultSchema,
+  incomeSourceListResultSchema,
+  incomeSourceResultSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
   voidDebtTransactionRequestSchema,
@@ -125,6 +131,10 @@ import {
   type UpdateIncomeRecordRequest,
   type ArchiveIncomeRecordRequest,
   type ListIncomeTransactionsRequest,
+  type ListIncomeSourcesRequest,
+  type CreateIncomeSourceRequest,
+  type UpdateIncomeSourceRequest,
+  type SetIncomeSourceArchivedRequest,
   type CreateIncomeTransactionRequest,
   type UpdateIncomeTransactionRequest,
   type ArchiveIncomeTransactionRequest,
@@ -137,7 +147,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 27,
+    bridgeVersion: 28,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -295,6 +305,34 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.archiveIncomeRecord,
           archiveIncomeRecordRequestSchema.parse(request),
+        ),
+      ),
+    listIncomeSources: async (request: ListIncomeSourcesRequest) =>
+      incomeSourceListResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.listIncomeSources,
+          listIncomeSourcesRequestSchema.parse(request),
+        ),
+      ),
+    createIncomeSource: async (request: CreateIncomeSourceRequest) =>
+      incomeSourceResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.createIncomeSource,
+          createIncomeSourceRequestSchema.parse(request),
+        ),
+      ),
+    updateIncomeSource: async (request: UpdateIncomeSourceRequest) =>
+      incomeSourceResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.updateIncomeSource,
+          updateIncomeSourceRequestSchema.parse(request),
+        ),
+      ),
+    setIncomeSourceArchived: async (request: SetIncomeSourceArchivedRequest) =>
+      incomeSourceResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.setIncomeSourceArchived,
+          setIncomeSourceArchivedRequestSchema.parse(request),
         ),
       ),
     listIncomeTransactions: async (request: ListIncomeTransactionsRequest) =>

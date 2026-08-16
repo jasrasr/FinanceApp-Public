@@ -14,6 +14,7 @@ const expectedTables = [
   'import_postings',
   'import_sheet_mappings',
   'income_records',
+  'income_sources',
   'income_transactions',
   'payment_schedule_overrides',
   'payoff_scenarios',
