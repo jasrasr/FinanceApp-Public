@@ -2294,3 +2294,23 @@ year`.
   views; unsupported payoff inputs retain the engine's existing warnings.
 - Recommended next phase: user acceptance review of strategy comparisons and
   payoff sequence readability.
+
+## Phase 57: Credit Card Activity Analysis
+
+- Completion date: 2026-08-16. Application version: 1.8.6.
+- Added a read-only Credit Card Activity analysis for the full credit-card
+  portfolio or an individual active card, with YTD, prior-year, last-12-month,
+  all-time, and custom date ranges.
+- Reused the existing monthly rollforward for purchases, principal paid,
+  transfers, deliberate borrowing, interest, fees, balance changes, charts,
+  and reconciliation. Added per-card summaries and conservative descriptive
+  usage characterizations; no ledger, balance, schema, migration, or
+  production-data changes were made. Added ADR 046.
+- Validation: focused reporting integration and renderer tests passed; full
+  test suite passed (208 tests); lint, typecheck, isolated database integrity
+  check, production build, and Electron E2E passed (one test passed and two
+  expected skips).
+- Known limitation: usage characterization is omitted when the selected data
+  does not clearly indicate pay-in-full or carried-balance behavior.
+- Recommended next phase: user acceptance review of card filtering and
+  monthly activity interpretation.

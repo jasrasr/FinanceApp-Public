@@ -988,6 +988,25 @@ const rollforwardRowDtoSchema = z
   })
   .strict();
 
+const creditCardActivityCardDtoSchema = z
+  .object({
+    debtId: uuidSchema,
+    cardName: z.string(),
+    currentBalance: z.string(),
+    purchases: z.string(),
+    principalPaid: z.string(),
+    interestPaid: z.string(),
+    feesPaid: z.string(),
+    netDebtChange: z.string(),
+    transferIn: z.string(),
+    transferOut: z.string(),
+    borrowings: z.string(),
+    usageCharacterization: z
+      .enum(['transactional/pay-in-full', 'carried-balance debt'])
+      .nullable(),
+  })
+  .strict();
+
 const balanceHistoryRowDtoSchema = z
   .object({
     debtId: uuidSchema,
@@ -1094,6 +1113,13 @@ export const debtReportsDtoSchema = z
       .optional(),
     monthlyRollforward: z
       .object({ basis: reportBasisDtoSchema, rows: z.array(rollforwardRowDtoSchema) })
+      .strict(),
+    creditCardActivity: z
+      .object({
+        basis: reportBasisDtoSchema,
+        rows: z.array(rollforwardRowDtoSchema),
+        cards: z.array(creditCardActivityCardDtoSchema),
+      })
       .strict(),
     annualRollforward: z
       .object({ basis: reportBasisDtoSchema, rows: z.array(rollforwardRowDtoSchema) })

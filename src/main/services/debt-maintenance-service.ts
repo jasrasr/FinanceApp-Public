@@ -2425,6 +2425,63 @@ const summarizeProgressRows = (
   };
 };
 
+const createCreditCardActivity = (
+  records: readonly DebtWithActivityRecord[],
+  startDate: string,
+  endDate: string,
+  effectiveDate: string,
+  assumptions: readonly string[],
+): DebtReportsDto['creditCardActivity'] => {
+  const cardRecords = records.filter(
+    (record) => record.debt.debtType === 'credit_card',
+  );
+  const rows = createRollforward(cardRecords, startDate, endDate, 'monthly');
+  const cards = cardRecords.map((record) => {
+    const cardRows = createRollforward([record], startDate, endDate, 'monthly');
+    const summary = summarizeProgressRows(cardRows);
+    const endingBalanceCents = signedCurrencyInputToCents(summary.endingBalance);
+    const beginningBalanceCents = signedCurrencyInputToCents(summary.beginningBalance);
+    const interestPaidCents = signedCurrencyInputToCents(summary.interestPaid);
+    const characterization: DebtReportsDto['creditCardActivity']['cards'][number]['usageCharacterization'] =
+      summary.purchases !== '0.00' &&
+      endingBalanceCents === 0 &&
+      interestPaidCents === 0
+        ? 'transactional/pay-in-full'
+        : endingBalanceCents > 0 && interestPaidCents > 0
+          ? 'carried-balance debt'
+          : null;
+    return {
+      debtId: record.debt.id,
+      cardName: record.debt.name,
+      currentBalance: summary.endingBalance,
+      purchases: summary.purchases,
+      principalPaid: summary.principalPaid,
+      interestPaid: summary.interestPaid,
+      feesPaid: summary.fees,
+      netDebtChange: centsToDollars(endingBalanceCents - beginningBalanceCents),
+      transferIn: summary.transferIn,
+      transferOut: summary.transferOut,
+      borrowings: summary.newBorrowing,
+      usageCharacterization: characterization,
+    };
+  });
+  return {
+    basis: reportBasis(
+      'Credit-card activity analysis',
+      startDate,
+      endDate,
+      effectiveDate,
+      [
+        ...assumptions,
+        'Only debts classified as credit cards are included.',
+        'Usage characterizations are descriptive heuristics and never change debt records.',
+      ],
+    ),
+    rows,
+    cards,
+  };
+};
+
 const createBalanceTrendRows = (
   records: readonly DebtWithActivityRecord[],
   monthlyRows: DebtReportsDto['monthlyRollforward']['rows'],
@@ -2657,6 +2714,13 @@ const createDebtReports = (
       ),
       rows: monthlyRows,
     },
+    creditCardActivity: createCreditCardActivity(
+      records,
+      startDate,
+      endDate,
+      effectiveDate,
+      baseAssumptions,
+    ),
     annualRollforward: {
       basis: reportBasis(
         'Annual debt rollforward',

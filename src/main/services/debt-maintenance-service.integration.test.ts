@@ -422,12 +422,36 @@ describe('debt creation', () => {
     );
     expect(february).toMatchObject({ purchases: '800.00', borrowings: '1000.00' });
     expect(february?.rollforwardCheck).toBe('0.00');
+    expect(
+      reports.creditCardActivity.rows.find((row) => row.period === '2026-02'),
+    ).toMatchObject({
+      purchases: '800.00',
+      borrowings: '1000.00',
+      rollforwardCheck: '0.00',
+    });
+    expect(reports.creditCardActivity.cards).toHaveLength(1);
+    expect(reports.creditCardActivity.cards[0]).toMatchObject({
+      debtId: card.id,
+      purchases: '800.00',
+      borrowings: '1000.00',
+      currentBalance: '126800.13',
+    });
     expect(service.getDashboard({}).totals).toMatchObject({
       principalReductionYtd: '0.00',
       purchaseChargesYtd: '800.00',
       newBorrowingsYtd: '1000.00',
       netDebtReductionYtd: '-1800.00',
     });
+    const balanceBeforeAnalysis = service.getDebt({ id: card.id }).currentBalance;
+    service.getDebtReports({
+      startDate: '2026-01-01',
+      endDate: '2026-02-28',
+      debtId: null,
+      ownerEntity: null,
+      debtType: 'credit_card',
+      status: 'active',
+    });
+    expect(service.getDebt({ id: card.id }).currentBalance).toBe(balanceBeforeAnalysis);
   });
 
   it('accepts positive simplified transaction input without user-facing source or description fields', () => {

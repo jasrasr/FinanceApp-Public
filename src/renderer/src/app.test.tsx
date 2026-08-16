@@ -313,6 +313,28 @@ const sampleReports: DebtReportsDto = {
     debtType: null,
     status: null,
   },
+  creditCardActivity: {
+    basis: sampleReportBasis,
+    rows: [
+      {
+        period: '2026-01',
+        beginningBalance: '0.00',
+        borrowings: '0.00',
+        purchases: '0.00',
+        transferIn: '0.00',
+        transferOut: '0.00',
+        netTransfers: '0.00',
+        payments: '0.00',
+        principalReduction: '0.00',
+        interestActivity: '0.00',
+        fees: '0.00',
+        adjustmentsAndOther: '0.00',
+        rollforwardCheck: '0.00',
+        endingBalance: '0.00',
+      },
+    ],
+    cards: [],
+  },
   monthlyRollforward: {
     basis: sampleReportBasis,
     rows: [
@@ -2481,12 +2503,34 @@ describe('debt maintenance application', () => {
     expect(bridge.createPayoffScenario).not.toHaveBeenCalled();
   });
 
+  it('renders credit-card activity as a read-only analysis', async () => {
+    const bridge = createBridge();
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Credit Card Activity' }),
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Credit Card Activity' }),
+    ).toBeVisible();
+    expect(screen.getByText('Entire credit-card portfolio')).toBeVisible();
+    expect(screen.getByText('Average monthly purchases')).toBeVisible();
+    expect(screen.getByRole('img', { name: /Monthly Activity chart/ })).toBeVisible();
+    expect(
+      screen.getByRole('img', { name: /Credit Card Balance chart/ }),
+    ).toBeVisible();
+    expect(screen.getAllByText('Purchases/Charges').length).toBeGreaterThan(0);
+    expect(bridge.createDebtTransaction).not.toHaveBeenCalled();
+    expect(bridge.createDebtTransfer).not.toHaveBeenCalled();
+  });
+
   it('keeps the primary navigation in the approved order', async () => {
     render(<App bridge={createBridge()} />);
 
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     await waitFor(() =>
-      expect(within(navigation).getAllByRole('button')).toHaveLength(13),
+      expect(within(navigation).getAllByRole('button')).toHaveLength(14),
     );
     expect(
       within(navigation)
@@ -2497,6 +2541,7 @@ describe('debt maintenance application', () => {
       'Debts',
       'Debt Payoff Scenario Planner',
       'Debt Progress / Trends',
+      'Credit Card Activity',
       'Milestones',
       'Debt outlook',
       'Interest analysis',
