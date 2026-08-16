@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   DebtReportsDto,
   DebtSummaryDto,
   GetDebtReportsRequest,
 } from '../../../shared/debt-contracts';
 import { REPORTING_HISTORY_START_DATE } from '../../../shared/reporting-constants';
+import { buildChartScale } from './chart-helpers';
 import { formatDollarString } from './display-format';
 
 type Preset = 'ytd' | 'prior-year' | 'last-12-months' | 'all-time' | 'custom';
@@ -39,33 +40,131 @@ const dateRangeForPreset = (preset: Preset): { startDate: string; endDate: strin
 
 const numeric = (value: string | undefined): number => Number(value ?? '0');
 const money = (value: number): string => value.toFixed(2);
+const monthLabel = (period: string): string => {
+  const [year, month] = period.split('-');
+  return new Date(Date.UTC(Number(year), Number(month) - 1, 1)).toLocaleDateString(
+    'en-US',
+    { month: 'short', year: 'numeric', timeZone: 'UTC' },
+  );
+};
+
+const visibleTickIndexes = (count: number): readonly number[] => {
+  if (count <= 1) return [0];
+  const maxTicks = count > 36 ? 8 : count > 18 ? 7 : Math.min(10, count);
+  const step = Math.max(1, Math.ceil((count - 1) / (maxTicks - 1)));
+  const indexes = new Set<number>([0, count - 1]);
+  for (let index = step; index < count - 1; index += step) indexes.add(index);
+  return [...indexes].sort((left, right) => left - right);
+};
+
+interface DragState {
+  readonly pointerId: number;
+  readonly originX: number;
+  readonly start: number;
+  readonly end: number;
+  dragging: boolean;
+}
+
+const ChartControls = ({
+  isZoomed,
+  onNext,
+  onPrevious,
+  onReset,
+}: {
+  readonly isZoomed: boolean;
+  readonly onNext: () => void;
+  readonly onPrevious: () => void;
+  readonly onReset: () => void;
+}): React.JSX.Element => (
+  <div className="mt-3 flex flex-wrap gap-2" aria-label="Chart controls">
+    <button
+      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={!isZoomed}
+      onClick={onPrevious}
+      type="button"
+    >
+      Previous period
+    </button>
+    <button
+      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={!isZoomed}
+      onClick={onNext}
+      type="button"
+    >
+      Next period
+    </button>
+    <button
+      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+      onClick={onReset}
+      type="button"
+    >
+      Reset zoom
+    </button>
+  </div>
+);
 
 const ProgressChart = ({
   rows,
 }: {
   readonly rows: readonly DebtReportsDto['monthlyRollforward']['rows'][number][];
 }): React.JSX.Element => {
-  const width = 900;
-  const height = 280;
-  const left = 58;
-  const right = 18;
-  const top = 24;
-  const bottom = 42;
+  const width = 1200;
+  const height = 420;
+  const left = 94;
+  const right = 28;
+  const top = 28;
+  const bottom = 64;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
-  const values = rows.flatMap((row) => [
-    Math.abs(numeric(row.principalReduction)),
-    Math.abs(numeric(row.purchases)),
-    Math.abs(numeric(row.borrowings)),
-    Math.abs(
-      numeric(row.principalReduction) -
-        numeric(row.purchases) -
-        numeric(row.borrowings),
-    ),
-  ]);
-  const maximum = Math.max(1, ...values);
-  const slot = chartWidth / Math.max(rows.length, 1);
-  const barWidth = Math.max(3, Math.min(12, slot / 6));
+  const [zoom, setZoom] = useState({ start: 0, end: Math.max(0, rows.length - 1) });
+  const visibleRows = rows.slice(zoom.start, zoom.end + 1);
+  const isZoomed = visibleRows.length < rows.length;
+  const chartRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const pan = useCallback(
+    (delta: number): void => {
+      setZoom((current) => {
+        const span = current.end - current.start + 1;
+        const start = Math.max(0, Math.min(current.start + delta, rows.length - span));
+        return { start, end: start + span - 1 };
+      });
+    },
+    [rows.length],
+  );
+  const reset = (): void => setZoom({ start: 0, end: Math.max(0, rows.length - 1) });
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return undefined;
+    const onWheel = (event: WheelEvent): void => {
+      event.preventDefault();
+      if (event.shiftKey) {
+        const direction =
+          Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        pan(direction > 0 ? 1 : -1);
+        return;
+      }
+      if (rows.length <= 2) return;
+      setZoom((current) => {
+        const span = current.end - current.start + 1;
+        const nextSpan = Math.max(
+          2,
+          Math.min(
+            rows.length,
+            span + (event.deltaY < 0 ? -1 : 1) * Math.max(1, Math.round(span * 0.2)),
+          ),
+        );
+        const center = (current.start + current.end) / 2;
+        const start = Math.max(
+          0,
+          Math.min(Math.round(center - (nextSpan - 1) / 2), rows.length - nextSpan),
+        );
+        return { start, end: start + nextSpan - 1 };
+      });
+    };
+    chart.addEventListener('wheel', onWheel, { passive: false });
+    return () => chart.removeEventListener('wheel', onWheel);
+  }, [pan, rows.length]);
   const series = [
     { key: 'principalReduction', label: 'Principal paid', color: '#2563eb' },
     { key: 'purchases', label: 'Purchases / Charges', color: '#d97706' },
@@ -81,6 +180,54 @@ const ProgressChart = ({
         numeric(row.purchases) -
         numeric(row.borrowings)
       : numeric(row[key]);
+  const scale = buildChartScale({
+    values: visibleRows.flatMap((row) => series.map((item) => valueFor(row, item.key))),
+    chartHeight,
+    includeZero: true,
+    formatLabel: (value) => formatDollarString(value.toFixed(2)),
+  });
+  const yFor = (value: number): number =>
+    height -
+    bottom -
+    ((value - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
+  const xFor = (index: number): number =>
+    left + ((index + 0.5) * chartWidth) / Math.max(visibleRows.length, 1);
+  const slot = chartWidth / Math.max(visibleRows.length, 1);
+  const barWidth = Math.max(5, Math.min(26, slot / 6));
+  const tickIndexes = visibleTickIndexes(visibleRows.length);
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (!isZoomed) return;
+    event.preventDefault();
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      start: zoom.start,
+      end: zoom.end,
+      dragging: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const pixelDelta = drag.originX - event.clientX;
+    if (!drag.dragging && Math.abs(pixelDelta) < 4) return;
+    drag.dragging = true;
+    setIsDragging(true);
+    event.preventDefault();
+    const span = drag.end - drag.start + 1;
+    const delta = Math.round(
+      pixelDelta / Math.max(1, event.currentTarget.clientWidth / span),
+    );
+    const start = Math.max(0, Math.min(drag.start + delta, rows.length - span));
+    setZoom({ start, end: start + span - 1 });
+  };
+  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    dragStateRef.current = null;
+    setIsDragging(false);
+  };
 
   return (
     <div
@@ -96,48 +243,89 @@ const ProgressChart = ({
           </span>
         ))}
       </div>
-      <svg className="h-auto w-full" viewBox={`0 0 ${width} ${height}`}>
-        <line
-          stroke="#cbd5e1"
-          x1={left}
-          x2={width - right}
-          y1={height - bottom}
-          y2={height - bottom}
-        />
-        {rows.map((row, rowIndex) =>
-          series.map((item, seriesIndex) => {
-            const value = valueFor(row, item.key);
-            const barHeight = (Math.abs(value) / maximum) * chartHeight;
-            const x =
-              left + rowIndex * slot + slot / 2 + (seriesIndex - 1.5) * (barWidth + 1);
-            const y = value >= 0 ? height - bottom - barHeight : height - bottom;
-            return (
-              <rect
-                fill={item.color}
-                height={barHeight}
-                key={`${row.period}-${item.key}`}
-                width={barWidth}
-                x={x}
-                y={y}
+      <ChartControls
+        isZoomed={isZoomed}
+        onNext={() => pan(1)}
+        onPrevious={() => pan(-1)}
+        onReset={reset}
+      />
+      <p className="mt-2 text-xs text-slate-500" data-testid="debt-progress-zoom">
+        Visible range: {visibleRows[0] ? monthLabel(visibleRows[0].period) : 'none'}{' '}
+        through {visibleRows.at(-1) ? monthLabel(visibleRows.at(-1)!.period) : 'none'} (
+        {visibleRows.length} of {rows.length} months). Scroll to zoom; Shift+scroll or
+        drag to pan.
+      </p>
+      <div
+        className={`mt-2 touch-pan-y ${isDragging ? 'cursor-grabbing select-none' : isZoomed ? 'cursor-grab' : ''}`}
+        data-testid="debt-progress-chart"
+        ref={chartRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <svg className="h-auto w-full" viewBox={`0 0 ${width} ${height}`}>
+          {scale.tickValues.map((tick) => (
+            <g key={tick}>
+              <line
+                stroke="#e2e8f0"
+                x1={left}
+                x2={width - right}
+                y1={yFor(tick)}
+                y2={yFor(tick)}
+              />
+              <text
+                fill="#475569"
+                fontSize="12"
+                textAnchor="end"
+                x={left - 10}
+                y={yFor(tick) + 4}
               >
-                <title>{`${row.period} — ${item.label}: ${formatDollarString(money(value))}`}</title>
-              </rect>
-            );
-          }),
-        )}
-        {rows.map((row, index) => (
-          <text
-            fill="#475569"
-            fontSize="10"
-            key={row.period}
-            textAnchor="middle"
-            x={left + index * slot + slot / 2}
-            y={height - 16}
-          >
-            {row.period.slice(5)}
-          </text>
-        ))}
-      </svg>
+                {formatDollarString(tick.toFixed(0))}
+              </text>
+            </g>
+          ))}
+          <line
+            stroke="#64748b"
+            x1={left}
+            x2={width - right}
+            y1={yFor(0)}
+            y2={yFor(0)}
+          />
+          {visibleRows.map((row, rowIndex) =>
+            series.map((item, seriesIndex) => {
+              const value = valueFor(row, item.key);
+              const valueY = yFor(value);
+              const zeroY = yFor(0);
+              const x = xFor(rowIndex) + (seriesIndex - 1.5) * (barWidth + 1);
+              return (
+                <rect
+                  fill={item.color}
+                  height={Math.max(1, Math.abs(zeroY - valueY))}
+                  key={`${row.period}-${item.key}`}
+                  width={barWidth}
+                  x={x}
+                  y={Math.min(zeroY, valueY)}
+                >
+                  <title>{`${monthLabel(row.period)} — ${item.label}: ${formatDollarString(money(value))}`}</title>
+                </rect>
+              );
+            }),
+          )}
+          {tickIndexes.map((index) => (
+            <text
+              fill="#475569"
+              fontSize="12"
+              key={visibleRows[index]?.period}
+              textAnchor="middle"
+              x={xFor(index)}
+              y={height - 24}
+            >
+              {visibleRows[index] ? monthLabel(visibleRows[index].period) : ''}
+            </text>
+          ))}
+        </svg>
+      </div>
     </div>
   );
 };
@@ -147,26 +335,115 @@ const BalanceChart = ({
 }: {
   readonly rows: readonly DebtReportsDto['monthlyRollforward']['rows'][number][];
 }): React.JSX.Element => {
-  const width = 900;
-  const height = 220;
-  const left = 64;
-  const right = 20;
-  const top = 18;
-  const bottom = 34;
-  const values = rows.flatMap((row) => [
-    numeric(row.beginningBalance),
-    numeric(row.endingBalance),
-  ]);
-  const minimum = Math.min(0, ...values);
-  const maximum = Math.max(1, ...values);
+  const width = 1100;
+  const height = 330;
+  const left = 94;
+  const right = 28;
+  const top = 28;
+  const bottom = 58;
+  const chartHeight = height - top - bottom;
+  const [zoom, setZoom] = useState({ start: 0, end: Math.max(0, rows.length - 1) });
+  const visibleRows = rows.slice(zoom.start, zoom.end + 1);
+  const isZoomed = visibleRows.length < rows.length;
+  const chartRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const pan = useCallback(
+    (delta: number): void => {
+      setZoom((current) => {
+        const span = current.end - current.start + 1;
+        const start = Math.max(0, Math.min(current.start + delta, rows.length - span));
+        return { start, end: start + span - 1 };
+      });
+    },
+    [rows.length],
+  );
+  const reset = (): void => setZoom({ start: 0, end: Math.max(0, rows.length - 1) });
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return undefined;
+    const onWheel = (event: WheelEvent): void => {
+      event.preventDefault();
+      if (event.shiftKey) {
+        const direction =
+          Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        pan(direction > 0 ? 1 : -1);
+        return;
+      }
+      if (rows.length <= 2) return;
+      setZoom((current) => {
+        const span = current.end - current.start + 1;
+        const nextSpan = Math.max(
+          2,
+          Math.min(
+            rows.length,
+            span + (event.deltaY < 0 ? -1 : 1) * Math.max(1, Math.round(span * 0.2)),
+          ),
+        );
+        const center = (current.start + current.end) / 2;
+        const start = Math.max(
+          0,
+          Math.min(Math.round(center - (nextSpan - 1) / 2), rows.length - nextSpan),
+        );
+        return { start, end: start + nextSpan - 1 };
+      });
+    };
+    chart.addEventListener('wheel', onWheel, { passive: false });
+    return () => chart.removeEventListener('wheel', onWheel);
+  }, [pan, rows.length]);
+  const scale = buildChartScale({
+    values: visibleRows.flatMap((row) => [
+      numeric(row.beginningBalance),
+      numeric(row.endingBalance),
+    ]),
+    chartHeight,
+    includeZero: true,
+    formatLabel: (value) => formatDollarString(value.toFixed(2)),
+  });
   const xFor = (index: number): number =>
-    left + (index / Math.max(rows.length - 1, 1)) * (width - left - right);
+    left + (index / Math.max(visibleRows.length - 1, 1)) * (width - left - right);
   const yFor = (value: number): number =>
     height -
     bottom -
-    ((value - minimum) / (maximum - minimum)) * (height - top - bottom);
+    ((value - scale.minimum) / (scale.maximum - scale.minimum)) * chartHeight;
   const points = (key: 'beginningBalance' | 'endingBalance'): string =>
-    rows.map((row, index) => `${xFor(index)},${yFor(numeric(row[key]))}`).join(' ');
+    visibleRows
+      .map((row, index) => `${xFor(index)},${yFor(numeric(row[key]))}`)
+      .join(' ');
+  const tickIndexes = visibleTickIndexes(visibleRows.length);
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (!isZoomed) return;
+    event.preventDefault();
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      start: zoom.start,
+      end: zoom.end,
+      dragging: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const pixelDelta = drag.originX - event.clientX;
+    if (!drag.dragging && Math.abs(pixelDelta) < 4) return;
+    drag.dragging = true;
+    setIsDragging(true);
+    event.preventDefault();
+    const span = drag.end - drag.start + 1;
+    const delta = Math.round(
+      pixelDelta / Math.max(1, event.currentTarget.clientWidth / span),
+    );
+    const start = Math.max(0, Math.min(drag.start + delta, rows.length - span));
+    setZoom({ start, end: start + span - 1 });
+  };
+  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    dragStateRef.current = null;
+    setIsDragging(false);
+  };
 
   return (
     <div
@@ -178,39 +455,93 @@ const BalanceChart = ({
         <span className="text-slate-500">Beginning balance</span>
         <span className="font-semibold text-slate-900">Ending balance</span>
       </div>
-      <svg className="h-auto w-full" viewBox={`0 0 ${width} ${height}`}>
-        <line
-          stroke="#cbd5e1"
-          x1={left}
-          x2={width - right}
-          y1={height - bottom}
-          y2={height - bottom}
-        />
-        <polyline
-          fill="none"
-          points={points('beginningBalance')}
-          stroke="#94a3b8"
-          strokeDasharray="4 3"
-          strokeWidth="2"
-        />
-        <polyline
-          fill="none"
-          points={points('endingBalance')}
-          stroke="#0f172a"
-          strokeWidth="3"
-        />
-        {rows.map((row, index) => (
-          <circle
-            cx={xFor(index)}
-            cy={yFor(numeric(row.endingBalance))}
-            fill="#0f172a"
-            key={row.period}
-            r="3"
-          >
-            <title>{`${row.period} — ending balance: ${formatDollarString(row.endingBalance)}`}</title>
-          </circle>
-        ))}
-      </svg>
+      <ChartControls
+        isZoomed={isZoomed}
+        onNext={() => pan(1)}
+        onPrevious={() => pan(-1)}
+        onReset={reset}
+      />
+      <p className="mt-2 text-xs text-slate-500" data-testid="debt-balance-zoom">
+        Visible range: {visibleRows[0] ? monthLabel(visibleRows[0].period) : 'none'}{' '}
+        through {visibleRows.at(-1) ? monthLabel(visibleRows.at(-1)!.period) : 'none'} (
+        {visibleRows.length} of {rows.length} months). Scroll to zoom; Shift+scroll or
+        drag to pan.
+      </p>
+      <div
+        className={`mt-2 touch-pan-y ${isDragging ? 'cursor-grabbing select-none' : isZoomed ? 'cursor-grab' : ''}`}
+        data-testid="debt-balance-chart"
+        ref={chartRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <svg className="h-auto w-full" viewBox={`0 0 ${width} ${height}`}>
+          {scale.tickValues.map((tick) => (
+            <g key={tick}>
+              <line
+                stroke="#e2e8f0"
+                x1={left}
+                x2={width - right}
+                y1={yFor(tick)}
+                y2={yFor(tick)}
+              />
+              <text
+                fill="#475569"
+                fontSize="12"
+                textAnchor="end"
+                x={left - 10}
+                y={yFor(tick) + 4}
+              >
+                {formatDollarString(tick.toFixed(0))}
+              </text>
+            </g>
+          ))}
+          <line
+            stroke="#cbd5e1"
+            x1={left}
+            x2={width - right}
+            y1={yFor(0)}
+            y2={yFor(0)}
+          />
+          <polyline
+            fill="none"
+            points={points('beginningBalance')}
+            stroke="#94a3b8"
+            strokeDasharray="4 3"
+            strokeWidth="2"
+          />
+          <polyline
+            fill="none"
+            points={points('endingBalance')}
+            stroke="#0f172a"
+            strokeWidth="3"
+          />
+          {visibleRows.map((row, index) => (
+            <circle
+              cx={xFor(index)}
+              cy={yFor(numeric(row.endingBalance))}
+              fill="#0f172a"
+              key={row.period}
+              r="3"
+            >
+              <title>{`${monthLabel(row.period)} — ending balance: ${formatDollarString(row.endingBalance)}; beginning balance: ${formatDollarString(row.beginningBalance)}`}</title>
+            </circle>
+          ))}
+          {tickIndexes.map((index) => (
+            <text
+              fill="#475569"
+              fontSize="12"
+              key={visibleRows[index]?.period}
+              textAnchor="middle"
+              x={xFor(index)}
+              y={height - 18}
+            >
+              {visibleRows[index] ? monthLabel(visibleRows[index].period) : ''}
+            </text>
+          ))}
+        </svg>
+      </div>
     </div>
   );
 };
@@ -257,12 +588,7 @@ export const DebtProgress = ({
     (total, row) => total + numeric(row.interestActivity),
     0,
   );
-  const netTransfers = rows.reduce(
-    (total, row) => total + numeric(row.netTransfers),
-    0,
-  );
   const netReduction = principalPaid - purchases - borrowings;
-  const isIndividual = debtId !== null;
 
   return (
     <section aria-labelledby="debt-progress-heading">
@@ -392,8 +718,8 @@ export const DebtProgress = ({
           </div>
           <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 className="text-lg font-semibold">Monthly breakdown</h3>
-            <div className="mt-3 overflow-x-auto">
-              <table className="min-w-full text-sm">
+            <div className="mt-3 max-w-full overflow-x-auto pb-2">
+              <table className="min-w-[1120px] text-sm">
                 <thead className="border-b border-slate-200 text-left text-xs text-slate-500 uppercase">
                   <tr>
                     {[
@@ -421,7 +747,9 @@ export const DebtProgress = ({
                 <tbody>
                   {rows.map((row) => (
                     <tr className="border-b border-slate-100" key={row.period}>
-                      <td className="px-3 py-2 font-semibold">{row.period}</td>
+                      <td className="whitespace-nowrap px-3 py-2 font-semibold">
+                        {monthLabel(row.period)}
+                      </td>
                       <td className="px-3 py-2 text-right">
                         {formatDollarString(row.beginningBalance)}
                       </td>
@@ -464,20 +792,6 @@ export const DebtProgress = ({
               </table>
             </div>
           </section>
-          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-            <p className="font-semibold">Reconciliation</p>
-            <p className="mt-1">
-              Beginning balance + purchases/charges + new borrowing + net transfers −
-              principal paid = ending principal balance. Each source report row must
-              have a zero rollforward difference.
-            </p>
-            <p className="mt-1">
-              Portfolio net transfers: {formatDollarString(money(netTransfers))}.{' '}
-              {isIndividual
-                ? 'For an individual debt, Transfer In and Transfer Out remain visible because they affect that account.'
-                : 'For the portfolio, Transfer In and Transfer Out net to zero and are excluded from net debt reduction.'}
-            </p>
-          </div>
           {reports.progressSummary?.comparison ? (
             <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="text-lg font-semibold">Prior equivalent period</h3>

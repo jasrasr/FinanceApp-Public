@@ -2448,6 +2448,9 @@ describe('debt maintenance application', () => {
     expect(screen.getByText('Year to date')).toBeVisible();
     expect(screen.getAllByText('Net debt reduction').length).toBeGreaterThan(0);
     expect(screen.getByText('Monthly breakdown')).toBeVisible();
+    expect(screen.getAllByText('Jan 2026').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Reconciliation')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Reset zoom' })).toHaveLength(2);
     expect(
       screen.getByRole('region', { name: /Net debt reduction: \$400\.00/ }),
     ).toBeVisible();
