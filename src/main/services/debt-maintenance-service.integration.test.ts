@@ -574,22 +574,37 @@ describe('debt creation', () => {
     expect(latest.calculatedEscrowBalance).toBe('125.00');
   });
 
-  it('uses effective-dated income assumptions without mutating ledger activity', () => {
+  it('aggregates actual income transactions without mutating ledger activity', () => {
     const created = service.createDebt(validRequest('Generated Income Analysis Debt'));
     const beforeTransactions = context.database.select().from(debtTransactions).all();
     const beforeBalance = service.getDebt({ id: created.id }).currentBalance;
 
-    service.createIncomeRecord({
-      effectiveDate: '2026-01-01',
-      grossMonthlyIncome: '9000.00',
-      netMonthlyIncome: '6500.00',
-      otherRecurringMonthlyIncome: '250.00',
+    service.createIncomeTransaction({
+      receivedDate: '2026-01-15',
+      amount: '3250.00',
+      incomeType: 'regular_paycheck',
+      source: 'Generated Employer',
+      notes: null,
+      grossAmount: '4500.00',
+      netAmount: '3250.00',
     });
-    service.createIncomeRecord({
-      effectiveDate: '2026-03-01',
-      grossMonthlyIncome: '9500.00',
-      netMonthlyIncome: '7000.00',
-      otherRecurringMonthlyIncome: '0.00',
+    service.createIncomeTransaction({
+      receivedDate: '2026-01-29',
+      amount: '3250.00',
+      incomeType: 'regular_paycheck',
+      source: 'Generated Employer',
+      notes: null,
+      grossAmount: '4500.00',
+      netAmount: '3250.00',
+    });
+    service.createIncomeTransaction({
+      receivedDate: '2026-03-15',
+      amount: '1000.00',
+      incomeType: 'bonus',
+      source: 'Generated Employer',
+      notes: 'Generated bonus',
+      grossAmount: '1400.00',
+      netAmount: '1000.00',
     });
 
     const cashFlow = service.getDebtReports({
@@ -603,9 +618,9 @@ describe('debt creation', () => {
 
     expect(cashFlow.incomeDataAvailable).toBe(true);
     expect(cashFlow.incomeRows.map((row) => row.netIncome)).toEqual([
-      '6750.00',
-      '6750.00',
-      '7000.00',
+      '6500.00',
+      null,
+      '1000.00',
     ]);
     expect(cashFlow.incomeRows[0]?.grossIncome).toBe('9000.00');
     expect(cashFlow.incomeRows[0]?.debtPaymentsPercentNet).toBe('0.0%');
@@ -614,15 +629,29 @@ describe('debt creation', () => {
     );
     expect(service.getDebt({ id: created.id }).currentBalance).toBe(beforeBalance);
 
-    service.archiveIncomeRecord({
-      id: service.listIncomeRecords({ includeArchived: false })[0]!.id,
-      expectedUpdatedAtUtc: service.listIncomeRecords({ includeArchived: false })[0]!
-        .updatedAtUtc,
+    const secondIncome = service.listIncomeTransactions({ includeArchived: false })[1]!;
+    const updatedIncome = service.updateIncomeTransaction({
+      id: secondIncome.id,
+      expectedUpdatedAtUtc: secondIncome.updatedAtUtc,
+      receivedDate: secondIncome.receivedDate,
+      amount: '3300.00',
+      incomeType: secondIncome.incomeType,
+      source: secondIncome.source,
+      notes: secondIncome.notes,
+      grossAmount: '4550.00',
+      netAmount: '3300.00',
     });
-    expect(service.listIncomeRecords({ includeArchived: false })).toHaveLength(1);
+    expect(updatedIncome.amount).toBe('3300.00');
+
+    const firstIncome = service.listIncomeTransactions({ includeArchived: false })[0]!;
+    service.archiveIncomeTransaction({
+      id: firstIncome.id,
+      expectedUpdatedAtUtc: firstIncome.updatedAtUtc,
+    });
+    expect(service.listIncomeTransactions({ includeArchived: false })).toHaveLength(2);
   });
 
-  it('leaves income ratios unavailable when no effective income record exists', () => {
+  it('leaves income ratios unavailable when no income transaction exists', () => {
     service.createDebt(validRequest('Generated Missing Income Debt'));
     const cashFlow = service.getDebtReports({
       startDate: '2026-01-01',

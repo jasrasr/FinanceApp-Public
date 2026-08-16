@@ -415,6 +415,31 @@ export const archiveIncomeRecordRequestSchema = z
   .object({ id: uuidSchema, expectedUpdatedAtUtc: utcTimestampSchema })
   .strict();
 
+export const incomeTypeSchema = z.enum(['regular_paycheck', 'bonus', 'other_income']);
+
+const incomeTransactionInputSchema = z
+  .object({
+    receivedDate: financialDateInputSchema,
+    amount: moneyInputSchema,
+    incomeType: incomeTypeSchema,
+    source: requiredTextSchema,
+    notes: optionalTextSchema,
+    grossAmount: optionalMoneyInputSchema,
+    netAmount: optionalMoneyInputSchema,
+  })
+  .strict();
+
+export const listIncomeTransactionsRequestSchema = z
+  .object({ includeArchived: z.boolean() })
+  .strict();
+export const createIncomeTransactionRequestSchema = incomeTransactionInputSchema;
+export const updateIncomeTransactionRequestSchema = incomeTransactionInputSchema
+  .extend({ id: uuidSchema, expectedUpdatedAtUtc: utcTimestampSchema })
+  .strict();
+export const archiveIncomeTransactionRequestSchema = z
+  .object({ id: uuidSchema, expectedUpdatedAtUtc: utcTimestampSchema })
+  .strict();
+
 const payoffStrategySchema = z.enum(PAYOFF_STRATEGIES);
 
 export const createPayoffScenarioRequestSchema = z
@@ -1260,6 +1285,22 @@ export const incomeRecordDtoSchema = z
   })
   .strict();
 
+export const incomeTransactionDtoSchema = z
+  .object({
+    id: uuidSchema,
+    receivedDate: financialDateInputSchema,
+    amount: z.string(),
+    incomeType: incomeTypeSchema,
+    source: z.string(),
+    notes: z.string().nullable(),
+    grossAmount: z.string().nullable(),
+    netAmount: z.string().nullable(),
+    createdAtUtc: utcTimestampSchema,
+    updatedAtUtc: utcTimestampSchema,
+    archivedAtUtc: utcTimestampSchema.nullable(),
+  })
+  .strict();
+
 export const appMetadataDtoSchema = z
   .object({
     version: z
@@ -1551,6 +1592,12 @@ export const incomeRecordListResultSchema = applicationResultSchema(
   z.array(incomeRecordDtoSchema),
 );
 export const incomeRecordResultSchema = applicationResultSchema(incomeRecordDtoSchema);
+export const incomeTransactionListResultSchema = applicationResultSchema(
+  incomeTransactionDtoSchema.array(),
+);
+export const incomeTransactionResultSchema = applicationResultSchema(
+  incomeTransactionDtoSchema,
+);
 export const milestonesResultSchema = applicationResultSchema(milestonesDtoSchema);
 const debtOutlookMonthDtoSchema = z
   .object({
@@ -1795,6 +1842,18 @@ export type UpdateIncomeRecordRequest = z.infer<typeof updateIncomeRecordRequest
 export type ArchiveIncomeRecordRequest = z.infer<
   typeof archiveIncomeRecordRequestSchema
 >;
+export type ListIncomeTransactionsRequest = z.infer<
+  typeof listIncomeTransactionsRequestSchema
+>;
+export type CreateIncomeTransactionRequest = z.infer<
+  typeof createIncomeTransactionRequestSchema
+>;
+export type UpdateIncomeTransactionRequest = z.infer<
+  typeof updateIncomeTransactionRequestSchema
+>;
+export type ArchiveIncomeTransactionRequest = z.infer<
+  typeof archiveIncomeTransactionRequestSchema
+>;
 export type CreatePayoffScenarioRequest = z.infer<
   typeof createPayoffScenarioRequestSchema
 >;
@@ -1850,6 +1909,7 @@ export type DataManagementStatusDto = z.infer<typeof dataManagementStatusDtoSche
 export type DataExportDto = z.infer<typeof dataExportDtoSchema>;
 export type DebtReportsDto = z.infer<typeof debtReportsDtoSchema>;
 export type IncomeRecordDto = z.infer<typeof incomeRecordDtoSchema>;
+export type IncomeTransactionDto = z.infer<typeof incomeTransactionDtoSchema>;
 export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
 export type PayoffScenarioDto = z.infer<typeof payoffScenarioDtoSchema>;
 export type PayoffBaselineDto = z.infer<typeof payoffBaselineDtoSchema>;

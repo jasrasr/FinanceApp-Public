@@ -2356,3 +2356,18 @@ year`.
   include non-debt spending or budgeting data.
 - Recommended next phase: user acceptance review of navigation and income
   assumptions before an approved feature release.
+
+## Phase 60: Actual Income Transactions
+
+- Completion date: 2026-08-16. Application version remains 1.8.9 pending an
+  approved release.
+- Replaced current income analysis inputs with separate received-income events
+  supporting bi-weekly paychecks, bonuses, other income, source, notes, and
+  optional gross/net values. Added a dedicated Income page and actual monthly
+  aggregation for Cash Flow / Debt Burden. Income never posts debt activity.
+- Added migration 0015 for `income_transactions`; migration 0014's legacy
+  `income_records` table remains intact but is no longer used for current
+  reports because it contains monthly assumptions rather than actual events.
+- Navigation groups now start collapsed and expand when a child route is opened.
+- Known limitation: if gross or net is omitted for an event, the received amount
+  is used for that measure; no payroll-tax inference is attempted.

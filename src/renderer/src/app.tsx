@@ -39,10 +39,10 @@ import type {
   RenamePayoffScenarioRequest,
   ExtraCashAllocationRequest,
   ExtraCashAllocationResponse,
-  ArchiveIncomeRecordRequest,
-  CreateIncomeRecordRequest,
-  IncomeRecordDto,
-  UpdateIncomeRecordRequest,
+  ArchiveIncomeTransactionRequest,
+  CreateIncomeTransactionRequest,
+  IncomeTransactionDto,
+  UpdateIncomeTransactionRequest,
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
 import { AdvancedReports } from './components/advanced-reports';
@@ -53,6 +53,7 @@ import { Dashboard } from './components/dashboard';
 import { DebtProgress } from './components/debt-progress';
 import { CreditCardActivity } from './components/credit-card-activity';
 import { CashFlowAnalysis } from './components/cash-flow-analysis';
+import { IncomeTransactions } from './components/income-transactions';
 import { DataManagement } from './components/data-management';
 import { DataHealth } from './components/data-health';
 import { Milestones } from './components/milestones';
@@ -79,6 +80,7 @@ import {
 type View =
   | 'dashboard'
   | 'list'
+  | 'income'
   | 'debt-progress'
   | 'credit-card-activity'
   | 'cash-flow-analysis'
@@ -185,13 +187,15 @@ const ErrorNotice = ({
 
 export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Element => {
   const [view, setView] = useState<View>('dashboard');
-  const [activityExpanded, setActivityExpanded] = useState(true);
-  const [planningExpanded, setPlanningExpanded] = useState(true);
-  const [reportsExpanded, setReportsExpanded] = useState(true);
+  const [activityExpanded, setActivityExpanded] = useState(false);
+  const [planningExpanded, setPlanningExpanded] = useState(false);
+  const [reportsExpanded, setReportsExpanded] = useState(false);
   const [dashboard, setDashboard] = useState<DashboardDto | null>(null);
   const [reports, setReports] = useState<DebtReportsDto | null>(null);
-  const [incomeRecords, setIncomeRecords] = useState<readonly IncomeRecordDto[]>([]);
   const [incomeLoading, setIncomeLoading] = useState(false);
+  const [incomeTransactions, setIncomeTransactions] = useState<
+    readonly IncomeTransactionDto[]
+  >([]);
   const [reportState, setReportState] = useState<ReportSessionState>(
     defaultReportSessionState,
   );
@@ -380,47 +384,47 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     setLoading(false);
   };
 
-  const loadIncomeRecords = async (): Promise<void> => {
+  const loadIncomeTransactions = async (): Promise<void> => {
     setIncomeLoading(true);
     const result = await invokeBridge(() =>
-      bridge.listIncomeRecords({ includeArchived: true }),
+      bridge.listIncomeTransactions({ includeArchived: true }),
     );
-    if (result.ok) setIncomeRecords(result.value);
+    if (result.ok) setIncomeTransactions(result.value);
     else setError(result.error);
     setIncomeLoading(false);
   };
 
-  const createIncomeRecord = async (
-    request: CreateIncomeRecordRequest,
+  const createIncomeTransaction = async (
+    request: CreateIncomeTransactionRequest,
   ): Promise<void> => {
     setIncomeLoading(true);
-    const result = await invokeBridge(() => bridge.createIncomeRecord(request));
+    const result = await invokeBridge(() => bridge.createIncomeTransaction(request));
     if (result.ok) {
-      await loadIncomeRecords();
+      await loadIncomeTransactions();
       await loadReports();
     } else setError(result.error);
     setIncomeLoading(false);
   };
 
-  const updateIncomeRecord = async (
-    request: UpdateIncomeRecordRequest,
+  const updateIncomeTransaction = async (
+    request: UpdateIncomeTransactionRequest,
   ): Promise<void> => {
     setIncomeLoading(true);
-    const result = await invokeBridge(() => bridge.updateIncomeRecord(request));
+    const result = await invokeBridge(() => bridge.updateIncomeTransaction(request));
     if (result.ok) {
-      await loadIncomeRecords();
+      await loadIncomeTransactions();
       await loadReports();
     } else setError(result.error);
     setIncomeLoading(false);
   };
 
-  const archiveIncomeRecord = async (
-    request: ArchiveIncomeRecordRequest,
+  const archiveIncomeTransaction = async (
+    request: ArchiveIncomeTransactionRequest,
   ): Promise<void> => {
     setIncomeLoading(true);
-    const result = await invokeBridge(() => bridge.archiveIncomeRecord(request));
+    const result = await invokeBridge(() => bridge.archiveIncomeTransaction(request));
     if (result.ok) {
-      await loadIncomeRecords();
+      await loadIncomeTransactions();
       await loadReports();
     } else setError(result.error);
     setIncomeLoading(false);
@@ -635,6 +639,25 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     void loadDebts();
   };
 
+  const showIncome = (): void => {
+    if (!suppressNavigationPushRef.current) {
+      window.history.pushState(
+        {
+          app: 'debt-tracker',
+          index: (window.history.state?.index ?? 0) + 1,
+          view: 'income',
+        },
+        '',
+        '#income',
+      );
+    }
+    setView('income');
+    setSelectedDebt(null);
+    setError(null);
+    setFieldErrors(undefined);
+    void loadIncomeTransactions();
+  };
+
   const showDebtProgress = (): void => {
     setActivityExpanded(true);
     if (!suppressNavigationPushRef.current) {
@@ -722,7 +745,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       );
     }
     void loadReports();
-    void loadIncomeRecords();
   };
 
   const showPayoffScenarios = (): void => {
@@ -1220,6 +1242,7 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
       setView(nextView);
       if (nextView === 'dashboard') void loadDashboard();
       if (nextView === 'list') void loadDebts();
+      if (nextView === 'income') void loadIncomeTransactions();
       if (nextView === 'debt-progress' && !reports) void loadReports();
       if (nextView === 'credit-card-activity')
         void loadReports({
@@ -1231,7 +1254,6 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           status: 'active',
         });
       if (nextView === 'cash-flow-analysis') void loadReports();
-      if (nextView === 'cash-flow-analysis') void loadIncomeRecords();
       if (nextView === 'reports' && !reports) void loadReports();
       if (nextView === 'milestones') void loadMilestones();
       if (nextView === 'debt-outlook') void loadDebtOutlook();
@@ -1788,6 +1810,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             </li>
             <li className="mt-1">
               <button
+                aria-current={view === 'income' ? 'page' : undefined}
+                className={navigationButtonClassName(view === 'income')}
+                onClick={showIncome}
+                type="button"
+              >
+                Income
+              </button>
+            </li>
+            <li className="mt-1">
+              <button
                 aria-controls="activity-navigation"
                 aria-expanded={activityExpanded}
                 className={navigationButtonClassName(
@@ -2035,35 +2067,37 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
                 onRetry={
                   view === 'list'
                     ? () => void loadDebts()
-                    : view === 'debt-progress'
-                      ? () => void loadReports()
-                      : view === 'credit-card-activity'
-                        ? () =>
-                            void loadReports({
-                              startDate: null,
-                              endDate: null,
-                              debtId: null,
-                              ownerEntity: null,
-                              debtType: 'credit_card',
-                              status: 'active',
-                            })
-                        : view === 'cash-flow-analysis'
-                          ? () => void loadReports()
-                          : view === 'dashboard'
-                            ? () => void loadDashboard()
-                            : view === 'payoff'
-                              ? () => void loadPayoffScenarios()
-                              : view === 'reports'
-                                ? () => void loadReports()
-                                : view === 'data-management'
-                                  ? () => void loadDataManagementStatus()
-                                  : view === 'data-health'
-                                    ? () => void loadDataHealth()
-                                    : view === 'milestones'
-                                      ? () => void loadMilestones()
-                                      : view === 'escrow-detail'
-                                        ? () => void loadEscrowDetail()
-                                        : undefined
+                    : view === 'income'
+                      ? () => void loadIncomeTransactions()
+                      : view === 'debt-progress'
+                        ? () => void loadReports()
+                        : view === 'credit-card-activity'
+                          ? () =>
+                              void loadReports({
+                                startDate: null,
+                                endDate: null,
+                                debtId: null,
+                                ownerEntity: null,
+                                debtType: 'credit_card',
+                                status: 'active',
+                              })
+                          : view === 'cash-flow-analysis'
+                            ? () => void loadReports()
+                            : view === 'dashboard'
+                              ? () => void loadDashboard()
+                              : view === 'payoff'
+                                ? () => void loadPayoffScenarios()
+                                : view === 'reports'
+                                  ? () => void loadReports()
+                                  : view === 'data-management'
+                                    ? () => void loadDataManagementStatus()
+                                    : view === 'data-health'
+                                      ? () => void loadDataHealth()
+                                      : view === 'milestones'
+                                        ? () => void loadMilestones()
+                                        : view === 'escrow-detail'
+                                          ? () => void loadEscrowDetail()
+                                          : undefined
                 }
               />
             </div>
@@ -2105,6 +2139,16 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
             />
           ) : null}
 
+          {view === 'income' ? (
+            <IncomeTransactions
+              loading={incomeLoading}
+              onArchive={(request) => void archiveIncomeTransaction(request)}
+              onCreate={(request) => void createIncomeTransaction(request)}
+              onUpdate={(request) => void updateIncomeTransaction(request)}
+              records={incomeTransactions}
+            />
+          ) : null}
+
           {view === 'credit-card-activity' ? (
             <CreditCardActivity
               debts={debts}
@@ -2117,13 +2161,8 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
           {view === 'cash-flow-analysis' ? (
             <CashFlowAnalysis
               debts={debts}
-              incomeLoading={incomeLoading}
-              incomeRecords={incomeRecords}
               loading={loading}
-              onArchiveIncome={(request) => void archiveIncomeRecord(request)}
               onApplyFilters={(request) => void loadReports(request)}
-              onCreateIncome={(request) => void createIncomeRecord(request)}
-              onUpdateIncome={(request) => void updateIncomeRecord(request)}
               reports={reports}
             />
           ) : null}

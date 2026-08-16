@@ -24,6 +24,19 @@ import { formatLastChanged } from './components/display-format';
 import { RecordBalanceReconciliationForm } from './components/record-balance-reconciliation-form';
 import { RecordTransactionForm } from './components/record-transaction-form';
 
+const openNavigationGroup = async (
+  group: 'activity' | 'planning' | 'reports',
+): Promise<void> => {
+  const label =
+    group === 'activity'
+      ? /^Activity/
+      : group === 'planning'
+        ? /^Planning/
+        : /^Reports menu/;
+  const button = await screen.findByRole('button', { name: label });
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
+};
+
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
   bridgeVersion: 27,
@@ -87,6 +100,10 @@ const createBridge = (): AppBridge => ({
   createIncomeRecord: vi.fn(),
   updateIncomeRecord: vi.fn(),
   archiveIncomeRecord: vi.fn(),
+  listIncomeTransactions: vi.fn(async () => ({ ok: true as const, value: [] })),
+  createIncomeTransaction: vi.fn(),
+  updateIncomeTransaction: vi.fn(),
+  archiveIncomeTransaction: vi.fn(),
   createPayoffScenario: vi.fn(async () => ({
     ok: true as const,
     value: samplePayoffScenario,
@@ -1921,7 +1938,8 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Reports' }));
+    await openNavigationGroup('reports');
+    fireEvent.click(await screen.findByRole('button', { name: /^Reports$/ }));
 
     expect(
       await screen.findByRole('heading', { name: 'Debt reporting' }),
@@ -2191,7 +2209,8 @@ describe('debt maintenance application', () => {
     }));
     render(<App bridge={bridge} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Reports' }));
+    await openNavigationGroup('reports');
+    fireEvent.click(await screen.findByRole('button', { name: /^Reports$/ }));
     await screen.findByRole('heading', { name: 'Debt reporting' });
     fireEvent.change(screen.getByLabelText('Date preset'), {
       target: { value: 'custom' },
@@ -2255,7 +2274,8 @@ describe('debt maintenance application', () => {
     }));
     render(<App bridge={bridge} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Reports' }));
+    await openNavigationGroup('reports');
+    fireEvent.click(await screen.findByRole('button', { name: /^Reports$/ }));
     fireEvent.click(await screen.findByText('Interest expense analysis'));
 
     const monthlyChart = screen.getByTestId('monthly-interest-chart');
@@ -2440,6 +2460,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
+    await openNavigationGroup('reports');
     fireEvent.click(await screen.findByRole('button', { name: 'Data management' }));
 
     expect(
@@ -2488,6 +2509,7 @@ describe('debt maintenance application', () => {
   it('renders debt progress with the existing report rollforward metrics', async () => {
     render(<App bridge={createBridge()} />);
 
+    await openNavigationGroup('activity');
     fireEvent.click(
       await screen.findByRole('button', { name: 'Debt Progress / Trends' }),
     );
@@ -2517,6 +2539,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
+    await openNavigationGroup('planning');
     fireEvent.click(
       await screen.findByRole('button', { name: 'Debt Payoff Scenario Planner' }),
     );
@@ -2535,6 +2558,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
+    await openNavigationGroup('activity');
     fireEvent.click(
       await screen.findByRole('button', { name: 'Credit Card Activity' }),
     );
@@ -2557,6 +2581,7 @@ describe('debt maintenance application', () => {
     const bridge = createBridge();
     render(<App bridge={bridge} />);
 
+    await openNavigationGroup('activity');
     fireEvent.click(
       await screen.findByRole('button', { name: 'Cash Flow / Debt Burden' }),
     );
@@ -2576,12 +2601,44 @@ describe('debt maintenance application', () => {
     expect(bridge.createDebtTransfer).not.toHaveBeenCalled();
   });
 
+  it('renders actual income transactions separately from the debt ledger', async () => {
+    const bridge = createBridge();
+    bridge.listIncomeTransactions = vi.fn(async () => ({
+      ok: true as const,
+      value: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          receivedDate: '2026-01-15',
+          amount: '3250.00',
+          incomeType: 'regular_paycheck' as const,
+          source: 'Generated Employer',
+          notes: 'Generated test income',
+          grossAmount: '4500.00',
+          netAmount: '3250.00',
+          createdAtUtc: '2026-01-15T00:00:00.000Z',
+          updatedAtUtc: '2026-01-15T00:00:00.000Z',
+          archivedAtUtc: null,
+        },
+      ],
+    }));
+    render(<App bridge={bridge} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Income' }));
+
+    expect(await screen.findByRole('heading', { name: 'Income' })).toBeVisible();
+    expect(screen.getByText('Generated Employer')).toBeVisible();
+    expect(screen.getAllByText('Regular Paycheck').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('$3,250.00').length).toBeGreaterThanOrEqual(1);
+    expect(bridge.createDebtTransaction).not.toHaveBeenCalled();
+    expect(bridge.createDebtTransfer).not.toHaveBeenCalled();
+  });
+
   it('keeps the primary navigation in the approved order', async () => {
     render(<App bridge={createBridge()} />);
 
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     await waitFor(() =>
-      expect(within(navigation).getAllByRole('button')).toHaveLength(18),
+      expect(within(navigation).getAllByRole('button')).toHaveLength(6),
     );
     expect(
       within(navigation)
@@ -2590,23 +2647,16 @@ describe('debt maintenance application', () => {
     ).toEqual([
       'Dashboard',
       'Debts',
-      'Activity ▾',
-      'Debt Progress / Trends',
-      'Credit Card Activity',
-      'Cash Flow / Debt Burden',
-      'Planning ▾',
-      'Refinance analysis',
-      'Extra Payment / What-If Analysis',
-      'Debt Payoff Scenario Planner',
-      'Reports menu ▾',
-      'Reports',
-      'Milestones',
-      'Debt outlook',
-      'Interest analysis',
-      'Payoff scenarios',
-      'Data health',
-      'Data management',
+      'Income',
+      'Activity ▸',
+      'Planning ▸',
+      'Reports menu ▸',
     ]);
+    expect(screen.queryByRole('button', { name: 'Debt Progress / Trends' })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Activity/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
   it('renders saved payoff scenarios and scenario-only assumptions', async () => {
@@ -2617,6 +2667,7 @@ describe('debt maintenance application', () => {
     }));
     render(<App bridge={bridge} />);
 
+    await openNavigationGroup('reports');
     fireEvent.click(await screen.findByRole('button', { name: 'Payoff scenarios' }));
 
     expect(
@@ -2659,6 +2710,7 @@ describe('debt maintenance application', () => {
     }));
     render(<App bridge={bridge} />);
 
+    await openNavigationGroup('reports');
     fireEvent.click(await screen.findByRole('button', { name: 'Payoff scenarios' }));
     fireEvent.change(await screen.findByLabelText('Payoff strategy'), {
       target: { value: 'custom' },
@@ -2678,6 +2730,7 @@ describe('debt maintenance application', () => {
     }));
     render(<App bridge={bridge} />);
 
+    await openNavigationGroup('reports');
     fireEvent.click(await screen.findByRole('button', { name: 'Payoff scenarios' }));
 
     expect(

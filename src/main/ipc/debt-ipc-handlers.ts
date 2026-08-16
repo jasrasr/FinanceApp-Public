@@ -63,7 +63,12 @@ import {
   createIncomeRecordRequestSchema,
   updateIncomeRecordRequestSchema,
   archiveIncomeRecordRequestSchema,
+  listIncomeTransactionsRequestSchema,
+  createIncomeTransactionRequestSchema,
+  updateIncomeTransactionRequestSchema,
+  archiveIncomeTransactionRequestSchema,
   incomeRecordDtoSchema,
+  incomeTransactionDtoSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
   type ApplicationError,
@@ -408,6 +413,38 @@ export const registerDebtIpcHandlers = (
     incomeRecordDtoSchema,
     isTrustedSender,
     (request) => service.archiveIncomeRecord(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.listIncomeTransactions,
+    listIncomeTransactionsRequestSchema,
+    incomeTransactionDtoSchema.array(),
+    isTrustedSender,
+    (request) => service.listIncomeTransactions(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.createIncomeTransaction,
+    createIncomeTransactionRequestSchema,
+    incomeTransactionDtoSchema,
+    isTrustedSender,
+    (request) => service.createIncomeTransaction(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.updateIncomeTransaction,
+    updateIncomeTransactionRequestSchema,
+    incomeTransactionDtoSchema,
+    isTrustedSender,
+    (request) => service.updateIncomeTransaction(request),
+  );
+  registerHandler(
+    ipcMain,
+    DEBT_IPC_CHANNELS.archiveIncomeTransaction,
+    archiveIncomeTransactionRequestSchema,
+    incomeTransactionDtoSchema,
+    isTrustedSender,
+    (request) => service.archiveIncomeTransaction(request),
   );
   registerHandler(
     ipcMain,

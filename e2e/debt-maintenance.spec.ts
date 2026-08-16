@@ -298,6 +298,7 @@ test('completes the manual debt-maintenance workflow', async () => {
     await window.getByText('View audit history').click();
     await expect(window.getByText('Voided original')).toBeVisible();
 
+    await window.getByRole('button', { name: /^Reports menu/ }).click();
     await window.getByRole('button', { name: 'Payoff scenarios' }).click();
     await expect(
       window.getByRole('heading', { name: 'Projection and payoff scenarios' }),

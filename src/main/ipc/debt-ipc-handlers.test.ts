@@ -44,6 +44,10 @@ const createService = (): DebtMaintenanceService => ({
   createIncomeRecord: vi.fn(),
   updateIncomeRecord: vi.fn(),
   archiveIncomeRecord: vi.fn(),
+  listIncomeTransactions: vi.fn(() => []),
+  createIncomeTransaction: vi.fn(),
+  updateIncomeTransaction: vi.fn(),
+  archiveIncomeTransaction: vi.fn(),
 });
 
 const createDataManagementService = (): DataManagementService => ({

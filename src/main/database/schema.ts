@@ -888,10 +888,45 @@ export const incomeRecords = sqliteTable(
   ],
 );
 
+export const incomeTransactions = sqliteTable(
+  'income_transactions',
+  {
+    id: text('id').primaryKey(),
+    receivedDate: text('received_date').notNull(),
+    amountCents: integer('amount_cents').notNull(),
+    incomeType: text('income_type').notNull(),
+    source: text('source').notNull(),
+    notes: text('notes'),
+    grossAmountCents: integer('gross_amount_cents'),
+    netAmountCents: integer('net_amount_cents'),
+    createdAtUtc: text('created_at_utc').notNull(),
+    updatedAtUtc: text('updated_at_utc').notNull(),
+    archivedAtUtc: text('archived_at_utc'),
+  },
+  (table) => [
+    index('income_transactions_received_date_idx').on(table.receivedDate),
+    index('income_transactions_archived_idx').on(table.archivedAtUtc),
+    check(
+      'income_transactions_received_date_format',
+      sql`${table.receivedDate} GLOB ${FINANCIAL_DATE_GLOB}`,
+    ),
+    check('income_transactions_amount_nonnegative', sql`${table.amountCents} > 0`),
+    check(
+      'income_transactions_gross_nonnegative',
+      sql`${table.grossAmountCents} IS NULL OR ${table.grossAmountCents} >= 0`,
+    ),
+    check(
+      'income_transactions_net_nonnegative',
+      sql`${table.netAmountCents} IS NULL OR ${table.netAmountCents} >= 0`,
+    ),
+  ],
+);
+
 export const schema = {
   auditEvents,
   applicationSettings,
   incomeRecords,
+  incomeTransactions,
   balanceReconciliations,
   balanceSnapshots,
   debtTerms,

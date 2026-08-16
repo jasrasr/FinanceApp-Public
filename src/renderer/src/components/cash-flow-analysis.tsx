@@ -3,15 +3,10 @@ import type {
   DebtReportsDto,
   DebtSummaryDto,
   GetDebtReportsRequest,
-  ArchiveIncomeRecordRequest,
-  CreateIncomeRecordRequest,
-  IncomeRecordDto,
-  UpdateIncomeRecordRequest,
 } from '../../../shared/debt-contracts';
 import { REPORTING_HISTORY_START_DATE } from '../../../shared/reporting-constants';
 import { buildChartScale } from './chart-helpers';
 import { formatDollarString } from './display-format';
-import { IncomeAssumptions } from './income-assumptions';
 
 type Preset = 'ytd' | 'prior-year' | 'last-12-months' | 'all-time' | 'custom';
 type ChartKind = 'flow' | 'trend' | 'mix' | 'income' | 'ratio';
@@ -24,11 +19,6 @@ export interface CashFlowAnalysisProps {
   readonly loading: boolean;
   readonly reports: DebtReportsDto | null;
   readonly onApplyFilters: (request: GetDebtReportsRequest) => void;
-  readonly incomeRecords: readonly IncomeRecordDto[];
-  readonly incomeLoading: boolean;
-  readonly onCreateIncome: (request: CreateIncomeRecordRequest) => void;
-  readonly onUpdateIncome: (request: UpdateIncomeRecordRequest) => void;
-  readonly onArchiveIncome: (request: ArchiveIncomeRecordRequest) => void;
 }
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -382,11 +372,6 @@ export const CashFlowAnalysis = ({
   loading,
   reports,
   onApplyFilters,
-  incomeRecords,
-  incomeLoading,
-  onCreateIncome,
-  onUpdateIncome,
-  onArchiveIncome,
 }: CashFlowAnalysisProps): React.JSX.Element => {
   const [preset, setPreset] = useState<Preset>('ytd');
   const [selectedDebtId, setSelectedDebtId] = useState('');
@@ -399,6 +384,24 @@ export const CashFlowAnalysis = ({
   const principal = rows.reduce((sum, row) => sum + value(row.principal), 0);
   const interest = rows.reduce((sum, row) => sum + value(row.interest), 0);
   const fees = rows.reduce((sum, row) => sum + value(row.fees), 0);
+  const incomeRows = activity?.incomeRows ?? [];
+  const grossIncome = incomeRows.reduce(
+    (sum, row) => sum + (row.grossIncome === null ? 0 : value(row.grossIncome)),
+    0,
+  );
+  const netIncome = incomeRows.reduce(
+    (sum, row) => sum + (row.netIncome === null ? 0 : value(row.netIncome)),
+    0,
+  );
+  const remainingNetIncome = incomeRows.reduce(
+    (sum, row) =>
+      sum + (row.remainingNetIncome === null ? 0 : value(row.remainingNetIncome)),
+    0,
+  );
+  const debtPaymentPercentNet =
+    activity?.incomeDataAvailable && netIncome > 0
+      ? `${((totalPayments / netIncome) * 100).toFixed(1)}%`
+      : 'Not available';
   const months = Math.max(rows.length, 1);
   const request = (
     range: { startDate: string; endDate: string },
@@ -513,6 +516,14 @@ export const CashFlowAnalysis = ({
         <>
           <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
             {[
+              [
+                'Gross income received',
+                activity.incomeDataAvailable ? money(grossIncome) : 'Not available',
+              ],
+              [
+                'Net income received',
+                activity.incomeDataAvailable ? money(netIncome) : 'Not available',
+              ],
               ['Total debt payments', money(totalPayments)],
               ['Principal paid', money(principal)],
               ['Interest paid', money(interest)],
@@ -540,6 +551,13 @@ export const CashFlowAnalysis = ({
                 'Payment change vs prior period',
                 paymentChange === null ? 'Not available' : money(paymentChange),
               ],
+              [
+                'Remaining net income after debt payments',
+                activity.incomeDataAvailable
+                  ? money(remainingNetIncome)
+                  : 'Not available',
+              ],
+              ['Debt payments / net income', debtPaymentPercentNet],
             ].map(([label, display]) => (
               <section
                 className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -735,13 +753,6 @@ export const CashFlowAnalysis = ({
           Period runs from {monthLabel(first.period)} through {monthLabel(last.period)}.
         </span>
       ) : null}
-      <IncomeAssumptions
-        loading={incomeLoading}
-        onArchive={onArchiveIncome}
-        onCreate={onCreateIncome}
-        onUpdate={onUpdateIncome}
-        records={incomeRecords}
-      />
     </section>
   );
 };

@@ -450,11 +450,17 @@ foundational application setting currently justifies a persistent row.
 
 ### income_records
 
-Income records are separate analysis assumptions, not ledger transactions. Each
-record stores effective-dated monthly gross income, monthly net income, and
-optional other recurring income in integer cents. Archived records remain in the
-database for auditability and are excluded from analysis. Reports select the
-latest non-archived record effective on or before each reporting month.
+`income_records` is retained as a backward-compatible legacy assumption table.
+It is no longer used for current income reporting.
+
+### income_transactions
+
+Actual income events are stored separately from debt transactions. Each row
+stores the received date, positive received amount in cents, income type,
+source, optional notes, and optional gross and net amounts. Archived rows remain
+for auditability and are excluded from current reporting. If gross or net is not
+provided, reports use the received amount for that measure; no monthly income is
+invented for months without transactions.
 
 ### application_settings
 

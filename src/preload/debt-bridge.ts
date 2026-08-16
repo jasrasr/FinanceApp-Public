@@ -67,6 +67,12 @@ import {
   archiveIncomeRecordRequestSchema,
   incomeRecordListResultSchema,
   incomeRecordResultSchema,
+  listIncomeTransactionsRequestSchema,
+  createIncomeTransactionRequestSchema,
+  updateIncomeTransactionRequestSchema,
+  archiveIncomeTransactionRequestSchema,
+  incomeTransactionListResultSchema,
+  incomeTransactionResultSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
   voidDebtTransactionRequestSchema,
@@ -118,6 +124,10 @@ import {
   type CreateIncomeRecordRequest,
   type UpdateIncomeRecordRequest,
   type ArchiveIncomeRecordRequest,
+  type ListIncomeTransactionsRequest,
+  type CreateIncomeTransactionRequest,
+  type UpdateIncomeTransactionRequest,
+  type ArchiveIncomeTransactionRequest,
 } from '../shared/debt-contracts';
 import { DEBT_IPC_CHANNELS } from '../shared/debt-ipc';
 import { appMetadata } from './app-metadata';
@@ -285,6 +295,34 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.archiveIncomeRecord,
           archiveIncomeRecordRequestSchema.parse(request),
+        ),
+      ),
+    listIncomeTransactions: async (request: ListIncomeTransactionsRequest) =>
+      incomeTransactionListResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.listIncomeTransactions,
+          listIncomeTransactionsRequestSchema.parse(request),
+        ),
+      ),
+    createIncomeTransaction: async (request: CreateIncomeTransactionRequest) =>
+      incomeTransactionResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.createIncomeTransaction,
+          createIncomeTransactionRequestSchema.parse(request),
+        ),
+      ),
+    updateIncomeTransaction: async (request: UpdateIncomeTransactionRequest) =>
+      incomeTransactionResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.updateIncomeTransaction,
+          updateIncomeTransactionRequestSchema.parse(request),
+        ),
+      ),
+    archiveIncomeTransaction: async (request: ArchiveIncomeTransactionRequest) =>
+      incomeTransactionResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.archiveIncomeTransaction,
+          archiveIncomeTransactionRequestSchema.parse(request),
         ),
       ),
     createPayoffScenario: async (request: CreatePayoffScenarioRequest) =>

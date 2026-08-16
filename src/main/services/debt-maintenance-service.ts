@@ -40,6 +40,11 @@ import type {
   UpdateIncomeRecordRequest,
   ArchiveIncomeRecordRequest,
   IncomeRecordDto,
+  ListIncomeTransactionsRequest,
+  CreateIncomeTransactionRequest,
+  UpdateIncomeTransactionRequest,
+  ArchiveIncomeTransactionRequest,
+  IncomeTransactionDto,
   GetDebtRequest,
   GetPayoffScenarioRequest,
   ListDebtsRequest,
@@ -82,6 +87,10 @@ import {
   createIncomeRecordRequestSchema,
   updateIncomeRecordRequestSchema,
   archiveIncomeRecordRequestSchema,
+  listIncomeTransactionsRequestSchema,
+  createIncomeTransactionRequestSchema,
+  updateIncomeTransactionRequestSchema,
+  archiveIncomeTransactionRequestSchema,
   getDebtRequestSchema,
   getPayoffScenarioRequestSchema,
   listPayoffScenariosRequestSchema,
@@ -99,7 +108,7 @@ import {
 import { ALLOCATION_TYPES } from '../../shared/debt-options';
 import { REPORTING_HISTORY_START_DATE } from '../../shared/reporting-constants';
 import type { AppDatabase } from '../database/connection';
-import { incomeRecords } from '../database/schema';
+import { incomeRecords, incomeTransactions } from '../database/schema';
 import {
   calculateLedgerBalanceThroughDate,
   calculateEscrowBalanceThroughDate,
@@ -200,6 +209,18 @@ export interface DebtMaintenanceService {
   createIncomeRecord(request: CreateIncomeRecordRequest): IncomeRecordDto;
   updateIncomeRecord(request: UpdateIncomeRecordRequest): IncomeRecordDto;
   archiveIncomeRecord(request: ArchiveIncomeRecordRequest): IncomeRecordDto;
+  listIncomeTransactions(
+    request: ListIncomeTransactionsRequest,
+  ): readonly IncomeTransactionDto[];
+  createIncomeTransaction(
+    request: CreateIncomeTransactionRequest,
+  ): IncomeTransactionDto;
+  updateIncomeTransaction(
+    request: UpdateIncomeTransactionRequest,
+  ): IncomeTransactionDto;
+  archiveIncomeTransaction(
+    request: ArchiveIncomeTransactionRequest,
+  ): IncomeTransactionDto;
   listPayoffScenarios(
     request: ListPayoffScenariosRequest,
   ): readonly PayoffScenarioDto[];
@@ -2544,20 +2565,33 @@ const createCashFlowAnalysis = (
   const rows = cashFlowRowsFromRollforward(rollforwardRows);
   const incomeHistory = database
     .select()
-    .from(incomeRecords)
-    .orderBy(asc(incomeRecords.effectiveDate), asc(incomeRecords.createdAtUtc))
+    .from(incomeTransactions)
+    .orderBy(asc(incomeTransactions.receivedDate), asc(incomeTransactions.createdAtUtc))
     .all()
-    .filter((record) => record.archivedAtUtc === null);
+    .filter((transaction) => transaction.archivedAtUtc === null);
   const ratio = (amount: number, income: number | null): string | null =>
     income === null || income <= 0 ? null : `${((amount / income) * 100).toFixed(1)}%`;
   const incomeRows = rows.map((row) => {
     const periodEndDate = periodEnd(row.period, 'monthly');
-    const income = incomeHistory
-      .filter((record) => record.effectiveDate <= periodEndDate)
-      .at(-1);
-    const grossIncome = income ? income.grossMonthlyIncomeCents : null;
-    const netIncome = income
-      ? income.netMonthlyIncomeCents + income.otherRecurringMonthlyIncomeCents
+    const periodStartDate = `${row.period}-01`;
+    const incomeForPeriod = incomeHistory.filter(
+      (transaction) =>
+        transaction.receivedDate >= periodStartDate &&
+        transaction.receivedDate <= periodEndDate,
+    );
+    const grossIncome = incomeForPeriod.length
+      ? incomeForPeriod.reduce(
+          (sum, transaction) =>
+            sum + (transaction.grossAmountCents ?? transaction.amountCents),
+          0,
+        )
+      : null;
+    const netIncome = incomeForPeriod.length
+      ? incomeForPeriod.reduce(
+          (sum, transaction) =>
+            sum + (transaction.netAmountCents ?? transaction.amountCents),
+          0,
+        )
       : null;
     const payments = Number(row.totalPayments);
     const paidPrincipal = Number(row.principal);
@@ -4007,6 +4041,28 @@ const mapIncomeRecord = (
   archivedAtUtc: record.archivedAtUtc,
 });
 
+const mapIncomeTransaction = (
+  transaction: typeof incomeTransactions.$inferSelect,
+): IncomeTransactionDto => ({
+  id: transaction.id,
+  receivedDate: transaction.receivedDate,
+  amount: centsToDollars(transaction.amountCents),
+  incomeType: transaction.incomeType as IncomeTransactionDto['incomeType'],
+  source: transaction.source,
+  notes: transaction.notes,
+  grossAmount:
+    transaction.grossAmountCents === null
+      ? null
+      : centsToDollars(transaction.grossAmountCents),
+  netAmount:
+    transaction.netAmountCents === null
+      ? null
+      : centsToDollars(transaction.netAmountCents),
+  createdAtUtc: transaction.createdAtUtc,
+  updatedAtUtc: transaction.updatedAtUtc,
+  archivedAtUtc: transaction.archivedAtUtc,
+});
+
 const incomeMoneyCents = (value: string, field: string): number => {
   try {
     return currencyInputToCents(value);
@@ -4438,6 +4494,158 @@ export const createDebtMaintenanceService = ({
             .select()
             .from(incomeRecords)
             .where(eq(incomeRecords.id, parsed.id))
+            .get()!,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    listIncomeTransactions: (request) => {
+      try {
+        const parsed = listIncomeTransactionsRequestSchema.parse(request);
+        return database
+          .select()
+          .from(incomeTransactions)
+          .orderBy(
+            asc(incomeTransactions.receivedDate),
+            asc(incomeTransactions.createdAtUtc),
+          )
+          .all()
+          .filter(
+            (transaction) =>
+              parsed.includeArchived || transaction.archivedAtUtc === null,
+          )
+          .map(mapIncomeTransaction);
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    createIncomeTransaction: (request) => {
+      try {
+        const parsed = createIncomeTransactionRequestSchema.parse(request);
+        const timestamp = now();
+        const transaction = {
+          id: createId(),
+          receivedDate: parsed.receivedDate,
+          amountCents: incomeMoneyCents(parsed.amount, 'Income amount'),
+          incomeType: parsed.incomeType,
+          source: parsed.source,
+          notes: parsed.notes,
+          grossAmountCents: parsed.grossAmount
+            ? incomeMoneyCents(parsed.grossAmount, 'Gross income')
+            : null,
+          netAmountCents: parsed.netAmount
+            ? incomeMoneyCents(parsed.netAmount, 'Net income')
+            : null,
+          createdAtUtc: timestamp,
+          updatedAtUtc: timestamp,
+          archivedAtUtc: null,
+        };
+        database.insert(incomeTransactions).values(transaction).run();
+        return mapIncomeTransaction(
+          database
+            .select()
+            .from(incomeTransactions)
+            .where(eq(incomeTransactions.id, transaction.id))
+            .get()!,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    updateIncomeTransaction: (request) => {
+      try {
+        const parsed = updateIncomeTransactionRequestSchema.parse(request);
+        const existing = database
+          .select()
+          .from(incomeTransactions)
+          .where(eq(incomeTransactions.id, parsed.id))
+          .get();
+        if (!existing)
+          throw new ApplicationServiceError(
+            'not_found',
+            'Income transaction was not found.',
+          );
+        if (existing.updatedAtUtc !== parsed.expectedUpdatedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Income transaction changed before it was updated.',
+          );
+        }
+        const timestamp = now();
+        database
+          .update(incomeTransactions)
+          .set({
+            receivedDate: parsed.receivedDate,
+            amountCents: incomeMoneyCents(parsed.amount, 'Income amount'),
+            incomeType: parsed.incomeType,
+            source: parsed.source,
+            notes: parsed.notes,
+            grossAmountCents: parsed.grossAmount
+              ? incomeMoneyCents(parsed.grossAmount, 'Gross income')
+              : null,
+            netAmountCents: parsed.netAmount
+              ? incomeMoneyCents(parsed.netAmount, 'Net income')
+              : null,
+            updatedAtUtc: timestamp,
+          })
+          .where(
+            and(
+              eq(incomeTransactions.id, parsed.id),
+              eq(incomeTransactions.updatedAtUtc, parsed.expectedUpdatedAtUtc),
+            ),
+          )
+          .run();
+        return mapIncomeTransaction(
+          database
+            .select()
+            .from(incomeTransactions)
+            .where(eq(incomeTransactions.id, parsed.id))
+            .get()!,
+        );
+      } catch (error) {
+        return normalizeError(error);
+      }
+    },
+
+    archiveIncomeTransaction: (request) => {
+      try {
+        const parsed = archiveIncomeTransactionRequestSchema.parse(request);
+        const existing = database
+          .select()
+          .from(incomeTransactions)
+          .where(eq(incomeTransactions.id, parsed.id))
+          .get();
+        if (!existing)
+          throw new ApplicationServiceError(
+            'not_found',
+            'Income transaction was not found.',
+          );
+        if (existing.updatedAtUtc !== parsed.expectedUpdatedAtUtc) {
+          throw new ApplicationServiceError(
+            'conflict',
+            'Income transaction changed before it was archived.',
+          );
+        }
+        const timestamp = now();
+        database
+          .update(incomeTransactions)
+          .set({ archivedAtUtc: timestamp, updatedAtUtc: timestamp })
+          .where(
+            and(
+              eq(incomeTransactions.id, parsed.id),
+              eq(incomeTransactions.updatedAtUtc, parsed.expectedUpdatedAtUtc),
+            ),
+          )
+          .run();
+        return mapIncomeTransaction(
+          database
+            .select()
+            .from(incomeTransactions)
+            .where(eq(incomeTransactions.id, parsed.id))
             .get()!,
         );
       } catch (error) {

@@ -63,6 +63,11 @@ import type {
   ArchiveIncomeRecordRequest,
   CreateIncomeRecordRequest,
   IncomeRecordDto,
+  ListIncomeTransactionsRequest,
+  CreateIncomeTransactionRequest,
+  UpdateIncomeTransactionRequest,
+  ArchiveIncomeTransactionRequest,
+  IncomeTransactionDto,
   ListIncomeRecordsRequest,
   UpdateIncomeRecordRequest,
 } from './debt-contracts';
@@ -133,6 +138,18 @@ export interface DebtBridge {
   archiveIncomeRecord(
     request: ArchiveIncomeRecordRequest,
   ): Promise<ApplicationResult<IncomeRecordDto>>;
+  listIncomeTransactions(
+    request: ListIncomeTransactionsRequest,
+  ): Promise<ApplicationResult<readonly IncomeTransactionDto[]>>;
+  createIncomeTransaction(
+    request: CreateIncomeTransactionRequest,
+  ): Promise<ApplicationResult<IncomeTransactionDto>>;
+  updateIncomeTransaction(
+    request: UpdateIncomeTransactionRequest,
+  ): Promise<ApplicationResult<IncomeTransactionDto>>;
+  archiveIncomeTransaction(
+    request: ArchiveIncomeTransactionRequest,
+  ): Promise<ApplicationResult<IncomeTransactionDto>>;
   createPayoffScenario(
     request: CreatePayoffScenarioRequest,
   ): Promise<ApplicationResult<PayoffScenarioDto>>;
