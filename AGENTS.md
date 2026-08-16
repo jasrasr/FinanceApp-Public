@@ -547,6 +547,27 @@ data.
 packaged or installed application smoke testing, not the standard source-app
 validation gate.
 
+### Approved "Release this" workflow
+
+When the user explicitly asks to release, the release is not complete until a
+verified Windows installer has been built locally on the user's computer. The
+standard sequence is:
+
+1. Validate the approved feature and preserve production data.
+2. Commit and push the approved changes through the normal main-branch flow.
+3. Determine the semantic version bump from the approved conventional commit.
+4. Build and verify the installer locally without relying on GitHub Actions.
+5. Leave the verified installer in
+   `C:\Users\mcaras\OneDrive\Documents\FinanceApp\dist` and report its exact
+   path.
+6. Allow GitHub Actions/Releases to provide secondary distribution and backup
+   verification.
+
+GitHub Actions artifacts are never a substitute for the local installer. For
+an already released version that needs a local copy, build that exact version
+without running `release:version`; do not create an additional version merely
+to reproduce an installer.
+
 `native:node` restores the Node-compatible better-sqlite3 prebuild for Vitest and
 database scripts. `native:electron` installs the official prebuild for the
 configured Electron runtime. Commands that need either ABI invoke the appropriate
