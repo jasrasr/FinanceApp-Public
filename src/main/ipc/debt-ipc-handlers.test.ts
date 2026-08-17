@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { DataManagementService } from '../services/data-management-service';
 import type { DebtMaintenanceService } from '../services/debt-maintenance-service';
+import type { UpdateCheckService } from '../services/update-check-service';
 import { registerDebtIpcHandlers, type DebtIpcRegistrar } from './debt-ipc-handlers';
 import { DEBT_IPC_CHANNELS } from '../../shared/debt-ipc';
 
@@ -432,5 +433,132 @@ describe('debt IPC handlers', () => {
       error: { code: 'conflict' },
     });
     expect(service.deleteDebtPermanently).not.toHaveBeenCalled();
+  });
+
+  it('does not register update-check handlers when no update-check dependency is provided', () => {
+    const service = createService();
+    const { handlers, registrar } = createRegistrar();
+    registerDebtIpcHandlers(registrar, service, createDataManagementService(), () => true);
+
+    expect(handlers.has(DEBT_IPC_CHANNELS.getUpdateStatus)).toBe(false);
+    expect(handlers.has(DEBT_IPC_CHANNELS.dismissUpdateNotice)).toBe(false);
+    expect(handlers.has(DEBT_IPC_CHANNELS.openReleasePage)).toBe(false);
+  });
+
+  describe('update-check handlers', () => {
+    const cachedStatus = {
+      currentVersion: '1.11.1',
+      latestVersion: '1.12.0',
+      updateAvailable: true,
+      releaseUrl: 'https://github.com/jasrasr/financeApp-public/releases/tag/v1.12.0',
+      checkedAtUtc: '2026-08-16T00:00:00.000Z',
+      checkFailed: false,
+    };
+
+    const createUpdateCheckService = (): UpdateCheckService => ({
+      checkForUpdates: vi.fn(async () => cachedStatus),
+      getCachedStatus: vi.fn(() => cachedStatus),
+      dismiss: vi.fn(() => ({ ...cachedStatus, updateAvailable: false })),
+    });
+
+    it('serves the cached update status and rejects untrusted senders', async () => {
+      const service = createService();
+      const updateCheckService = createUpdateCheckService();
+      const { handlers, registrar } = createRegistrar();
+      registerDebtIpcHandlers(
+        registrar,
+        service,
+        createDataManagementService(),
+        () => false,
+        undefined,
+        { service: updateCheckService, openExternalUrl: vi.fn() },
+      );
+
+      const rejected = handlers.get(DEBT_IPC_CHANNELS.getUpdateStatus)?.(event, {});
+      expect(rejected).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+
+      registerDebtIpcHandlers(
+        registrar,
+        service,
+        createDataManagementService(),
+        () => true,
+        undefined,
+        { service: updateCheckService, openExternalUrl: vi.fn() },
+      );
+      const allowed = handlers.get(DEBT_IPC_CHANNELS.getUpdateStatus)?.(event, {});
+      expect(allowed).toEqual({ ok: true, value: cachedStatus });
+    });
+
+    it('dismisses an update notice for the requested version', () => {
+      const service = createService();
+      const updateCheckService = createUpdateCheckService();
+      const { handlers, registrar } = createRegistrar();
+      registerDebtIpcHandlers(
+        registrar,
+        service,
+        createDataManagementService(),
+        () => true,
+        undefined,
+        { service: updateCheckService, openExternalUrl: vi.fn() },
+      );
+
+      const result = handlers.get(DEBT_IPC_CHANNELS.dismissUpdateNotice)?.(event, {
+        version: '1.12.0',
+      });
+
+      expect(updateCheckService.dismiss).toHaveBeenCalledWith('1.12.0');
+      expect(result).toEqual({
+        ok: true,
+        value: { ...cachedStatus, updateAvailable: false },
+      });
+    });
+
+    it('opens the release page only for an https github.com url', () => {
+      const service = createService();
+      const updateCheckService = createUpdateCheckService();
+      const openExternalUrl = vi.fn();
+      const { handlers, registrar } = createRegistrar();
+      registerDebtIpcHandlers(
+        registrar,
+        service,
+        createDataManagementService(),
+        () => true,
+        undefined,
+        { service: updateCheckService, openExternalUrl },
+      );
+
+      const result = handlers.get(DEBT_IPC_CHANNELS.openReleasePage)?.(event, {});
+
+      expect(result).toEqual({ ok: true, value: true });
+      expect(openExternalUrl).toHaveBeenCalledWith(cachedStatus.releaseUrl);
+    });
+
+    it('refuses to open a release page url that is not on github.com', () => {
+      const service = createService();
+      const maliciousStatus = {
+        ...cachedStatus,
+        releaseUrl: 'https://evil.example.com/download',
+      };
+      const updateCheckService: UpdateCheckService = {
+        checkForUpdates: vi.fn(async () => maliciousStatus),
+        getCachedStatus: vi.fn(() => maliciousStatus),
+        dismiss: vi.fn(() => maliciousStatus),
+      };
+      const openExternalUrl = vi.fn();
+      const { handlers, registrar } = createRegistrar();
+      registerDebtIpcHandlers(
+        registrar,
+        service,
+        createDataManagementService(),
+        () => true,
+        undefined,
+        { service: updateCheckService, openExternalUrl },
+      );
+
+      const result = handlers.get(DEBT_IPC_CHANNELS.openReleasePage)?.(event, {});
+
+      expect(result).toEqual({ ok: true, value: false });
+      expect(openExternalUrl).not.toHaveBeenCalled();
+    });
   });
 });

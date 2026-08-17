@@ -59,4 +59,7 @@ export const DEBT_IPC_CHANNELS = {
   confirmScheduledPayment: 'debt:confirm-scheduled-payment',
   removeScheduledPaymentConfirmation: 'debt:remove-scheduled-payment-confirmation',
   update: 'debt:update',
+  getUpdateStatus: 'app:update-check:status',
+  dismissUpdateNotice: 'app:update-check:dismiss',
+  openReleasePage: 'app:update-check:open-release-page',
 } as const;

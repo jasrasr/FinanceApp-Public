@@ -12,7 +12,13 @@ import {
 import { createTrustedSenderValidator } from './ipc/trusted-sender';
 import { createDataManagementService } from './services/data-management-service';
 import { createDebtMaintenanceService } from './services/debt-maintenance-service';
+import { createUpdateCheckService } from './services/update-check-service';
 import { writeStartupDiagnostics } from './startup-diagnostics';
+import packageMetadata from '../../package.json';
+
+const UPDATE_CHECK_REPO_OWNER = 'jasrasr';
+const UPDATE_CHECK_REPO_NAME = 'financeApp-public';
+const UPDATE_CHECK_STARTUP_DELAY_MS = 5_000;
 
 const rendererFile = join(__dirname, '../renderer/index.html');
 
@@ -197,14 +203,36 @@ const startApplication = async (): Promise<void> => {
       error instanceof Error ? error.message : 'Unknown automatic backup error.';
     console.error(`Debt Tracker automatic backup failed: ${detail}`);
   });
+  const updateCheckService = createUpdateCheckService({
+    getContext: () => {
+      if (!databaseContext) throw new Error('Database context is not available.');
+      return databaseContext;
+    },
+    currentVersion: packageMetadata.version,
+    repoOwner: UPDATE_CHECK_REPO_OWNER,
+    repoName: UPDATE_CHECK_REPO_NAME,
+  });
   registerDebtIpcHandlers(
     ipcMain,
     service,
     dataManagementService,
     createTrustedSenderValidator(trustedRendererLocation()),
     { selectFolder, selectBackupFile },
+    {
+      service: updateCheckService,
+      openExternalUrl: (url) => {
+        void shell.openExternal(url);
+      },
+    },
   );
   createWindow();
+  setTimeout(() => {
+    void updateCheckService.checkForUpdates().catch((error) => {
+      const detail =
+        error instanceof Error ? error.message : 'Unknown update-check error.';
+      console.error(`Debt Tracker update check failed: ${detail}`);
+    });
+  }, UPDATE_CHECK_STARTUP_DELAY_MS);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

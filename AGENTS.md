@@ -47,6 +47,18 @@ The application is local-only. Do not add login, cloud synchronization,
 telemetry, analytics, remote APIs, or network dependencies without explicit
 approval.
 
+One approved exception: a startup update-check (`src/main/services/update-check-service.ts`)
+makes a single outbound HTTPS GET to the GitHub Releases API
+(`api.github.com/repos/jasrasr/financeApp-public/releases/latest`) a few seconds
+after launch, to compare the running version against the latest published
+release. It runs in the main process only, never the renderer; it never
+auto-downloads or auto-installs anything; it fails silently on any network
+error; and it sends no telemetry or identifying data beyond the plain HTTPS
+request. The result reaches the renderer only through the existing typed
+bridge (`getUpdateStatus`, `dismissUpdateNotice`, `openReleasePage`). Do not
+extend this into a broader auto-update mechanism (e.g. `electron-updater`)
+without separate explicit approval.
+
 ## Application Version and Last-Changed Display
 
 - Maintain the authoritative application version in `package.json` using

@@ -22,6 +22,9 @@ const optionalTextSchema = z.string().trim().max(4_000).nullable();
 const financialDateInputSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const uuidSchema = z.uuid();
 const utcTimestampSchema = z.iso.datetime({ offset: false });
+const semverSchema = z
+  .string()
+  .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
 const moneyInputSchema = z.string().trim().min(1).max(100);
 const optionalMoneyInputSchema = z.string().trim().max(100).nullable().optional();
 const optionalUuidInputSchema = uuidSchema.nullable().optional();
@@ -1394,10 +1397,27 @@ export const incomeTransactionDtoSchema = z
 
 export const appMetadataDtoSchema = z
   .object({
-    version: z
-      .string()
-      .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/),
+    version: semverSchema,
     lastChangedAtUtc: utcTimestampSchema,
+  })
+  .strict();
+
+export const checkForUpdatesRequestSchema = z.object({}).strict();
+
+export const dismissUpdateNoticeRequestSchema = z
+  .object({
+    version: semverSchema,
+  })
+  .strict();
+
+export const updateCheckResultDtoSchema = z
+  .object({
+    currentVersion: semverSchema,
+    latestVersion: semverSchema.nullable(),
+    updateAvailable: z.boolean(),
+    releaseUrl: z.string().url().nullable(),
+    checkedAtUtc: utcTimestampSchema,
+    checkFailed: z.boolean(),
   })
   .strict();
 
@@ -1617,6 +1637,10 @@ export const permanentDebtDeletionResultSchema = applicationResultSchema(
 );
 export const dashboardResultSchema = applicationResultSchema(dashboardDtoSchema);
 export const dataHealthResultSchema = applicationResultSchema(dataHealthDtoSchema);
+export const updateCheckResultSchema = applicationResultSchema(
+  updateCheckResultDtoSchema.nullable(),
+);
+export const openReleasePageResultSchema = applicationResultSchema(z.boolean());
 const milestoneBalancePointDtoSchema = z
   .object({
     date: financialDateInputSchema,
@@ -2018,6 +2042,11 @@ export type SetIncomeSourceArchivedRequest = z.infer<
 export type IncomeSourceDto = z.infer<typeof incomeSourceDtoSchema>;
 export type IncomeTransactionDto = z.infer<typeof incomeTransactionDtoSchema>;
 export type AppMetadataDto = z.infer<typeof appMetadataDtoSchema>;
+export type CheckForUpdatesRequest = z.infer<typeof checkForUpdatesRequestSchema>;
+export type DismissUpdateNoticeRequest = z.infer<
+  typeof dismissUpdateNoticeRequestSchema
+>;
+export type UpdateCheckResultDto = z.infer<typeof updateCheckResultDtoSchema>;
 export type PayoffScenarioDto = z.infer<typeof payoffScenarioDtoSchema>;
 export type PayoffBaselineDto = z.infer<typeof payoffBaselineDtoSchema>;
 export type PayoffScenarioResultDto = z.infer<typeof payoffScenarioResultDtoSchema>;

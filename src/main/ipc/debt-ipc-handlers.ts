@@ -80,6 +80,9 @@ import {
   incomeSourceDtoSchema,
   updateDebtRequestSchema,
   voidBalanceReconciliationRequestSchema,
+  checkForUpdatesRequestSchema,
+  dismissUpdateNoticeRequestSchema,
+  updateCheckResultDtoSchema,
   type ApplicationError,
   type ApplicationResult,
 } from '../../shared/debt-contracts';
@@ -87,6 +90,7 @@ import { DEBT_IPC_CHANNELS } from '../../shared/debt-ipc';
 import { ApplicationServiceError } from '../services/application-error';
 import type { DataManagementService } from '../services/data-management-service';
 import type { DebtMaintenanceService } from '../services/debt-maintenance-service';
+import type { UpdateCheckService } from '../services/update-check-service';
 import type { TrustedSenderValidator } from './trusted-sender';
 
 export interface DebtIpcRegistrar {
@@ -212,6 +216,10 @@ export const registerDebtIpcHandlers = (
     readonly selectFolder: (title: string) => string | null;
     readonly selectBackupFile: () => string | null;
   } = { selectFolder: () => null, selectBackupFile: () => null },
+  updateCheck?: {
+    readonly service: UpdateCheckService;
+    readonly openExternalUrl: (url: string) => void;
+  },
 ): void => {
   let databaseOperationActive = false;
   const runExclusiveDatabaseOperation = async <T>(
@@ -731,6 +739,51 @@ export const registerDebtIpcHandlers = (
     isTrustedSender,
     (request) => service.removeScheduledPaymentConfirmation(request),
   );
+
+  if (updateCheck) {
+    const { service: updateCheckService, openExternalUrl } = updateCheck;
+
+    registerHandler(
+      ipcMain,
+      DEBT_IPC_CHANNELS.getUpdateStatus,
+      checkForUpdatesRequestSchema,
+      updateCheckResultDtoSchema.nullable(),
+      isTrustedSender,
+      () => updateCheckService.getCachedStatus(),
+    );
+    registerHandler(
+      ipcMain,
+      DEBT_IPC_CHANNELS.dismissUpdateNotice,
+      dismissUpdateNoticeRequestSchema,
+      updateCheckResultDtoSchema.nullable(),
+      isTrustedSender,
+      (request) => updateCheckService.dismiss(request.version),
+    );
+    registerHandler(
+      ipcMain,
+      DEBT_IPC_CHANNELS.openReleasePage,
+      checkForUpdatesRequestSchema,
+      z.boolean(),
+      isTrustedSender,
+      () => {
+        const status = updateCheckService.getCachedStatus();
+        if (!status?.releaseUrl) return false;
+
+        let parsedUrl: URL;
+        try {
+          parsedUrl = new URL(status.releaseUrl);
+        } catch {
+          return false;
+        }
+        if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'github.com') {
+          return false;
+        }
+
+        openExternalUrl(parsedUrl.toString());
+        return true;
+      },
+    );
+  }
 };
 
 export const removeDebtIpcHandlers = (ipcMain: DebtIpcRegistrar): void => {

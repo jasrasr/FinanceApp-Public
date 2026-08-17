@@ -1,6 +1,9 @@
 import type {
   AddDebtTermRequest,
   AppMetadataDto,
+  CheckForUpdatesRequest,
+  DismissUpdateNoticeRequest,
+  UpdateCheckResultDto,
   CreateBalanceReconciliationRequest,
   CreateBalanceSnapshotRequest,
   CreateDebtTransactionRequest,
@@ -246,10 +249,19 @@ export interface DebtBridge {
   removeScheduledPaymentConfirmation(
     request: RemoveScheduledPaymentConfirmationRequest,
   ): Promise<ApplicationResult<DebtDetailDto>>;
+  getUpdateStatus(
+    request: CheckForUpdatesRequest,
+  ): Promise<ApplicationResult<UpdateCheckResultDto | null>>;
+  dismissUpdateNotice(
+    request: DismissUpdateNoticeRequest,
+  ): Promise<ApplicationResult<UpdateCheckResultDto | null>>;
+  openReleasePage(
+    request: CheckForUpdatesRequest,
+  ): Promise<ApplicationResult<boolean>>;
 }
 
 export interface AppBridge extends DebtBridge {
   readonly appName: 'Debt Tracker';
-  readonly bridgeVersion: 28;
+  readonly bridgeVersion: 29;
   readonly appMetadata: AppMetadataDto;
 }

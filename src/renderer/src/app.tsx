@@ -50,6 +50,7 @@ import type {
   SetIncomeSourceArchivedRequest,
   UpdateIncomeSourceRequest,
   UpdateIncomeTransactionRequest,
+  UpdateCheckResultDto,
 } from '../../shared/debt-contracts';
 import { AddTermForm } from './components/add-term-form';
 import { AdvancedReports } from './components/advanced-reports';
@@ -170,6 +171,7 @@ const permanentDeletionCountLabels: Record<
 
 export interface AppProps {
   readonly bridge?: AppBridge;
+  readonly updateCheckPollDelayMs?: number;
 }
 
 const ErrorNotice = ({
@@ -193,7 +195,10 @@ const ErrorNotice = ({
   </div>
 );
 
-export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Element => {
+export const App = ({
+  bridge = window.debtTracker,
+  updateCheckPollDelayMs = 3_000,
+}: AppProps): React.JSX.Element => {
   const [view, setView] = useState<View>('dashboard');
   const [activityExpanded, setActivityExpanded] = useState(false);
   const [planningExpanded, setPlanningExpanded] = useState(false);
@@ -258,8 +263,46 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
     useState<BalanceReconciliationDto | null>(null);
   const [permanentDeletionConfirmation, setPermanentDeletionConfirmation] =
     useState<PermanentDeletionConfirmation>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateCheckResultDto | null>(null);
   const detailFocusRequestRef = useRef<string | null>(null);
   const suppressNavigationPushRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+
+    const poll = async (): Promise<void> => {
+      attempts += 1;
+      const result = await invokeBridge(() => bridge.getUpdateStatus({}));
+      if (cancelled) return;
+      if (result.ok && result.value) {
+        setUpdateStatus(result.value);
+        return;
+      }
+      if (attempts < 5) {
+        timeoutId = setTimeout(() => void poll(), updateCheckPollDelayMs);
+      }
+    };
+
+    timeoutId = setTimeout(() => void poll(), updateCheckPollDelayMs);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [bridge, updateCheckPollDelayMs]);
+
+  const dismissUpdateNotice = async (): Promise<void> => {
+    if (!updateStatus?.latestVersion) return;
+    const result = await invokeBridge(() =>
+      bridge.dismissUpdateNotice({ version: updateStatus.latestVersion! }),
+    );
+    if (result.ok) setUpdateStatus(result.value);
+  };
+
+  const openUpdateReleasePage = async (): Promise<void> => {
+    await invokeBridge(() => bridge.openReleasePage({}));
+  };
 
   useEffect(() => {
     if (view !== 'detail' || !selectedDebt) return;
@@ -2119,6 +2162,37 @@ export const App = ({ bridge = window.debtTracker }: AppProps): React.JSX.Elemen
         </nav>
 
         <main className="min-w-0 p-6 lg:p-8">
+          {updateStatus?.updateAvailable ? (
+            <div
+              className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-blue-300 bg-blue-50 p-4 text-sm text-blue-950"
+              role="status"
+            >
+              <div>
+                <p className="font-semibold">
+                  Debt Tracker {updateStatus.latestVersion} is available
+                </p>
+                <p className="mt-1">
+                  You are running version {updateStatus.currentVersion}.{' '}
+                  <button
+                    className="font-semibold underline"
+                    onClick={() => void openUpdateReleasePage()}
+                    type="button"
+                  >
+                    View release
+                  </button>
+                </p>
+              </div>
+              <button
+                aria-label="Dismiss update notice"
+                className="font-semibold"
+                onClick={() => void dismissUpdateNotice()}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
+
           {successMessage ? (
             <div
               className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-950"

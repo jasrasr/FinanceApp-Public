@@ -37,6 +37,7 @@ describe('typed preload bridge', () => {
       'createPayoffScenario',
       'deleteBackup',
       'deleteDebtPermanently',
+      'dismissUpdateNotice',
       'editDebtTransaction',
       'exportData',
       'getDashboard',
@@ -50,6 +51,7 @@ describe('typed preload bridge', () => {
       'getMilestones',
       'getPayoffScenario',
       'getRefinanceAnalysis',
+      'getUpdateStatus',
       'importBackupFile',
       'listDebts',
       'listIncomeRecords',
@@ -57,6 +59,7 @@ describe('typed preload bridge', () => {
       'listIncomeTransactions',
       'listPayoffScenarios',
       'openBackupFolder',
+      'openReleasePage',
       'recordRefinance',
       'removeScheduledPaymentConfirmation',
       'renamePayoffScenario',
@@ -74,7 +77,7 @@ describe('typed preload bridge', () => {
       'voidBalanceReconciliation',
       'voidDebtTransaction',
     ]);
-    expect(bridge.bridgeVersion).toBe(28);
+    expect(bridge.bridgeVersion).toBe(29);
     expect(bridge.appMetadata).toEqual({
       version: packageMetadata.version,
       lastChangedAtUtc: '2026-08-15T00:00:00.000Z',
@@ -171,5 +174,53 @@ describe('typed preload bridge', () => {
     expect(
       Object.keys(bridge).filter((key) => key.toLowerCase().includes('import')),
     ).toEqual(['importBackupFile']);
+  });
+
+  it('reads cached update status through the fixed channel', async () => {
+    const invoke = vi.fn(async () => ({
+      ok: true,
+      value: {
+        currentVersion: '1.11.1',
+        latestVersion: '1.12.0',
+        updateAvailable: true,
+        releaseUrl: 'https://github.com/jasrasr/financeApp-public/releases/tag/v1.12.0',
+        checkedAtUtc: '2026-08-16T00:00:00.000Z',
+        checkFailed: false,
+      },
+    }));
+    const bridge = createAppBridge(invoke);
+
+    await expect(bridge.getUpdateStatus({})).resolves.toMatchObject({
+      ok: true,
+      value: { updateAvailable: true, latestVersion: '1.12.0' },
+    });
+    expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.getUpdateStatus, {});
+  });
+
+  it('rejects a malformed update-status response', async () => {
+    const bridge = createAppBridge(vi.fn(async () => ({ ok: true, value: { bad: true } })));
+
+    await expect(bridge.getUpdateStatus({})).rejects.toThrow();
+  });
+
+  it('dismisses an update notice for a specific version', async () => {
+    const invoke = vi.fn(async () => ({ ok: true, value: null }));
+    const bridge = createAppBridge(invoke);
+
+    await expect(bridge.dismissUpdateNotice({ version: '1.12.0' })).resolves.toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.dismissUpdateNotice, {
+      version: '1.12.0',
+    });
+  });
+
+  it('requests opening the release page with no arguments', async () => {
+    const invoke = vi.fn(async () => ({ ok: true, value: true }));
+    const bridge = createAppBridge(invoke);
+
+    await expect(bridge.openReleasePage({})).resolves.toEqual({ ok: true, value: true });
+    expect(invoke).toHaveBeenCalledWith(DEBT_IPC_CHANNELS.openReleasePage, {});
   });
 });

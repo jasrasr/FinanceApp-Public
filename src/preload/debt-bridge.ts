@@ -145,6 +145,12 @@ import {
   type CreateIncomeTransactionRequest,
   type UpdateIncomeTransactionRequest,
   type ArchiveIncomeTransactionRequest,
+  checkForUpdatesRequestSchema,
+  dismissUpdateNoticeRequestSchema,
+  updateCheckResultSchema,
+  openReleasePageResultSchema,
+  type CheckForUpdatesRequest,
+  type DismissUpdateNoticeRequest,
 } from '../shared/debt-contracts';
 import { DEBT_IPC_CHANNELS } from '../shared/debt-ipc';
 import { appMetadata } from './app-metadata';
@@ -154,7 +160,7 @@ export type IpcInvoke = (channel: string, request: unknown) => Promise<unknown>;
 export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
   Object.freeze({
     appName: 'Debt Tracker',
-    bridgeVersion: 28,
+    bridgeVersion: 29,
     appMetadata: appMetadataDtoSchema.parse(appMetadata),
     listDebts: async (request: ListDebtsRequest) =>
       debtListResultSchema.parse(
@@ -564,6 +570,27 @@ export const createAppBridge = (invoke: IpcInvoke): AppBridge =>
         await invoke(
           DEBT_IPC_CHANNELS.removeScheduledPaymentConfirmation,
           removeScheduledPaymentConfirmationRequestSchema.parse(request),
+        ),
+      ),
+    getUpdateStatus: async (request: CheckForUpdatesRequest) =>
+      updateCheckResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.getUpdateStatus,
+          checkForUpdatesRequestSchema.parse(request),
+        ),
+      ),
+    dismissUpdateNotice: async (request: DismissUpdateNoticeRequest) =>
+      updateCheckResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.dismissUpdateNotice,
+          dismissUpdateNoticeRequestSchema.parse(request),
+        ),
+      ),
+    openReleasePage: async (request: CheckForUpdatesRequest) =>
+      openReleasePageResultSchema.parse(
+        await invoke(
+          DEBT_IPC_CHANNELS.openReleasePage,
+          checkForUpdatesRequestSchema.parse(request),
         ),
       ),
   });

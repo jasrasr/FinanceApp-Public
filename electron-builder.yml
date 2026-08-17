@@ -45,6 +45,12 @@ asarUnpack:
 npmRebuild: false
 buildDependenciesFromSource: false
 
+publish:
+  provider: github
+  owner: jasrasr
+  repo: financeApp-public
+  releaseType: release
+
 win:
   target:
     - target: nsis

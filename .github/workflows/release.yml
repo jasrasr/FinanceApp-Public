@@ -13,7 +13,10 @@ jobs:
     # The activation/setup commit is marked [skip release] so enabling this
     # workflow does not create an additional release. Normal commits use the
     # conventional-commit-aware release:version script.
-    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip release]')
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      !contains(github.event.head_commit.message, '[skip release]') &&
+      !startsWith(github.event.head_commit.message, 'chore: release ')
     runs-on: windows-latest
     steps:
       - name: Check out merged main
@@ -32,8 +35,16 @@ jobs:
         # command. Native Electron setup is performed explicitly below.
         run: npm ci --ignore-scripts
 
-      - name: Build and verify Windows installer
-        run: npm run package
+      - name: Build, verify, and publish Windows installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run release:version
+          npm run assets:icons
+          npm run build
+          npm run native:electron
+          npx electron-builder --win nsis --x64 --publish always
+          npm run release:verify
 
       - name: Publish synchronized version metadata
         shell: pwsh

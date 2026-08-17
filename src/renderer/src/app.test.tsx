@@ -39,7 +39,7 @@ const openNavigationGroup = async (
 
 const createBridge = (): AppBridge => ({
   appName: 'Debt Tracker',
-  bridgeVersion: 28,
+  bridgeVersion: 29,
   appMetadata: {
     version: packageMetadata.version,
     lastChangedAtUtc: '2026-08-10T00:00:00.000Z',
@@ -194,6 +194,9 @@ const createBridge = (): AppBridge => ({
   })),
   confirmScheduledPayment: vi.fn(),
   removeScheduledPaymentConfirmation: vi.fn(),
+  getUpdateStatus: vi.fn(async () => ({ ok: true as const, value: null })),
+  dismissUpdateNotice: vi.fn(async () => ({ ok: true as const, value: null })),
+  openReleasePage: vi.fn(async () => ({ ok: true as const, value: true })),
 });
 
 const sampleDashboard: DashboardDto = {
@@ -3042,5 +3045,81 @@ describe('debt maintenance application', () => {
       ),
     ).toBeVisible();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
+  });
+
+  it('shows an update banner when a newer version is available and dismisses it', async () => {
+    const bridge = createBridge();
+    const availableStatus = {
+      currentVersion: '1.11.1',
+      latestVersion: '1.12.0',
+      updateAvailable: true,
+      releaseUrl: 'https://github.com/jasrasr/financeApp-public/releases/tag/v1.12.0',
+      checkedAtUtc: '2026-08-16T00:00:00.000Z',
+      checkFailed: false,
+    };
+    bridge.getUpdateStatus = vi.fn(async () => ({ ok: true as const, value: availableStatus }));
+    bridge.dismissUpdateNotice = vi.fn(async () => ({
+      ok: true as const,
+      value: { ...availableStatus, updateAvailable: false },
+    }));
+
+    render(<App bridge={bridge} updateCheckPollDelayMs={0} />);
+
+    expect(
+      await screen.findByText('Debt Tracker 1.12.0 is available'),
+    ).toBeVisible();
+    expect(screen.getByText(/You are running version 1\.11\.1/)).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss update notice' }));
+
+    await waitFor(() => {
+      expect(bridge.dismissUpdateNotice).toHaveBeenCalledWith({ version: '1.12.0' });
+    });
+    expect(
+      screen.queryByText('Debt Tracker 1.12.0 is available'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens the release page from the update banner', async () => {
+    const bridge = createBridge();
+    const availableStatus = {
+      currentVersion: '1.11.1',
+      latestVersion: '1.12.0',
+      updateAvailable: true,
+      releaseUrl: 'https://github.com/jasrasr/financeApp-public/releases/tag/v1.12.0',
+      checkedAtUtc: '2026-08-16T00:00:00.000Z',
+      checkFailed: false,
+    };
+    bridge.getUpdateStatus = vi.fn(async () => ({ ok: true as const, value: availableStatus }));
+
+    render(<App bridge={bridge} updateCheckPollDelayMs={0} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'View release' }));
+
+    await waitFor(() => {
+      expect(bridge.openReleasePage).toHaveBeenCalledWith({});
+    });
+  });
+
+  it('does not show an update banner when already on the latest version', async () => {
+    const bridge = createBridge();
+    bridge.getUpdateStatus = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        currentVersion: '1.12.0',
+        latestVersion: '1.12.0',
+        updateAvailable: false,
+        releaseUrl: 'https://github.com/jasrasr/financeApp-public/releases/tag/v1.12.0',
+        checkedAtUtc: '2026-08-16T00:00:00.000Z',
+        checkFailed: false,
+      },
+    }));
+
+    render(<App bridge={bridge} updateCheckPollDelayMs={0} />);
+
+    await waitFor(() => {
+      expect(bridge.getUpdateStatus).toHaveBeenCalled();
+    });
+    expect(screen.queryByText(/is available$/)).not.toBeInTheDocument();
   });
 });
